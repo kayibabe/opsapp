@@ -1305,84 +1305,88 @@ async function loadOverview(){
   document.getElementById('ov-fin').innerHTML='<div class="kc"><div class="kc-lbl">Loading…</div><div class="kc-val">—</div></div>';
   try{
     const d=await apiPanel('executive');
-    const f=d.financial, n=d.nrw, s=d.service, z=d.zones, t=d.trends;
-    const badge=(flag)=>{const m={GOOD:'ex-badge-good',WATCH:'ex-badge-watch',HIGH:'ex-badge-high',LOW:'ex-badge-low',MONITOR:'ex-badge-monitor'};return `<span class="ex-badge ${m[flag]||'ex-badge-watch'}">${flag}</span>`};
+    const f=d.financial||{}, n=d.nrw||{}, s=d.service||{}, z=d.zones||[], t=d.trends||{};
+    const lb=(t.labels||[]).map(m=>MONTHS_SHORT[m]||m);
+    const hasData=lb.length>0;
+    const badge=(flag)=>{if(!flag)return '';const m={GOOD:'ex-badge-good',WATCH:'ex-badge-watch',HIGH:'ex-badge-high',LOW:'ex-badge-low',MONITOR:'ex-badge-monitor'};return ` <span class="ex-badge ${m[flag]||'ex-badge-watch'}">${flag}</span>`};
 
     // §1 Financial Health Ratios
     kpis('ov-fin',[
-      {l:'Operating Ratio'+badge(f.op_ratio_flag), v:f.op_ratio?.toFixed(2)||'—', s:'OPEX ÷ Revenue — target <0.80'},
-      {l:'Days Sales Outstanding'+badge(f.dso_flag), v:Math.round(f.dso||0), s:'Target <60 days'},
+      {l:'Operating Ratio'+badge(f.op_ratio_flag), v:f.op_ratio!=null?f.op_ratio.toFixed(2):'—', s:'OPEX ÷ Revenue — target <0.80'},
+      {l:'Days Sales Outstanding'+badge(f.dso_flag), v:f.dso!=null?Math.round(f.dso):'—', s:'Target <60 days'},
       {l:'Revenue / Connection (MWK)', v:F.num(f.rev_per_conn), s:'YTD billed per active account'},
-      {l:'Net Revenue Margin'+badge(f.net_margin_flag), v:F.pct(f.net_margin), s:'(Revenue − OPEX) ÷ Revenue'},
+      {l:'Net Revenue Margin'+badge(f.net_margin_flag), v:f.net_margin!=null?F.pct(f.net_margin):'—', s:'(Revenue − OPEX) ÷ Revenue'},
     ]);
 
-    // §2 NRW Intelligence — stats card + trend chart
-    const nv=n.nrw_vol||0, np=n.nrw_pct||0;
+    // §2 NRW Intelligence
+    const nv=n.nrw_vol||0, np=n.nrw_pct||0, vp=n.vol_produced||0;
     document.getElementById('ov-nrw-stats').innerHTML=`
-      <div class="nrw-stat"><div class="nrw-stat-val">${(nv/1e6).toFixed(2)}M m³</div><div class="nrw-stat-lbl">NRW Volume</div><div class="nrw-stat-sub">${np}% of ${(n.vol_produced/1e6).toFixed(1)}M produced</div></div>
-      <div class="nrw-stat"><div class="nrw-stat-val">MWK ${F.M(n.nrw_cost)}</div><div class="nrw-stat-lbl">Est. Financial Value of NRW</div><div class="nrw-stat-sub">At avg tariff MWK ${n.avg_tariff}/m³</div></div>
-      <div class="nrw-stat"><div class="nrw-stat-val">MWK ${F.num(n.nrw_per_conn_yr)}</div><div class="nrw-stat-lbl">NRW Cost Per Connection / Year</div></div>`;
+      <div class="nrw-stat"><div class="nrw-stat-val">${(nv/1e6).toFixed(2)}M m³</div><div class="nrw-stat-lbl">NRW Volume</div><div class="nrw-stat-sub">${np}% of ${(vp/1e6).toFixed(1)}M produced</div></div>
+      <div class="nrw-stat"><div class="nrw-stat-val">MWK ${F.M(n.nrw_cost||0)}</div><div class="nrw-stat-lbl">Est. Financial Value of NRW</div><div class="nrw-stat-sub">At avg tariff MWK ${n.avg_tariff||0}/m³</div></div>
+      <div class="nrw-stat"><div class="nrw-stat-val">MWK ${F.num(n.nrw_per_conn_yr||0)}</div><div class="nrw-stat-lbl">NRW Cost Per Connection / Year</div></div>`;
 
-    // NRW trend with IWA benchmark
-    const lb=t.labels.map(m=>MONTHS_SHORT[m]||m);
-    mkChart('ch-ov-nrw',{type:'line',data:{labels:lb,datasets:[
-      {label:'NRW %',data:t.nrw_pct,borderColor:'#dc2626',backgroundColor:'rgba(220,38,38,.06)',tension:.3,pointRadius:4,pointBackgroundColor:'#dc2626',fill:true,borderWidth:2},
-      {label:'IWA Benchmark (20%)',data:t.nrw_pct.map(()=>20),borderColor:'#1A8FD1',borderDash:[6,4],borderWidth:1.5,pointRadius:0,fill:false},
-    ]},options:{...baseOpts(v=>v+'%'),plugins:{...tooltipPlugin.plugins,legend:{display:true,position:'top',labels:{font:{size:10},color:LC,usePointStyle:true,pointStyle:'line'}}},scales:{...baseScales(v=>v+'%'),y:{...baseScales(v=>v+'%').y,min:Math.max(0,Math.min(...t.nrw_pct,20)-5),max:Math.max(...t.nrw_pct,20)+5}}}});
+    if(hasData){
+      const nrwPct=t.nrw_pct||[];
+      mkChart('ch-ov-nrw',{type:'line',data:{labels:lb,datasets:[
+        {label:'NRW %',data:nrwPct,borderColor:'#dc2626',backgroundColor:'rgba(220,38,38,.06)',tension:.3,pointRadius:4,pointBackgroundColor:'#dc2626',fill:true,borderWidth:2},
+        {label:'IWA Benchmark (20%)',data:nrwPct.map(()=>20),borderColor:'#1A8FD1',borderDash:[6,4],borderWidth:1.5,pointRadius:0,fill:false},
+      ]},options:{...baseOpts(v=>v+'%'),plugins:{...tooltipPlugin.plugins,legend:{display:true,position:'top',labels:{font:{size:10},color:LC,usePointStyle:true,pointStyle:'line'}}},scales:{...baseScales(v=>v+'%'),y:{...baseScales(v=>v+'%').y,min:Math.max(0,Math.min(...nrwPct,20)-5),max:Math.max(...nrwPct,20)+5}}}});
+    }
 
     // §3 Service Quality
     kpis('ov-svc',[
-      {l:'Energy Intensity (kWh/m³)', v:s.energy_intensity?.toFixed(2)||'—', s:'Unit rate — not just total MWK cost'},
-      {l:'Meter Read Rate'+badge(s.meter_read_rate>95?'GOOD':s.meter_read_rate>90?'MONITOR':'LOW'), v:F.pct(s.meter_read_rate), s:F.num(s.stuck_meters)+' stuck = '+F.pct(s.stuck_pct)+' unread'},
-      {l:'Complaints / 1000 Conn'+badge(s.complaints_flag), v:F.num(s.complaints_1000), s:'Customer service pressure index'},
+      {l:'Energy Intensity (kWh/m³)', v:s.energy_intensity!=null?s.energy_intensity.toFixed(2):'—', s:'Unit rate — not just total MWK cost'},
+      {l:'Meter Read Rate'+badge(s.meter_read_rate>95?'GOOD':s.meter_read_rate>90?'MONITOR':'LOW'), v:F.pct(s.meter_read_rate||0), s:F.num(s.stuck_meters||0)+' stuck = '+F.pct(s.stuck_pct||0)+' unread'},
+      {l:'Complaints / 1000 Conn'+badge(s.complaints_flag), v:F.num(s.complaints_1000||0), s:'Customer service pressure index'},
     ]);
     document.getElementById('ov-svc').className='kpi-row kpi-g3';
 
-    // §4 Trend Analytics — Billing vs Collections
-    mkChart('ch-ov-coll',{type:'line',data:{labels:lb,datasets:[
-      {label:'Billed',data:t.billed.map(v=>+(v/1e9).toFixed(2)),borderColor:'#1A8FD1',backgroundColor:'rgba(26,143,209,.08)',tension:.3,pointRadius:3,fill:true,borderWidth:2},
-      {label:'Collected',data:t.collected.map(v=>+(v/1e9).toFixed(2)),borderColor:'#16a34a',backgroundColor:'rgba(22,163,74,.08)',tension:.3,pointRadius:3,fill:true,borderWidth:2},
-    ]},options:{...baseOpts(v=>v+'B'),plugins:{...tooltipPlugin.plugins,legend:{display:true,labels:{font:{size:10},color:LC,usePointStyle:true,pointStyle:'circle'}}}}});
+    // §4 Trend Analytics
+    if(hasData){
+      mkChart('ch-ov-coll',{type:'line',data:{labels:lb,datasets:[
+        {label:'Billed',data:(t.billed||[]).map(v=>+(v/1e9).toFixed(2)),borderColor:'#1A8FD1',backgroundColor:'rgba(26,143,209,.08)',tension:.3,pointRadius:3,fill:true,borderWidth:2},
+        {label:'Collected',data:(t.collected||[]).map(v=>+(v/1e9).toFixed(2)),borderColor:'#16a34a',backgroundColor:'rgba(22,163,74,.08)',tension:.3,pointRadius:3,fill:true,borderWidth:2},
+      ]},options:{...baseOpts(v=>v+'B'),plugins:{...tooltipPlugin.plugins,legend:{display:true,labels:{font:{size:10},color:LC,usePointStyle:true,pointStyle:'circle'}}}}});
 
-    // Zone NRW comparison bar chart with 20% target line
-    const zn=t.zone_nrw||[];
-    mkChart('ch-ov-znrw',{type:'bar',data:{labels:zn.map(z=>z.zone),datasets:[
-      {label:'NRW%',data:zn.map(z=>z.nrw_pct),backgroundColor:zn.map(z=>z.nrw_pct>30?'rgba(220,38,38,.65)':z.nrw_pct>20?'rgba(217,119,6,.65)':'rgba(22,163,74,.65)'),borderRadius:4},
-      {type:'line',label:'Target 20%',data:zn.map(()=>20),borderColor:'#8FA3B8',borderDash:[5,3],borderWidth:1.5,pointRadius:0},
-    ]},options:{...baseOpts(v=>v+'%'),plugins:{...tooltipPlugin.plugins,legend:{display:true,labels:{font:{size:10},color:LC,usePointStyle:true}}}}});
+      const zn=t.zone_nrw||[];
+      mkChart('ch-ov-znrw',{type:'bar',data:{labels:zn.map(z=>z.zone),datasets:[
+        {label:'NRW%',data:zn.map(z=>z.nrw_pct),backgroundColor:zn.map(z=>z.nrw_pct>30?'rgba(220,38,38,.65)':z.nrw_pct>20?'rgba(217,119,6,.65)':'rgba(22,163,74,.65)'),borderRadius:4},
+        {type:'line',label:'Target 20%',data:zn.map(()=>20),borderColor:'#8FA3B8',borderDash:[5,3],borderWidth:1.5,pointRadius:0},
+      ]},options:{...baseOpts(v=>v+'%'),plugins:{...tooltipPlugin.plugins,legend:{display:true,labels:{font:{size:10},color:LC,usePointStyle:true}}}}});
+    }
 
     // §5 Zone Snapshot table
-    let th='<tr><th style="text-align:left">Zone</th><th>NRW %</th><th>Coll. Rate</th><th>DSO (Days)</th><th>Op. Ratio</th><th>Rev / Conn</th><th>NRW Trend</th></tr>';
-    let tb=z.map(zz=>{
-      const nrwCls=zz.nrw_pct>30?'zs-bad':zz.nrw_pct>20?'zs-warn':'zs-good';
-      const crCls=zz.collection_rate>=100?'zs-good':zz.collection_rate>=90?'zs-warn':'zs-bad';
-      const dsoCls=zz.dso<60?'zs-good':zz.dso<90?'zs-warn':'zs-bad';
-      const orCls=zz.op_ratio<0.8?'zs-good':zz.op_ratio<1?'zs-warn':'zs-bad';
-      const sid='spark-'+zz.zone.toLowerCase().replace(/\s/g,'');
-      return `<tr>
-        <td><strong>${zz.zone}</strong><span class="zs-sch">${zz.schemes} sch.</span></td>
-        <td class="zs-mono ${nrwCls}">${zz.nrw_pct.toFixed(1)}%</td>
-        <td class="zs-mono ${crCls}">${zz.collection_rate.toFixed(1)}%</td>
-        <td class="zs-mono ${dsoCls}">${Math.round(zz.dso)}</td>
-        <td class="zs-mono ${orCls}">${zz.op_ratio.toFixed(2)}</td>
-        <td class="zs-mono">${F.num(zz.rev_per_conn)}</td>
-        <td><canvas class="spark" id="${sid}" width="80" height="24"></canvas></td>
-      </tr>`;
-    }).join('');
-    document.getElementById('ov-zone-tbl').innerHTML=`<div class="zs-wrap"><table class="zs"><thead>${th}</thead><tbody>${tb}</tbody></table></div>`;
-
-    // Draw sparklines
-    z.forEach(zz=>{
-      const sid='spark-'+zz.zone.toLowerCase().replace(/\s/g,'');
-      const el=document.getElementById(sid);if(!el||!zz.nrw_trend.length)return;
-      const ctx=el.getContext('2d');
-      const pts=zz.nrw_trend,w=80,h=24;
-      const mn=Math.min(...pts)-2,mx=Math.max(...pts)+2,rng=mx-mn||1;
-      ctx.strokeStyle=pts[pts.length-1]>30?'#dc2626':pts[pts.length-1]>20?'#d97706':'#16a34a';
-      ctx.lineWidth=1.5;ctx.lineJoin='round';ctx.beginPath();
-      pts.forEach((v,i)=>{const x=i/(pts.length-1)*w,y=h-(v-mn)/rng*h;i===0?ctx.moveTo(x,y):ctx.lineTo(x,y)});
-      ctx.stroke();
-    });
+    if(z.length){
+      let th='<tr><th style="text-align:left">Zone</th><th>NRW %</th><th>Coll. Rate</th><th>DSO (Days)</th><th>Op. Ratio</th><th>Rev / Conn</th><th>NRW Trend</th></tr>';
+      let tb=z.map(zz=>{
+        const nrwCls=(zz.nrw_pct||0)>30?'zs-bad':(zz.nrw_pct||0)>20?'zs-warn':'zs-good';
+        const crCls=(zz.collection_rate||0)>=100?'zs-good':(zz.collection_rate||0)>=90?'zs-warn':'zs-bad';
+        const dsoCls=(zz.dso||0)<60?'zs-good':(zz.dso||0)<90?'zs-warn':'zs-bad';
+        const orCls=(zz.op_ratio||0)<0.8?'zs-good':(zz.op_ratio||0)<1?'zs-warn':'zs-bad';
+        const sid='spark-'+zz.zone.toLowerCase().replace(/\s/g,'');
+        return `<tr>
+          <td><strong>${zz.zone}</strong><span class="zs-sch">${zz.schemes||0} sch.</span></td>
+          <td class="zs-mono ${nrwCls}">${(zz.nrw_pct||0).toFixed(1)}%</td>
+          <td class="zs-mono ${crCls}">${(zz.collection_rate||0).toFixed(1)}%</td>
+          <td class="zs-mono ${dsoCls}">${Math.round(zz.dso||0)}</td>
+          <td class="zs-mono ${orCls}">${(zz.op_ratio||0).toFixed(2)}</td>
+          <td class="zs-mono">${F.num(zz.rev_per_conn||0)}</td>
+          <td><canvas class="spark" id="${sid}" width="80" height="24"></canvas></td>
+        </tr>`;
+      }).join('');
+      document.getElementById('ov-zone-tbl').innerHTML=`<div class="zs-wrap"><table class="zs"><thead>${th}</thead><tbody>${tb}</tbody></table></div>`;
+      z.forEach(zz=>{
+        const sid='spark-'+zz.zone.toLowerCase().replace(/\s/g,'');
+        const el=document.getElementById(sid);if(!el||!(zz.nrw_trend||[]).length)return;
+        const ctx=el.getContext('2d');
+        const pts=zz.nrw_trend,w=80,h=24;
+        const mn=Math.min(...pts)-2,mx=Math.max(...pts)+2,rng=mx-mn||1;
+        ctx.strokeStyle=pts[pts.length-1]>30?'#dc2626':pts[pts.length-1]>20?'#d97706':'#16a34a';
+        ctx.lineWidth=1.5;ctx.lineJoin='round';ctx.beginPath();
+        pts.forEach((v,i)=>{const x=i/(pts.length-1)*w,y=h-(v-mn)/rng*h;i===0?ctx.moveTo(x,y):ctx.lineTo(x,y)});
+        ctx.stroke();
+      });
+    }
 
   }catch(e){errMsg('ov-fin','Executive dashboard failed — '+e.message);}
 }
