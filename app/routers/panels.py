@@ -48,11 +48,20 @@ def _filter(q, zones=None, schemes=None, months=None, year=None):
 def _parse(v): return v.split(",") if v else None
 
 def _latest(rows):
-    lv = {}
+    """Latest row per (zone, scheme) that has actual data.
+    Falls back to the most recent row if all are empty."""
+    lv = {}        # latest with data
+    lv_any = {}    # latest regardless
     for r in rows:
         k = (r.zone, r.scheme)
-        if k not in lv or _lk(r) > _lk(lv[k]): lv[k] = r
-    return list(lv.values())
+        if k not in lv_any or _lk(r) > _lk(lv_any[k]):
+            lv_any[k] = r
+        has_data = (r.active_customers or 0) > 0 or (r.vol_produced or 0) > 0 or (r.amt_billed or 0) > 0
+        if has_data and (k not in lv or _lk(r) > _lk(lv[k])):
+            lv[k] = r
+    # Use data-bearing row when available, otherwise fall back
+    merged = {k: lv.get(k, lv_any[k]) for k in lv_any}
+    return list(merged.values())
 
 def _nz_avg(rows, field, cap=None):
     """Average of non-zero values; optionally cap outliers before averaging."""
