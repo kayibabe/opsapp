@@ -284,6 +284,37 @@ table.dt tr:hover td{background:#F7F9FC}
 .legend-sq{width:9px;height:9px;border-radius:2px;flex-shrink:0}
 
 /* ═══════════════ REPORT TABLES ═════════════════════════════════════════ */
+
+/* ═══════════════ EXECUTIVE SECTIONS ═══════════════════════════════════ */
+.ex-section{margin-bottom:20px}
+.ex-hdr{display:flex;align-items:center;gap:8px;margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid #EEF2F7}
+.ex-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.ex-title{font-size:12px;font-weight:700;color:#1A2B3C;text-transform:uppercase;letter-spacing:.06em}
+.ex-sub{font-size:11px;color:#8FA3B8;font-weight:400}
+.ex-badge{font-size:8px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;padding:2px 7px;border-radius:4px;margin-left:6px}
+.ex-badge-good{background:#ECFDF5;color:#16a34a}
+.ex-badge-watch{background:#FFF7ED;color:#d97706}
+.ex-badge-high{background:#FEF2F2;color:#dc2626}
+.ex-badge-low{background:#EFF6FF;color:#3b82f6}
+.ex-badge-monitor{background:#FFF7ED;color:#d97706}
+/* NRW stats card */
+.nrw-stat{margin-bottom:16px}
+.nrw-stat-val{font-family:'IBM Plex Mono',monospace;font-size:22px;font-weight:700;color:#1A2B3C;line-height:1.1}
+.nrw-stat-lbl{font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:#8FA3B8;margin-top:3px}
+.nrw-stat-sub{font-size:10px;color:#5C7590;margin-top:2px}
+/* Zone snapshot table */
+.zs-wrap{overflow-x:auto;border:1px solid #EEF2F7;border-radius:10px;background:#fff}
+.zs{width:100%;border-collapse:collapse;font-size:12px}
+.zs th{padding:10px 12px;text-align:right;font-size:9px;font-weight:700;color:#8FA3B8;text-transform:uppercase;letter-spacing:.07em;border-bottom:1px solid #C8D3E0;background:#F7F9FC;white-space:nowrap}
+.zs th:first-child{text-align:left;min-width:140px}
+.zs td{padding:10px 12px;text-align:right;border-bottom:1px solid #EEF2F7;white-space:nowrap}
+.zs td:first-child{text-align:left;font-weight:600;color:#1A2B3C}
+.zs td:first-child .zs-sch{font-weight:400;font-size:10px;color:#8FA3B8;margin-left:4px}
+.zs tr:last-child td{border-bottom:none}
+.zs tr:hover td{background:#F0F8FF}
+.zs .zs-mono{font-family:'IBM Plex Mono',monospace;font-size:12px;color:#1A2B3C}
+.zs .zs-good{color:#16a34a;font-weight:600}.zs .zs-warn{color:#d97706;font-weight:600}.zs .zs-bad{color:#dc2626;font-weight:600}
+.zs canvas.spark{height:24px;width:80px}
 .rpt-wrap{overflow-x:auto;margin-top:20px;border:1px solid #EEF2F7;border-radius:10px;background:#fff;box-shadow:0 1px 4px rgba(0,0,0,.04)}
 .rpt{width:100%;border-collapse:collapse;font-size:11px}
 .rpt caption{caption-side:top;text-align:center;padding:12px 16px 10px;font-size:12px;font-weight:700;color:#1A2B3C;border-bottom:.5px solid #C8D3E0;text-transform:uppercase;letter-spacing:.07em;background:linear-gradient(135deg,#F7F9FC 0%,#EEF2F7 100%)}
@@ -609,23 +640,52 @@ table.dt tr:hover td{background:#F7F9FC}
   <!-- Main content -->
   <div id="db-main">
 
-    <!-- Overview -->
+    <!-- Overview — Executive Dashboard -->
     <div id="page-overview" class="db-page active">
       <div class="pg-hdr">
-        <div><div class="pg-title">Dashboard Overview</div><div class="pg-sub">Board-level KPIs · current financial year</div></div>
+        <div><div class="pg-title">Executive Dashboard</div><div class="pg-sub">Board-level KPIs · IWA / IBNET aligned · current financial year</div></div>
         <div class="pg-hdr-right">
           <button class="filter-toggle-btn" id="filter-btn-overview" onclick="openFilter()"><svg width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M1 3h14M3 8h10M6 13h4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg><span class="filter-dot"></span>Filters</button>
           <button class="refresh-btn" onclick="reloadPage('overview')">&#8635; Refresh</button>
         </div>
       </div>
-      <div id="ov-kpis" class="kpi-row kpi-g4"></div>
-      <div class="chart-row">
-        <div class="chart-card"><div class="chart-title">Active Customers — Monthly</div><div class="ch-wrap"><canvas id="ch-ov-cust"></canvas></div></div>
-        <div class="chart-card"><div class="chart-title">Collections vs Billed (MWK)</div><div class="ch-wrap"><canvas id="ch-ov-coll"></canvas></div></div>
+
+      <!-- §1 Financial Health Ratios -->
+      <div class="ex-section">
+        <div class="ex-hdr"><span class="ex-dot" style="background:#1A8FD1"></span><span class="ex-title">Financial Health Ratios</span><span class="ex-sub">— computed from billing &amp; expense data</span></div>
+        <div id="ov-fin" class="kpi-row kpi-g4"></div>
       </div>
-      <div class="chart-row">
-        <div class="chart-card"><div class="chart-title">NRW % — Monthly Trend</div><div class="ch-wrap"><canvas id="ch-ov-nrw"></canvas></div></div>
-        <div class="chart-card"><div class="chart-title">Zone Performance — Vol. Produced</div><div class="ch-wrap"><canvas id="ch-ov-zone"></canvas></div></div>
+
+      <!-- §2 NRW Intelligence -->
+      <div class="ex-section">
+        <div class="ex-hdr"><span class="ex-dot" style="background:#d97706"></span><span class="ex-title">NRW Intelligence</span><span class="ex-sub">— volume, financial cost &amp; trend</span></div>
+        <div class="chart-row">
+          <div class="chart-card" style="display:flex;flex-direction:column;justify-content:center">
+            <div id="ov-nrw-stats"></div>
+          </div>
+          <div class="chart-card"><div class="chart-title">NRW Rate — Monthly Trend</div><div class="ch-wrap"><canvas id="ch-ov-nrw"></canvas></div></div>
+        </div>
+      </div>
+
+      <!-- §3 Service Quality & Asset Health -->
+      <div class="ex-section">
+        <div class="ex-hdr"><span class="ex-dot" style="background:#16a34a"></span><span class="ex-title">Service Quality &amp; Asset Health</span><span class="ex-sub">— operational performance indicators</span></div>
+        <div id="ov-svc" class="kpi-row kpi-g4"></div>
+      </div>
+
+      <!-- §4 Trend Analytics -->
+      <div class="ex-section">
+        <div class="ex-hdr"><span class="ex-dot" style="background:#7c3aed"></span><span class="ex-title">Trend Analytics</span><span class="ex-sub">— billing, collections &amp; NRW by zone</span></div>
+        <div class="chart-row">
+          <div class="chart-card"><div class="chart-title">Billing vs Collections — Monthly (MWK B)</div><div class="ch-wrap"><canvas id="ch-ov-coll"></canvas></div></div>
+          <div class="chart-card"><div class="chart-title">Zone NRW Comparison — Current Period (%)</div><div class="ch-wrap"><canvas id="ch-ov-znrw"></canvas></div></div>
+        </div>
+      </div>
+
+      <!-- §5 Zone Snapshot -->
+      <div class="ex-section">
+        <div class="ex-hdr"><span class="ex-dot" style="background:#0d9488"></span><span class="ex-title">Zone Snapshot</span><span class="ex-sub">— enhanced with DSO, operating ratio &amp; revenue per connection</span></div>
+        <div id="ov-zone-tbl"></div>
       </div>
     </div>
 
@@ -1242,31 +1302,89 @@ async function loadPage(page){
 }
 
 async function loadOverview(){
-  kpis('ov-kpis',[{l:'Loading…',v:'—'}]);
+  document.getElementById('ov-fin').innerHTML='<div class="kc"><div class="kc-lbl">Loading…</div><div class="kc-val">—</div></div>';
   try{
-    const [kpi,monthly,byZone]=await Promise.all([api('/api/analytics/kpi'),api('/api/analytics/monthly'),api('/api/analytics/by-zone')]);
-    kpis('ov-kpis',[
-      {l:'Active Customers', v:F.num(kpi.active_customers)},
-      {l:'Vol. Produced',    v:F.m3(kpi.vol_produced)},
-      {l:'NRW Rate',         v:F.pct(kpi.nrw_pct), s:kpi.nrw_pct>30?'▲ Above 30% target':'▼ Within target', cls:kpi.nrw_pct>30?'kc-dn':'kc-up'},
-      {l:'Cash Collected',   v:F.mwk(kpi.cash_collected)},
-      {l:'Total Billed',     v:F.mwk(kpi.amt_billed)},
-      {l:'Collection Rate',  v:F.pct(kpi.collection_rate), s:kpi.collection_rate>=90?'▲ On target':'▼ Below 90%', cls:kpi.collection_rate>=90?'kc-up':'kc-dn'},
-      {l:'Total Debtors',    v:F.mwk(kpi.total_debtors)},
-      {l:'Stuck Meters',     v:F.num(kpi.stuck_meters)},
-      {l:'New Connections',  v:F.num(kpi.new_connections)},
-      {l:'Avg Supply Hours', v:F.dec(kpi.supply_hours_avg)+' h'},
-      {l:'Power Cost',       v:F.mwk(kpi.power_cost)},
-      {l:'Op. Cost',         v:F.mwk(kpi.op_cost)},
+    const d=await apiPanel('executive');
+    const f=d.financial, n=d.nrw, s=d.service, z=d.zones, t=d.trends;
+    const badge=(flag)=>{const m={GOOD:'ex-badge-good',WATCH:'ex-badge-watch',HIGH:'ex-badge-high',LOW:'ex-badge-low',MONITOR:'ex-badge-monitor'};return `<span class="ex-badge ${m[flag]||'ex-badge-watch'}">${flag}</span>`};
+
+    // §1 Financial Health Ratios
+    kpis('ov-fin',[
+      {l:'Operating Ratio'+badge(f.op_ratio_flag), v:f.op_ratio?.toFixed(2)||'—', s:'OPEX ÷ Revenue — target <0.80'},
+      {l:'Days Sales Outstanding'+badge(f.dso_flag), v:Math.round(f.dso||0), s:'Target <60 days'},
+      {l:'Revenue / Connection (MWK)', v:F.num(f.rev_per_conn), s:'YTD billed per active account'},
+      {l:'Net Revenue Margin'+badge(f.net_margin_flag), v:F.pct(f.net_margin), s:'(Revenue − OPEX) ÷ Revenue'},
     ]);
-    document.getElementById('ov-kpis').className='kpi-row kpi-g4';
-    const dm=monthly.filter(m=>m.has_data),lb=dm.map(m=>MONTHS_SHORT[m.month]||m.month);
-    mkChart('ch-ov-cust',{type:'line',data:{labels:lb,datasets:[{data:dm.map(m=>m.active_customers||0),borderColor:'#1A8FD1',backgroundColor:'rgba(26,143,209,.08)',tension:.3,pointRadius:3,fill:true}]},options:{...baseOpts(v=>(v/1000).toFixed(0)+'K')}});
-    mkChart('ch-ov-coll',{type:'bar',data:{labels:lb,datasets:[{label:'Billed',data:dm.map(m=>+(m.amt_billed/1e6).toFixed(1)),backgroundColor:'rgba(26,143,209,.65)',borderRadius:3},{label:'Collected',data:dm.map(m=>+(m.cash_collected/1e6).toFixed(1)),backgroundColor:'rgba(22,163,74,.65)',borderRadius:3}]},options:{...baseOpts(v=>v+'M'),plugins:{...tooltipPlugin.plugins,legend:{display:true,labels:{font:{size:10},color:LC}}}}});
-    mkChart('ch-ov-nrw',{type:'line',data:{labels:lb,datasets:[{data:dm.map(m=>m.pct_nrw||0),borderColor:'#d97706',backgroundColor:'rgba(217,119,6,.08)',tension:.3,pointRadius:3,fill:true}]},options:{...baseOpts(v=>v+'%')}});
-    const zones=byZone.slice().sort((a,b)=>b.vol_produced-a.vol_produced);
-    mkChart('ch-ov-zone',{type:'bar',data:{labels:zones.map(z=>z.zone),datasets:[{data:zones.map(z=>+(z.vol_produced/1e6).toFixed(2)),backgroundColor:zones.map(z=>z.color||'#64748b'),borderRadius:4}]},options:{...baseOpts(v=>v+'M'),indexAxis:'y'}});
-  }catch(e){errMsg('ov-kpis','Overview failed — '+e.message);}
+
+    // §2 NRW Intelligence — stats card + trend chart
+    const nv=n.nrw_vol||0, np=n.nrw_pct||0;
+    document.getElementById('ov-nrw-stats').innerHTML=`
+      <div class="nrw-stat"><div class="nrw-stat-val">${(nv/1e6).toFixed(2)}M m³</div><div class="nrw-stat-lbl">NRW Volume</div><div class="nrw-stat-sub">${np}% of ${(n.vol_produced/1e6).toFixed(1)}M produced</div></div>
+      <div class="nrw-stat"><div class="nrw-stat-val">MWK ${F.M(n.nrw_cost)}</div><div class="nrw-stat-lbl">Est. Financial Value of NRW</div><div class="nrw-stat-sub">At avg tariff MWK ${n.avg_tariff}/m³</div></div>
+      <div class="nrw-stat"><div class="nrw-stat-val">MWK ${F.num(n.nrw_per_conn_yr)}</div><div class="nrw-stat-lbl">NRW Cost Per Connection / Year</div></div>`;
+
+    // NRW trend with IWA benchmark
+    const lb=t.labels.map(m=>MONTHS_SHORT[m]||m);
+    mkChart('ch-ov-nrw',{type:'line',data:{labels:lb,datasets:[
+      {label:'NRW %',data:t.nrw_pct,borderColor:'#dc2626',backgroundColor:'rgba(220,38,38,.06)',tension:.3,pointRadius:4,pointBackgroundColor:'#dc2626',fill:true,borderWidth:2},
+      {label:'IWA Benchmark (20%)',data:t.nrw_pct.map(()=>20),borderColor:'#1A8FD1',borderDash:[6,4],borderWidth:1.5,pointRadius:0,fill:false},
+    ]},options:{...baseOpts(v=>v+'%'),plugins:{...tooltipPlugin.plugins,legend:{display:true,position:'top',labels:{font:{size:10},color:LC,usePointStyle:true,pointStyle:'line'}}},scales:{...baseScales(v=>v+'%'),y:{...baseScales(v=>v+'%').y,min:Math.max(0,Math.min(...t.nrw_pct,20)-5),max:Math.max(...t.nrw_pct,20)+5}}}});
+
+    // §3 Service Quality
+    kpis('ov-svc',[
+      {l:'Energy Intensity (kWh/m³)', v:s.energy_intensity?.toFixed(2)||'—', s:'Unit rate — not just total MWK cost'},
+      {l:'Meter Read Rate'+badge(s.meter_read_rate>95?'GOOD':s.meter_read_rate>90?'MONITOR':'LOW'), v:F.pct(s.meter_read_rate), s:F.num(s.stuck_meters)+' stuck = '+F.pct(s.stuck_pct)+' unread'},
+      {l:'Complaints / 1000 Conn'+badge(s.complaints_flag), v:F.num(s.complaints_1000), s:'Customer service pressure index'},
+    ]);
+    document.getElementById('ov-svc').className='kpi-row kpi-g3';
+
+    // §4 Trend Analytics — Billing vs Collections
+    mkChart('ch-ov-coll',{type:'line',data:{labels:lb,datasets:[
+      {label:'Billed',data:t.billed.map(v=>+(v/1e9).toFixed(2)),borderColor:'#1A8FD1',backgroundColor:'rgba(26,143,209,.08)',tension:.3,pointRadius:3,fill:true,borderWidth:2},
+      {label:'Collected',data:t.collected.map(v=>+(v/1e9).toFixed(2)),borderColor:'#16a34a',backgroundColor:'rgba(22,163,74,.08)',tension:.3,pointRadius:3,fill:true,borderWidth:2},
+    ]},options:{...baseOpts(v=>v+'B'),plugins:{...tooltipPlugin.plugins,legend:{display:true,labels:{font:{size:10},color:LC,usePointStyle:true,pointStyle:'circle'}}}}});
+
+    // Zone NRW comparison bar chart with 20% target line
+    const zn=t.zone_nrw||[];
+    mkChart('ch-ov-znrw',{type:'bar',data:{labels:zn.map(z=>z.zone),datasets:[
+      {label:'NRW%',data:zn.map(z=>z.nrw_pct),backgroundColor:zn.map(z=>z.nrw_pct>30?'rgba(220,38,38,.65)':z.nrw_pct>20?'rgba(217,119,6,.65)':'rgba(22,163,74,.65)'),borderRadius:4},
+      {type:'line',label:'Target 20%',data:zn.map(()=>20),borderColor:'#8FA3B8',borderDash:[5,3],borderWidth:1.5,pointRadius:0},
+    ]},options:{...baseOpts(v=>v+'%'),plugins:{...tooltipPlugin.plugins,legend:{display:true,labels:{font:{size:10},color:LC,usePointStyle:true}}}}});
+
+    // §5 Zone Snapshot table
+    let th='<tr><th style="text-align:left">Zone</th><th>NRW %</th><th>Coll. Rate</th><th>DSO (Days)</th><th>Op. Ratio</th><th>Rev / Conn</th><th>NRW Trend</th></tr>';
+    let tb=z.map(zz=>{
+      const nrwCls=zz.nrw_pct>30?'zs-bad':zz.nrw_pct>20?'zs-warn':'zs-good';
+      const crCls=zz.collection_rate>=100?'zs-good':zz.collection_rate>=90?'zs-warn':'zs-bad';
+      const dsoCls=zz.dso<60?'zs-good':zz.dso<90?'zs-warn':'zs-bad';
+      const orCls=zz.op_ratio<0.8?'zs-good':zz.op_ratio<1?'zs-warn':'zs-bad';
+      const sid='spark-'+zz.zone.toLowerCase().replace(/\s/g,'');
+      return `<tr>
+        <td><strong>${zz.zone}</strong><span class="zs-sch">${zz.schemes} sch.</span></td>
+        <td class="zs-mono ${nrwCls}">${zz.nrw_pct.toFixed(1)}%</td>
+        <td class="zs-mono ${crCls}">${zz.collection_rate.toFixed(1)}%</td>
+        <td class="zs-mono ${dsoCls}">${Math.round(zz.dso)}</td>
+        <td class="zs-mono ${orCls}">${zz.op_ratio.toFixed(2)}</td>
+        <td class="zs-mono">${F.num(zz.rev_per_conn)}</td>
+        <td><canvas class="spark" id="${sid}" width="80" height="24"></canvas></td>
+      </tr>`;
+    }).join('');
+    document.getElementById('ov-zone-tbl').innerHTML=`<div class="zs-wrap"><table class="zs"><thead>${th}</thead><tbody>${tb}</tbody></table></div>`;
+
+    // Draw sparklines
+    z.forEach(zz=>{
+      const sid='spark-'+zz.zone.toLowerCase().replace(/\s/g,'');
+      const el=document.getElementById(sid);if(!el||!zz.nrw_trend.length)return;
+      const ctx=el.getContext('2d');
+      const pts=zz.nrw_trend,w=80,h=24;
+      const mn=Math.min(...pts)-2,mx=Math.max(...pts)+2,rng=mx-mn||1;
+      ctx.strokeStyle=pts[pts.length-1]>30?'#dc2626':pts[pts.length-1]>20?'#d97706':'#16a34a';
+      ctx.lineWidth=1.5;ctx.lineJoin='round';ctx.beginPath();
+      pts.forEach((v,i)=>{const x=i/(pts.length-1)*w,y=h-(v-mn)/rng*h;i===0?ctx.moveTo(x,y):ctx.lineTo(x,y)});
+      ctx.stroke();
+    });
+
+  }catch(e){errMsg('ov-fin','Executive dashboard failed — '+e.message);}
 }
 
 async function loadProduction(){

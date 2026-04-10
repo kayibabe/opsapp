@@ -563,3 +563,276 @@ def panel_debtors(zones:Optional[str]=None,schemes:Optional[str]=None,
                     "public_debtors":z["public_debtors"]} for z in bz],
         "monthly":mo,
     }
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# EXECUTIVE DASHBOARD — derived KPIs (IWA / IBNET aligned)
+# ═══════════════════════════════════════════════════════════════════════════
+
+@router.get("/executive")
+def panel_executive(zones: Optional[str] = None, schemes: Optional[str] = None,
+                    months: Optional[str] = None, year: Optional[int] = None,
+                    db: Session = Depends(get_db)):
+    rows, bz, mo = _base(zones, schemes, months, year, db)
+    if not rows:
+        return {"financial": {}, "nrw": {}, "service": {}, "zones": [], "trends": {}}
+
+    lv = _latest(rows)
+    data_months = [m for m in mo if m.get("has_data")]
+    n_months = len(data_months)
+
+    # ── Aggregates ────────────────────────────────────────────────
+    revenue   = _nz_sum(rows, 'amt_billed')
+    cash      = _nz_sum(rows, 'cash_collected')
+    opex      = _nz_sum(rows, 'op_cost')
+    vol_prod  = _nz_sum(rows, 'vol_produced')
+    nrw_vol   = _nz_sum(rows, 'nrw')
+    total_dbt = sum(max(0, r.total_debtors) for r in lv)
+    active    = sum(max(0, r.active_customers) for r in lv)
+    metered   = sum(max(0, r.total_metered) for r in lv)
+    stuck     = sum(max(0, r.stuck_meters) for r in lv)
+    queries   = _nz_sum(rows, 'queries_received')
+    power_kwh = _nz_sum(rows, 'power_kwh')
+    vol_billed = (_nz_sum(rows, 'total_vol_billed_pp')
+                  + _nz_sum(rows, 'total_vol_billed_prepaid'))
+    avg_tariff = round(revenue / vol_billed, 2) if vol_billed else 0
+
+    # ── 1. Financial Health Ratios ────────────────────────────────
+    op_ratio    = round(opex / revenue, 2) if revenue else 0
+    monthly_rev = revenue / n_months if n_months else 0
+    dso         = round(total_dbt / monthly_rev * 30, 0) if monthly_rev else 0
+    rev_per_conn = round(revenue / active, 0) if active else 0
+    net_margin  = round((revenue - opex) / revenue * 100, 1) if revenue else 0
+
+    financial = {
+        "op_ratio": op_ratio,
+        "op_ratio_flag": "GOOD" if op_ratio < 0.8 else ("WATCH" if op_ratio < 1.0 else "HIGH"),
+        "dso": dso,
+        "dso_flag": "GOOD" if dso < 60 else ("WATCH" if dso < 90 else "HIGH"),
+        "rev_per_conn": rev_per_conn,
+        "net_margin": net_margin,
+        "net_margin_flag": "GOOD" if net_margin > 50 else ("WATCH" if net_margin > 20 else "LOW"),
+    }
+
+    # ── 2. NRW Intelligence ───────────────────────────────────────
+    nrw_pct      = round(nrw_vol / vol_prod * 100, 1) if vol_prod else 0
+    nrw_cost     = round(nrw_vol * avg_tariff, 0)
+    nrw_per_conn = round(nrw_cost / active * 12 / max(n_months, 1), 0) if active else 0
+
+    nrw_intel = {
+        "nrw_vol": round(nrw_vol, 0),
+        "vol_produced": round(vol_prod, 0),
+        "nrw_pct": nrw_pct,
+        "nrw_cost": nrw_cost,
+        "nrw_per_conn_yr": nrw_per_conn,
+        "avg_tariff": avg_tariff,
+        "bnm_pct": 20.0,
+    }
+
+    # ── 3. Service Quality & Asset Health ─────────────────────────
+    energy_int   = round(power_kwh / vol_prod, 2) if vol_prod else 0
+    meter_read   = round((metered - stuck) / metered * 100, 1) if metered else 0
+    comp_1000    = round(queries / active * 1000, 0) if active else 0
+
+    service = {
+        "energy_intensity": energy_int,
+        "meter_read_rate": meter_read,
+        "stuck_meters": int(stuck),
+        "stuck_pct": round(stuck / metered * 100, 1) if metered else 0,
+        "complaints_1000": int(comp_1000),
+        "complaints_flag": "LOW" if comp_1000 < 30 else ("MONITOR" if comp_1000 < 60 else "HIGH"),
+    }
+
+    # ── 4. Zone Snapshot (enhanced) ───────────────────────────────
+    zone_rows = defaultdict(list)
+    for r in rows:
+        zone_rows[r.zone].append(r)
+
+    zone_snap = []
+    for z in bz:
+        zn = z["zone"]
+        zr = zone_rows.get(zn, [])
+        z_rev = z.get("amt_billed", 0) or 0
+        z_opex = z.get("op_cost", 0) or 0
+        z_active = z.get("active_customers", 0) or 0
+        z_dbt = z.get("total_debtors", 0) or 0
+        z_nm = len(set(_lk(r) for r in zr))
+        z_mr = z_rev / z_nm if z_nm else 0
+        z_dso = round(z_dbt / z_mr * 30, 0) if z_mr else 0
+
+        # sparkline NRW trend
+        md = defaultdict(list)
+        for r in zr:
+            md[_lk(r)].append(r)
+        nrw_trend = []
+        for key in sorted(md.keys()):
+            mr = md[key]
+            v = _nz_sum(mr, 'vol_produced')
+            n = _nz_sum(mr, 'nrw')
+            nrw_trend.append(round(n / v * 100, 1) if v else 0)
+
+        zone_snap.append({
+            "zone": zn, "color": z.get("color", "#64748b"),
+            "schemes": len(set(r.scheme for r in zr)),
+            "nrw_pct": z.get("nrw_pct", 0),
+            "collection_rate": z.get("collection_rate", 0),
+            "dso": z_dso,
+            "op_ratio": round(z_opex / z_rev, 2) if z_rev else 0,
+            "rev_per_conn": round(z_rev / z_active, 0) if z_active else 0,
+            "nrw_trend": nrw_trend,
+        })
+
+    # ── 5. Trend series ───────────────────────────────────────────
+    trends = {
+        "labels":    [m["month"] for m in data_months],
+        "billed":    [m.get("amt_billed", 0) for m in data_months],
+        "collected": [m.get("cash_collected", 0) for m in data_months],
+        "nrw_pct":   [m.get("pct_nrw", 0) for m in data_months],
+        "zone_nrw": [{"zone": z["zone"], "color": z.get("color", "#64748b"),
+                      "nrw_pct": z.get("nrw_pct", 0)} for z in bz],
+    }
+
+    return {
+        "financial": financial,
+        "nrw": nrw_intel,
+        "service": service,
+        "zones": zone_snap,
+        "trends": trends,
+    }
+
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# EXECUTIVE DASHBOARD — derived KPIs (IWA / IBNET aligned)
+# ═══════════════════════════════════════════════════════════════════════════
+
+@router.get("/executive")
+def panel_executive(zones: Optional[str] = None, schemes: Optional[str] = None,
+                    months: Optional[str] = None, year: Optional[int] = None,
+                    db: Session = Depends(get_db)):
+    rows, bz, mo = _base(zones, schemes, months, year, db)
+    if not rows:
+        return {"financial": {}, "nrw": {}, "service": {}, "zones": [], "trends": {}}
+
+    lv = _latest(rows)
+    data_months = [m for m in mo if m.get("has_data")]
+    n_months = len(data_months)
+
+    # Aggregates
+    revenue   = _nz_sum(rows, "amt_billed")
+    cash      = _nz_sum(rows, "cash_collected")
+    opex      = _nz_sum(rows, "op_cost")
+    vol_prod  = _nz_sum(rows, "vol_produced")
+    nrw_vol   = _nz_sum(rows, "nrw")
+    total_dbt = sum(max(0, r.total_debtors) for r in lv)
+    active    = sum(max(0, r.active_customers) for r in lv)
+    metered   = sum(max(0, r.total_metered) for r in lv)
+    stuck     = sum(max(0, r.stuck_meters) for r in lv)
+    queries   = _nz_sum(rows, "queries_received")
+    power_kwh = _nz_sum(rows, "power_kwh")
+    vol_billed = (_nz_sum(rows, "total_vol_billed_pp")
+                  + _nz_sum(rows, "total_vol_billed_prepaid"))
+    avg_tariff = round(revenue / vol_billed, 2) if vol_billed else 0
+
+    # 1. Financial Health Ratios
+    op_ratio    = round(opex / revenue, 2) if revenue else 0
+    monthly_rev = revenue / n_months if n_months else 0
+    dso         = round(total_dbt / monthly_rev * 30, 0) if monthly_rev else 0
+    rev_per_conn = round(revenue / active, 0) if active else 0
+    net_margin  = round((revenue - opex) / revenue * 100, 1) if revenue else 0
+
+    financial = {
+        "op_ratio": op_ratio,
+        "op_ratio_flag": "GOOD" if op_ratio < 0.8 else ("WATCH" if op_ratio < 1.0 else "HIGH"),
+        "dso": dso,
+        "dso_flag": "GOOD" if dso < 60 else ("WATCH" if dso < 90 else "HIGH"),
+        "rev_per_conn": rev_per_conn,
+        "net_margin": net_margin,
+        "net_margin_flag": "GOOD" if net_margin > 50 else ("WATCH" if net_margin > 20 else "LOW"),
+    }
+
+    # 2. NRW Intelligence
+    nrw_pct      = round(nrw_vol / vol_prod * 100, 1) if vol_prod else 0
+    nrw_cost     = round(nrw_vol * avg_tariff, 0)
+    nrw_per_conn = round(nrw_cost / active * 12 / max(n_months, 1), 0) if active else 0
+
+    nrw_intel = {
+        "nrw_vol": round(nrw_vol, 0),
+        "vol_produced": round(vol_prod, 0),
+        "nrw_pct": nrw_pct,
+        "nrw_cost": nrw_cost,
+        "nrw_per_conn_yr": nrw_per_conn,
+        "avg_tariff": avg_tariff,
+        "bnm_pct": 20.0,
+    }
+
+    # 3. Service Quality & Asset Health
+    energy_int   = round(power_kwh / vol_prod, 2) if vol_prod else 0
+    meter_read   = round((metered - stuck) / metered * 100, 1) if metered else 0
+    comp_1000    = round(queries / active * 1000, 0) if active else 0
+
+    service = {
+        "energy_intensity": energy_int,
+        "meter_read_rate": meter_read,
+        "stuck_meters": int(stuck),
+        "stuck_pct": round(stuck / metered * 100, 1) if metered else 0,
+        "complaints_1000": int(comp_1000),
+        "complaints_flag": "LOW" if comp_1000 < 30 else ("MONITOR" if comp_1000 < 60 else "HIGH"),
+    }
+
+    # 4. Zone Snapshot (enhanced)
+    zone_rows = defaultdict(list)
+    for r in rows:
+        zone_rows[r.zone].append(r)
+
+    zone_snap = []
+    for z in bz:
+        zn = z["zone"]
+        zr = zone_rows.get(zn, [])
+        z_rev = z.get("amt_billed", 0) or 0
+        z_opex = z.get("op_cost", 0) or 0
+        z_active = z.get("active_customers", 0) or 0
+        z_dbt = z.get("total_debtors", 0) or 0
+        z_nm = len(set(_lk(r) for r in zr))
+        z_mr = z_rev / z_nm if z_nm else 0
+        z_dso = round(z_dbt / z_mr * 30, 0) if z_mr else 0
+
+        # sparkline NRW trend
+        md = defaultdict(list)
+        for r in zr:
+            md[_lk(r)].append(r)
+        nrw_trend = []
+        for key in sorted(md.keys()):
+            mr = md[key]
+            v = _nz_sum(mr, "vol_produced")
+            n = _nz_sum(mr, "nrw")
+            nrw_trend.append(round(n / v * 100, 1) if v else 0)
+
+        zone_snap.append({
+            "zone": zn, "color": z.get("color", "#64748b"),
+            "schemes": len(set(r.scheme for r in zr)),
+            "nrw_pct": z.get("nrw_pct", 0),
+            "collection_rate": z.get("collection_rate", 0),
+            "dso": z_dso,
+            "op_ratio": round(z_opex / z_rev, 2) if z_rev else 0,
+            "rev_per_conn": round(z_rev / z_active, 0) if z_active else 0,
+            "nrw_trend": nrw_trend,
+        })
+
+    # 5. Trend series
+    trends = {
+        "labels":    [m["month"] for m in data_months],
+        "billed":    [m.get("amt_billed", 0) for m in data_months],
+        "collected": [m.get("cash_collected", 0) for m in data_months],
+        "nrw_pct":   [m.get("pct_nrw", 0) for m in data_months],
+        "zone_nrw": [{"zone": z["zone"], "color": z.get("color", "#64748b"),
+                      "nrw_pct": z.get("nrw_pct", 0)} for z in bz],
+    }
+
+    return {
+        "financial": financial,
+        "nrw": nrw_intel,
+        "service": service,
+        "zones": zone_snap,
+        "trends": trends,
+    }
