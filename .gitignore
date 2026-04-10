@@ -1,0 +1,16 @@
+﻿__pycache__/
+*.py[cod]
+*.pyo
+.env
+.env.*
+venv/
+env/
+.venv/
+uploads/
+data/
+excel files/
+*.rar
+*.zip
+Thumbs.db
+.DS_Store
+index - Copy*.html

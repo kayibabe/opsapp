@@ -1,0 +1,1535 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SRWB Operations Dashboard</title>
+<link rel="icon"       type="image/x-icon"   href="/static/favicon.ico">
+<link rel="icon"       type="image/png" sizes="32x32" href="/static/favicon-32.png">
+<link rel="icon"       type="image/png" sizes="16x16" href="/static/favicon-16.png">
+<link rel="apple-touch-icon"                          href="/static/favicon-256.png">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@300;400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --navy:#07192E;--blue:#1A8FD1;--blue-glow:rgba(26,143,209,.18);
+  --blue-lt:#4DAFEE;--white:#ffffff;--g50:#F7F9FC;--g100:#EEF2F7;
+  --g300:#C8D3E0;--g400:#8FA3B8;--g500:#5C7590;--g800:#1A2B3C;
+  --red:#D94040;--red-pale:#FEF2F2;
+}
+html,body{height:100%;font-family:'IBM Plex Sans',system-ui,sans-serif;background:var(--navy);overflow:hidden}
+
+/* ── VIEWS ── */
+#login-view{display:flex;height:100vh;opacity:0;animation:fade-in .4s ease .1s forwards}
+#app-view  {display:none;height:100vh;background:var(--g50)}
+@keyframes fade-in{to{opacity:1}}
+
+/* ── LEFT PANEL ── */
+.left{
+  width:45%;flex-shrink:0;background:var(--navy);
+  display:flex;flex-direction:column;align-items:center;
+  justify-content:space-between;padding:40px 36px;
+  position:relative;overflow:hidden;
+}
+.left::before{content:'';position:absolute;top:-100px;right:-60px;width:340px;height:340px;border:1px solid rgba(26,143,209,.10);border-radius:50%;pointer-events:none}
+.left::after {content:'';position:absolute;top:-40px; right:10px; width:180px;height:180px;border:1px solid rgba(26,143,209,.16);border-radius:50%;pointer-events:none}
+
+.brand-section{display:flex;flex-direction:column;align-items:center;text-align:center;position:relative;z-index:1;width:100%}
+
+/* Logo — actual image, drop shadow gives it lift off the dark bg */
+.logo-img-lg{
+  width:130px;height:130px;
+  border-radius:50%;
+  object-fit:cover;
+  margin-bottom:18px;
+  filter:drop-shadow(0 4px 22px rgba(26,143,209,.45));
+}
+
+.brand-name{display:none}
+.brand-full{font-size:28px;font-weight:600;color:var(--blue-lt);letter-spacing:-.01em;margin-bottom:32px;line-height:1.25}
+
+.headline{font-size:28px;font-weight:300;color:rgba(255,255,255,.90);line-height:1.3;letter-spacing:-.02em;text-align:center;margin-bottom:12px;position:relative;z-index:1}
+.headline em{font-style:normal;font-weight:600;color:var(--blue-lt)}
+.tagline{font-size:13px;color:rgba(255,255,255,.40);line-height:1.7;text-align:center;max-width:280px;margin-bottom:auto;position:relative;z-index:1}
+
+/* KPI chips */
+.kpi-grid{display:grid;grid-template-columns:1fr 1fr;gap:9px;width:100%;position:relative;z-index:1}
+.kpi{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.08);border-radius:11px;padding:14px 16px;transition:background .2s}
+.kpi:hover{background:rgba(255,255,255,.08)}
+.kpi-val{font-family:'IBM Plex Mono',monospace;font-size:19px;font-weight:500;color:var(--white);letter-spacing:-.02em;margin-bottom:3px}
+.kpi-lbl{font-size:10px;color:rgba(255,255,255,.36);text-transform:uppercase;letter-spacing:.08em}
+
+/* Wave */
+.wave-stage{position:absolute;bottom:0;left:0;right:0;height:80px;overflow:hidden;opacity:.08;pointer-events:none}
+.wave-stage svg{width:300%;height:100%;animation:wave 10s linear infinite}
+@keyframes wave{to{transform:translateX(-33.33%)}}
+
+/* ── RIGHT PANEL ── */
+.right{
+  flex:1;background:var(--white);
+  display:flex;align-items:center;justify-content:center;
+  padding:48px 64px;position:relative;
+}
+.right::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,var(--blue) 0%,var(--blue-lt) 100%)}
+
+.login-card{width:100%;max-width:360px}
+.login-card>*{opacity:0;transform:translateY(10px);animation:slide-up .35s ease forwards}
+.login-card>*:nth-child(1){animation-delay:.12s}
+.login-card>*:nth-child(2){animation-delay:.18s}
+.login-card>*:nth-child(3){animation-delay:.24s}
+.login-card>*:nth-child(4){animation-delay:.30s}
+.login-card>*:nth-child(5){animation-delay:.36s}
+@keyframes slide-up{to{opacity:1;transform:translateY(0)}}
+
+.login-eyebrow{font-size:10px;font-weight:600;color:var(--blue);letter-spacing:.1em;text-transform:uppercase;margin-bottom:10px}
+.login-title  {font-size:26px;font-weight:600;color:var(--g800);letter-spacing:-.025em;margin-bottom:6px}
+.login-sub    {font-size:13.5px;color:var(--g400);margin-bottom:36px;line-height:1.5}
+
+/* Fields */
+.field{margin-bottom:18px}
+.field label{display:block;font-size:11px;font-weight:600;color:var(--g500);text-transform:uppercase;letter-spacing:.07em;margin-bottom:7px}
+.input-wrap{position:relative}
+.input-wrap input{
+  width:100%;height:46px;padding:0 42px 0 14px;
+  border:1.5px solid var(--g300);border-radius:9px;
+  font-family:inherit;font-size:14px;color:var(--g800);
+  background:var(--white);outline:none;
+  transition:border-color .15s,box-shadow .15s;
+}
+.input-wrap input::placeholder{color:var(--g300)}
+.input-wrap input:focus{border-color:var(--blue);box-shadow:0 0 0 3px var(--blue-glow)}
+.input-wrap input.err{border-color:var(--red);box-shadow:0 0 0 3px rgba(217,64,64,.12)}
+.input-icon{position:absolute;right:13px;top:50%;transform:translateY(-50%);color:var(--g300);cursor:pointer;display:flex;transition:color .15s}
+.input-icon:hover{color:var(--g500)}
+
+/* Error */
+.err-box{display:none;align-items:flex-start;gap:9px;padding:11px 14px;margin-bottom:18px;background:var(--red-pale);border:1px solid rgba(217,64,64,.2);border-radius:9px;font-size:13px;color:var(--red);line-height:1.4}
+.err-box.show{display:flex}
+@keyframes shake{0%,100%{transform:translateX(0)}20%,60%{transform:translateX(-5px)}40%,80%{transform:translateX(5px)}}
+.err-box.shake{animation:shake .3s ease}
+
+/* Meta */
+.meta-row{display:flex;align-items:center;margin-bottom:24px}
+.remember{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--g500);cursor:pointer}
+.remember input[type=checkbox]{width:15px;height:15px;accent-color:var(--blue);cursor:pointer}
+
+/* Button */
+.btn-submit{width:100%;height:48px;background:var(--blue);color:var(--white);border:none;border-radius:9px;font-family:inherit;font-size:14px;font-weight:500;cursor:pointer;letter-spacing:.01em;display:flex;align-items:center;justify-content:center;gap:8px;transition:background .15s,transform .1s,box-shadow .15s;box-shadow:0 2px 12px rgba(26,143,209,.3)}
+.btn-submit:hover:not(:disabled){background:#1680BF;box-shadow:0 4px 18px rgba(26,143,209,.4)}
+.btn-submit:active:not(:disabled){transform:scale(.99)}
+.btn-submit:disabled{opacity:.65;cursor:not-allowed;box-shadow:none}
+.spinner{width:16px;height:16px;border:2px solid rgba(255,255,255,.3);border-top-color:white;border-radius:50%;display:none;animation:spin .6s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+.login-footer{margin-top:32px;padding-top:24px;border-top:1px solid var(--g100);font-size:11px;color:var(--g400);text-align:center;line-height:1.7}
+
+/* Logo small — in form header */
+.logo-img-sm{width:42px;height:42px;border-radius:50%;object-fit:cover}
+
+/* App stub */
+.app-stub{height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;background:var(--g50)}
+.check-circle{width:64px;height:64px;border-radius:50%;background:#E6F7ED;display:flex;align-items:center;justify-content:center;margin-bottom:20px}
+.stub-title{font-size:20px;font-weight:600;color:var(--g800);margin-bottom:6px}
+.stub-sub  {font-size:13.5px;color:var(--g400);margin-bottom:28px}
+.btn-ghost{padding:10px 24px;background:transparent;color:var(--blue);border:1.5px solid var(--blue);border-radius:8px;font-family:inherit;font-size:13px;font-weight:500;cursor:pointer;transition:background .15s}
+.btn-ghost:hover{background:rgba(26,143,209,.06)}
+
+@media(max-width:768px){.left{display:none}.right{padding:36px 28px}.right::before{display:none}}
+
+/* ═══════════ DASHBOARD ═══════════ */
+#srwb-app{display:flex;height:100vh;font-family:'IBM Plex Sans',system-ui,sans-serif;font-size:13px;color:#1A2B3C;overflow:hidden}
+/* Sidebar */
+#db-nav{width:210px;flex-shrink:0;border-right:0.5px solid #C8D3E0;background:#F7F9FC;display:flex;flex-direction:column;overflow-y:auto}
+#db-nav .nav-logo{padding:14px 16px;border-bottom:0.5px solid #C8D3E0;display:flex;align-items:center;gap:10px}
+#db-nav .nav-logo img{width:36px;height:36px;border-radius:50%}
+#db-nav .nav-logo .nlt{font-size:12px;font-weight:600;color:#1A2B3C;line-height:1.2}
+#db-nav .nav-logo .nls{font-size:10px;color:#8FA3B8}
+.nav-grp{padding:10px 14px 3px;font-size:10px;font-weight:500;color:#8FA3B8;letter-spacing:.08em;text-transform:uppercase;display:flex;align-items:center;justify-content:space-between;cursor:default}
+.nav-grp.collapsible{cursor:pointer;user-select:none}
+.nav-grp.collapsible:hover{color:#5C7590}
+.nav-grp-chevron{width:10px;height:10px;flex-shrink:0;transition:transform .2s ease;opacity:.6}
+.nav-grp.collapsed .nav-grp-chevron{transform:rotate(-90deg)}
+.nav-section{overflow:hidden;transition:max-height .22s ease}
+.nav-section.collapsed{max-height:0!important}
+.nav-item{display:flex;align-items:center;gap:8px;padding:7px 12px;margin:1px 8px;border-radius:6px;cursor:pointer;font-size:12.5px;color:#5C7590;transition:all .08s;user-select:none}
+.nav-item:hover{background:#EEF2F7;color:#1A2B3C}
+.nav-item.active{background:rgba(26,143,209,.12);color:#1A8FD1;font-weight:500}
+.nav-item svg{flex-shrink:0;opacity:.7}
+.nav-item.active svg{opacity:1}
+.nav-bottom{margin-top:auto;padding:12px;border-top:0.5px solid #C8D3E0}
+.user-chip{display:flex;align-items:center;gap:8px;padding:8px 10px;background:#EEF2F7;border-radius:8px}
+.user-avatar{width:28px;height:28px;border-radius:50%;background:#1A8FD1;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;color:white;flex-shrink:0}
+.user-name{font-size:11.5px;font-weight:500;color:#1A2B3C}
+.user-role{font-size:10px;color:#8FA3B8}
+.btn-logout{margin-top:8px;width:100%;padding:7px;background:transparent;border:0.5px solid #C8D3E0;border-radius:6px;font-family:inherit;font-size:12px;color:#5C7590;cursor:pointer;transition:background .1s}
+.btn-logout:hover{background:#EEF2F7;color:#1A2B3C}
+/* FY selector */
+.fy-wrap{padding:10px 12px;border-bottom:0.5px solid #C8D3E0}
+.fy-wrap label{display:block;font-size:10px;font-weight:500;color:#8FA3B8;text-transform:uppercase;letter-spacing:.07em;margin-bottom:4px}
+.fy-wrap select{width:100%;padding:6px 8px;border:0.5px solid #C8D3E0;border-radius:6px;font-family:inherit;font-size:12.5px;color:#1A2B3C;background:white;outline:none;cursor:pointer}
+/* Main content */
+#db-main{flex:1;min-width:0;overflow-y:auto;background:white}
+.db-page{display:none;padding:22px 24px}
+.db-page.active{display:block}
+/* Page header */
+.pg-hdr{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:18px}
+.pg-title{font-size:19px;font-weight:600;color:#1A2B3C;letter-spacing:-.02em}
+.pg-sub{font-size:12px;color:#8FA3B8;margin-top:2px}
+.refresh-btn{display:flex;align-items:center;gap:5px;padding:6px 12px;border:0.5px solid #C8D3E0;border-radius:6px;font-family:inherit;font-size:12px;color:#5C7590;cursor:pointer;background:white;transition:background .1s}
+.refresh-btn:hover{background:#F7F9FC}
+/* KPI cards */
+.kpi-row{display:grid;gap:10px;margin-bottom:18px}
+.kpi-g4{grid-template-columns:repeat(4,minmax(0,1fr))}
+.kpi-g3{grid-template-columns:repeat(3,minmax(0,1fr))}
+.kpi-g2{grid-template-columns:repeat(2,minmax(0,1fr))}
+.kc{padding:14px;background:#F7F9FC;border-radius:8px}
+.kc-lbl{font-size:10px;text-transform:uppercase;letter-spacing:.07em;color:#8FA3B8;margin-bottom:5px}
+.kc-val{font-size:20px;font-weight:600;color:#1A2B3C;font-family:'IBM Plex Mono',monospace;letter-spacing:-.02em}
+.kc-sub{font-size:11px;color:#8FA3B8;margin-top:3px}
+.kc-up{color:#16a34a}.kc-dn{color:#dc2626}.kc-nt{color:#8FA3B8}
+/* Charts */
+.chart-row{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:18px}
+.chart-full{grid-column:1/-1}
+.chart-card{border:0.5px solid #C8D3E0;border-radius:10px;padding:14px}
+.chart-title{font-size:10px;font-weight:500;text-transform:uppercase;letter-spacing:.06em;color:#8FA3B8;margin-bottom:12px}
+.ch-wrap{position:relative;height:200px}
+/* Legend */
+.legend{display:flex;flex-wrap:wrap;gap:12px;margin-bottom:8px;font-size:11px;color:#5C7590}
+.legend-item{display:flex;align-items:center;gap:5px}
+.legend-sq{width:10px;height:10px;border-radius:2px;flex-shrink:0}
+/* Table */
+.tbl-wrap{border:0.5px solid #C8D3E0;border-radius:10px;overflow-x:auto;margin-bottom:16px}
+table.dt{width:100%;border-collapse:collapse;font-size:11.5px}
+table.dt th{padding:8px 10px;text-align:right;font-size:10px;font-weight:500;color:#8FA3B8;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap;border-bottom:0.5px solid #C8D3E0;background:#F7F9FC}
+table.dt th:first-child{text-align:left}
+table.dt td{padding:7px 10px;text-align:right;border-bottom:0.5px solid #EEF2F7;font-family:'IBM Plex Mono',monospace;font-size:11px;color:#1A2B3C;white-space:nowrap}
+table.dt td:first-child{text-align:left;font-family:'IBM Plex Sans',sans-serif;color:#5C7590}
+table.dt tr:last-child td{border-bottom:none}
+table.dt tr:hover td{background:#F7F9FC}
+/* Loading/Error */
+.loading-shell{display:flex;align-items:center;justify-content:center;height:300px;color:#8FA3B8;font-size:13px;gap:10px}
+.spin-sm{width:16px;height:16px;border:2px solid #C8D3E0;border-top-color:#1A8FD1;border-radius:50%;animation:spin .6s linear infinite}
+.err-shell{display:flex;flex-direction:column;align-items:center;justify-content:center;height:200px;color:#D94040;font-size:13px;gap:8px}
+
+</style>
+
+<style>
+/* ═══════════════ SLICER PANEL ══════════════════════════════════════════ */
+#filter-panel{position:fixed;top:0;right:-280px;width:262px;height:100vh;background:#fff;border-left:1px solid #C8D3E0;z-index:200;display:flex;flex-direction:column;transition:right .25s ease;overflow:hidden;box-shadow:-6px 0 24px rgba(0,0,0,.1)}
+#filter-panel.open{right:0}
+.fp-header{padding:13px 14px 11px;border-bottom:1px solid #EEF2F7;display:flex;align-items:center;gap:7px;flex-shrink:0;background:linear-gradient(135deg,#07192E 0%,#0d2a46 100%)}
+.fp-header svg{color:#4DAFEE}
+.fp-header-title{font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#fff;flex:1}
+.fp-close{background:rgba(255,255,255,.1);border:none;cursor:pointer;color:rgba(255,255,255,.7);padding:4px;display:flex;align-items:center;border-radius:5px}
+.fp-close:hover{background:rgba(255,255,255,.2);color:#fff}
+.fp-body{flex:1;overflow-y:auto;padding:12px 12px 84px}
+.fp-section{margin-bottom:16px}
+.fp-sec-hdr{display:flex;align-items:center;gap:6px;margin-bottom:8px;padding-bottom:5px;border-bottom:.5px solid #EEF2F7}
+.fp-sec-icon{font-size:13px}
+.fp-sec-title{font-size:11px;font-weight:600;color:#1A2B3C;flex:1}
+.fp-sec-clear{background:none;border:none;cursor:pointer;font-size:9px;color:#8FA3B8;text-transform:uppercase;letter-spacing:.06em;padding:2px 5px;border-radius:3px;transition:all .12s}
+.fp-sec-clear:hover{color:#1A8FD1;background:#EEF2F7}
+.fp-all-label{text-align:center;font-size:10px;color:#8FA3B8;margin-top:6px;cursor:pointer;transition:color .12s}
+.fp-all-label:hover{color:#1A8FD1}
+.fbtn-grid{display:flex;flex-wrap:wrap;gap:5px}
+.fbtn{border:1.5px solid #C8D3E0;background:#fff;border-radius:7px;padding:5px 10px;font-size:11px;font-weight:500;color:#5C7590;cursor:pointer;transition:all .14s;font-family:inherit}
+.fbtn:hover{border-color:#8FA3B8;color:#1A2B3C;background:#F7F9FC}
+.fbtn.active-zone{background:#1A8FD1;border-color:#1A8FD1;color:#fff;box-shadow:0 1px 6px rgba(26,143,209,.35)}
+.fbtn.active-scheme{background:#f97316;border-color:#f97316;color:#fff;box-shadow:0 1px 6px rgba(249,115,22,.35)}
+.fbtn.active-month{background:#16a34a;border-color:#16a34a;color:#fff;box-shadow:0 1px 6px rgba(22,163,74,.35)}
+.q-row-label{font-size:9px;font-weight:700;color:#8FA3B8;letter-spacing:.1em;text-transform:uppercase;width:100%;margin-top:6px;margin-bottom:2px}
+.fp-footer{position:absolute;bottom:0;left:0;right:0;padding:12px;border-top:1px solid #EEF2F7;background:#fff}
+.fp-reset{width:100%;padding:9px;border:1.5px solid #C8D3E0;background:#fff;border-radius:8px;font-family:inherit;font-size:11px;font-weight:600;color:#5C7590;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:7px;letter-spacing:.04em;transition:all .14s}
+.fp-reset:hover{border-color:#dc2626;color:#dc2626;background:#FFF5F5}
+.filter-toggle-btn{display:flex;align-items:center;gap:5px;padding:6px 12px;border:1.5px solid #C8D3E0;background:#fff;border-radius:7px;font-family:inherit;font-size:11px;font-weight:500;color:#5C7590;cursor:pointer;transition:all .14s;white-space:nowrap}
+.filter-toggle-btn:hover{border-color:#1A8FD1;color:#1A8FD1;background:#F0F8FF}
+.filter-toggle-btn.has-filters{border-color:#16a34a;color:#15803d;background:#F0FFF4}
+.filter-dot{width:6px;height:6px;border-radius:50%;background:#16a34a;display:none}
+.has-filters .filter-dot{display:inline-block}
+#filter-overlay{position:fixed;inset:0;background:rgba(0,0,0,.3);z-index:199;display:none;backdrop-filter:blur(2px)}
+#filter-overlay.show{display:block}
+
+/* ═══════════════ KPI CARDS — redesigned ════════════════════════════════ */
+.kpi-row{display:grid;gap:12px;margin-bottom:16px}
+.kpi-g4{grid-template-columns:repeat(4,1fr)}
+.kpi-g3{grid-template-columns:repeat(3,1fr)}
+.kpi-g2{grid-template-columns:repeat(2,1fr)}
+@media(max-width:900px){.kpi-g4{grid-template-columns:repeat(2,1fr)}}
+.kc{background:#fff;border:1px solid #EEF2F7;border-radius:10px;padding:15px 16px 13px;position:relative;overflow:hidden;transition:box-shadow .14s}
+.kc:hover{box-shadow:0 2px 12px rgba(0,0,0,.06)}
+.kc::before{content:'';position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--kc-accent,#1A8FD1);border-radius:3px 0 0 3px}
+.kc-lbl{font-size:9.5px;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:#8FA3B8;margin-bottom:6px}
+.kc-val{font-family:'IBM Plex Mono',monospace;font-size:20px;font-weight:700;color:#1A2B3C;letter-spacing:-.02em;line-height:1.1}
+.kc-sub{font-size:10px;margin-top:4px;color:#8FA3B8}
+.kc-up{color:#16a34a!important}
+.kc-dn{color:#dc2626!important}
+.kc-nt{color:#d97706!important}
+/* Accent colours by card position */
+.kc:nth-child(4n+1){--kc-accent:#1A8FD1}
+.kc:nth-child(4n+2){--kc-accent:#0d9488}
+.kc:nth-child(4n+3){--kc-accent:#7c3aed}
+.kc:nth-child(4n+4){--kc-accent:#d97706}
+
+/* ═══════════════ CHARTS ════════════════════════════════════════════════ */
+.chart-row{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px}
+.chart-card{background:#fff;border:1px solid #EEF2F7;border-radius:10px;padding:16px;transition:box-shadow .14s}
+.chart-card:hover{box-shadow:0 2px 12px rgba(0,0,0,.06)}
+.chart-card.chart-full{grid-column:1/-1}
+.chart-title{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:#8FA3B8;margin-bottom:14px}
+.ch-wrap{height:180px;position:relative}
+.legend{display:flex;gap:14px;margin-bottom:10px}
+.legend-item{display:flex;align-items:center;gap:5px;font-size:10.5px;color:#5C7590}
+.legend-sq{width:9px;height:9px;border-radius:2px;flex-shrink:0}
+
+/* ═══════════════ REPORT TABLES ═════════════════════════════════════════ */
+.rpt-wrap{overflow-x:auto;margin-top:20px;border:1px solid #EEF2F7;border-radius:10px;background:#fff;box-shadow:0 1px 4px rgba(0,0,0,.04)}
+.rpt{width:100%;border-collapse:collapse;font-size:11px}
+.rpt caption{caption-side:top;text-align:center;padding:12px 16px 10px;font-size:12px;font-weight:700;color:#1A2B3C;border-bottom:.5px solid #C8D3E0;text-transform:uppercase;letter-spacing:.07em;background:linear-gradient(135deg,#F7F9FC 0%,#EEF2F7 100%)}
+.rpt thead th{padding:7px 8px;text-align:right;font-size:9px;font-weight:700;color:#8FA3B8;text-transform:uppercase;letter-spacing:.07em;white-space:nowrap;border-bottom:.5px solid #C8D3E0;background:#F7F9FC;position:sticky;top:0;z-index:1}
+.rpt thead th:first-child{text-align:left;min-width:200px;background:#F7F9FC;position:sticky;left:0;z-index:2}
+.rpt td{padding:5px 8px;text-align:right;border-bottom:.5px solid #EEF2F7;font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:#1A2B3C;white-space:nowrap;transition:background .08s}
+.rpt td:first-child{text-align:left;font-family:'IBM Plex Sans',sans-serif;font-size:11px;color:#5C7590;padding-left:14px;background:#fff;position:sticky;left:0;border-right:.5px solid #EEF2F7}
+.rpt tr:nth-child(even) td{background:#FAFBFC}
+.rpt tr:nth-child(even) td:first-child{background:#FAFBFC}
+.rpt tr:hover td{background:#F0F8FF!important}
+.rpt tr:hover td:first-child{background:#F0F8FF!important;color:#1A8FD1}
+.rpt tr:last-child td{border-bottom:none}
+/* Quarter-end */
+.qend-th{background:#FFFBEB!important;color:#92620A!important}
+.qend-sub{font-size:8px;font-weight:700;display:block;color:#B07D0A;letter-spacing:.05em;margin-top:1px}
+.rh-qend-cell{background:#FFFEF5!important}
+/* Annual */
+.ann-th{background:#F0FFF4!important;color:#166534!important}
+.ann-cell{background:#F0FFF4!important;font-weight:700;color:#166534!important}
+/* Row types */
+.row-total td{font-weight:700;color:#1A2B3C!important;border-top:.5px solid #C8D3E0;background:#F7F9FC!important}
+.row-total td:first-child{font-family:'IBM Plex Sans',sans-serif!important;background:#F7F9FC!important}
+.row-section td{background:#F0F4F8!important;font-size:9.5px;font-weight:700;color:#5C7590!important;text-transform:uppercase;letter-spacing:.07em;padding-top:7px;padding-bottom:3px}
+.rpt .row-blue td:first-child{color:#0369a1}
+.rpt .row-orange td:first-child{color:#c2410c}
+.rpt .row-green td:first-child{color:#15803d}
+.rpt .row-red td:first-child{color:#dc2626!important;font-weight:700}
+/* Pipelines QTR */
+.qtr-th{background:#FFFDE7!important;color:#92400E!important;font-size:9px}
+.qtr-cell{background:#FFFDE7!important;font-weight:700;border-left:.5px solid #FDE68A}
+/* Dash styling for empty cells */
+.rpt-dash{color:#D1D5DB;font-size:10px}
+
+/* ═══════════════ PAGE STRUCTURE ════════════════════════════════════════ */
+.db-page{padding:20px 22px;display:none}
+.db-page.active{display:block}
+.pg-hdr{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:18px;padding-bottom:14px;border-bottom:.5px solid #EEF2F7}
+.pg-hdr-left .pg-title{font-size:18px;font-weight:700;color:#1A2B3C;letter-spacing:-.02em}
+.pg-hdr-left .pg-sub{font-size:11.5px;color:#8FA3B8;margin-top:2px}
+.pg-hdr-right{display:flex;align-items:center;gap:8px;flex-shrink:0}
+/* Active filter chips */
+.filter-chips{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:14px}
+.chip{display:inline-flex;align-items:center;gap:4px;padding:3px 8px;background:#EEF2F7;border-radius:12px;font-size:10px;font-weight:500;color:#5C7590}
+.chip-zone{background:#DBEAFE;color:#1e40af}
+.chip-scheme{background:#FEF3C7;color:#92400e}
+.chip-month{background:#DCFCE7;color:#166534}
+/* Loading/error */
+.loading-shell{display:flex;align-items:center;justify-content:center;height:260px;color:#8FA3B8;font-size:13px;gap:10px;flex-direction:column}
+.spin-sm{width:22px;height:22px;border:2.5px solid #EEF2F7;border-top-color:#1A8FD1;border-radius:50%;animation:spin .7s linear infinite}
+.err-shell{display:flex;flex-direction:column;align-items:center;justify-content:center;height:200px;color:#D94040;font-size:13px;gap:10px;background:#FFF5F5;border-radius:10px;border:1px solid #FEE2E2}
+
+/* ═══════════════ PAGE HEADER / REFRESH ════════════════════════════════ */
+.refresh-btn{display:flex;align-items:center;gap:5px;padding:6px 12px;border:1.5px solid #C8D3E0;background:#fff;border-radius:7px;font-family:inherit;font-size:11px;font-weight:500;color:#5C7590;cursor:pointer;transition:all .14s}
+.refresh-btn:hover{border-color:#1A8FD1;color:#1A8FD1;background:#F0F8FF}
+
+/* ═══════════════ COLLAPSIBLE NAV ══════════════════════════════════════ */
+.nav-section{overflow:hidden;transition:max-height .22s ease}
+.nav-section.collapsed{max-height:0!important}
+.nav-grp.collapsible{cursor:pointer;user-select:none}
+.nav-grp.collapsible:hover{color:#5C7590}
+.nav-grp-chevron{width:10px;height:10px;flex-shrink:0;transition:transform .2s ease;opacity:.6}
+.nav-grp.collapsed .nav-grp-chevron{transform:rotate(-90deg)}
+</style>
+<body>
+
+<!-- ══ LOGIN VIEW ══════════════════════════════════════════════════════════ -->
+<div id="login-view">
+
+  <!-- Left: brand panel -->
+  <div class="left">
+    <div class="brand-section">
+      <img src="/static/logo.png" alt="SRWB Logo" class="logo-img-lg">
+      <div class="brand-name">SRWB</div>
+      <div class="brand-full">Southern Region Water Board</div>
+    </div>
+
+    <div style="position:relative;z-index:1;width:100%;text-align:center">
+      <div class="headline">Operations &amp;<br><em>Performance</em><br>Dashboard</div>
+      <div class="tagline">Real-time monitoring of water production, customer metrics, collections and infrastructure across all service zones.</div>
+    </div>
+
+    <div class="kpi-grid" id="login-kpi-grid" style="visibility:hidden">
+      <div class="kpi"><div class="kpi-val" id="lkpi-cust">—</div><div class="kpi-lbl">Active Customers</div></div>
+      <div class="kpi"><div class="kpi-val" id="lkpi-prod">—</div><div class="kpi-lbl">Monthly Production</div></div>
+      <div class="kpi"><div class="kpi-val" id="lkpi-nrw">—</div><div class="kpi-lbl">NRW Rate</div></div>
+      <div class="kpi"><div class="kpi-val" id="lkpi-cash">—</div><div class="kpi-lbl">Cash Collected (YTD)</div></div>
+    </div>
+
+    <div class="wave-stage">
+      <svg viewBox="0 0 1440 80" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M0,40 C120,65 240,15 360,40 C480,65 600,15 720,40 C840,65 960,15 1080,40 C1200,65 1320,15 1440,40 L1440,80 L0,80Z" fill="white"/>
+        <path d="M0,56 C120,32 240,72 360,56 C480,32 600,72 720,56 C840,32 960,72 1080,56 C1200,32 1320,72 1440,56 L1440,80 L0,80Z" fill="white" opacity=".5"/>
+      </svg>
+    </div>
+  </div>
+
+  <!-- Right: login form -->
+  <div class="right">
+    <div class="login-card">
+
+      <!-- Logo + wordmark beside form title -->
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:28px">
+        <img src="/static/logo.png" alt="SRWB" class="logo-img-sm">
+        <div>
+          <div style="font-size:14px;font-weight:600;color:var(--g800)">SRWB Operations</div>
+          <div style="font-size:11px;color:var(--g400)">Southern Region Water Board</div>
+        </div>
+      </div>
+
+      <div class="login-eyebrow">Secure Access</div>
+      <div class="login-title">Welcome back</div>
+      <div class="login-sub">Sign in with your SRWB credentials to continue.</div>
+
+      <form id="login-form" onsubmit="handleLogin(event)" novalidate>
+
+        <div class="field">
+          <label for="username">Username</label>
+          <div class="input-wrap">
+            <input type="text" id="username" name="username"
+                   placeholder="Enter your username"
+                   autocomplete="username" autocapitalize="none" spellcheck="false" required>
+            <span class="input-icon">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none">
+                <circle cx="12" cy="8" r="4" stroke="currentColor" stroke-width="1.8"/>
+                <path d="M4 20c0-3.87 3.58-7 8-7s8 3.13 8 7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+              </svg>
+            </span>
+          </div>
+        </div>
+
+        <div class="field">
+          <label for="password">Password</label>
+          <div class="input-wrap">
+            <input type="password" id="password" name="password"
+                   placeholder="••••••••" autocomplete="current-password" required>
+            <span class="input-icon" onclick="togglePwd()" title="Show / hide">
+              <svg id="eye-show" width="16" height="16" viewBox="0 0 24 24" fill="none">
+                <ellipse cx="12" cy="12" rx="9" ry="6" stroke="currentColor" stroke-width="1.8"/>
+                <circle cx="12" cy="12" r="2.5" stroke="currentColor" stroke-width="1.8"/>
+              </svg>
+              <svg id="eye-hide" width="16" height="16" viewBox="0 0 24 24" fill="none" style="display:none">
+                <path d="M3 3l18 18M10.5 10.5A3 3 0 0013.5 13.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+                <path d="M6.3 6.3C4.3 7.7 2.8 9.7 2 12c1.7 4.3 5.7 7 10 7a10.6 10.6 0 005.7-1.7M9 5.4A10.7 10.7 0 0112 5c4.3 0 8.3 2.7 10 7a11.5 11.5 0 01-2.1 3.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+              </svg>
+            </span>
+          </div>
+        </div>
+
+        <div id="err-box" class="err-box" role="alert">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" style="flex-shrink:0;margin-top:1px">
+            <circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="2"/>
+            <path d="M12 8v5M12 15.5v.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          </svg>
+          <span id="err-text">Invalid username or password.</span>
+        </div>
+
+        <div class="meta-row">
+          <label class="remember">
+            <input type="checkbox" id="remember-me"> Keep me signed in
+          </label>
+        </div>
+
+        <button type="submit" class="btn-submit" id="login-btn">
+          <div class="spinner" id="spinner"></div>
+          <span id="btn-label">Sign in</span>
+        </button>
+
+      </form>
+
+      <div class="login-footer">
+        SRWB Operations Dashboard &nbsp;·&nbsp; v2.0<br>
+        Authorised personnel only<br>
+        Contact Corporate Planning for access issues
+      </div>
+    </div>
+  </div>
+
+</div>
+
+
+
+
+<div id="filter-overlay" onclick="closeFilter()"></div>
+
+<div id="app-view" style="display:none">
+<div id="srwb-app">
+
+  <!-- Sidebar nav -->
+  <nav id="db-nav">
+    <div class="nav-logo">
+      <img src="/static/logo.png" alt="SRWB">
+      <div><div class="nlt">SRWB</div><div class="nls">Operations</div></div>
+    </div>
+    <div class="fy-wrap">
+      <label>Financial Year</label>
+      <select id="fy-select" onchange="onFyChange(this.value)"><option value="">Loading…</option></select>
+    </div>
+
+    <div class="nav-grp">Overview</div>
+    <div class="nav-item active" data-page="overview" onclick="navigate('overview')">
+      <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><rect x="1" y="1" width="6" height="6" rx="1" stroke="currentColor" stroke-width="1.5"/><rect x="9" y="1" width="6" height="6" rx="1" stroke="currentColor" stroke-width="1.5"/><rect x="1" y="9" width="6" height="6" rx="1" stroke="currentColor" stroke-width="1.5"/><rect x="9" y="9" width="6" height="6" rx="1" stroke="currentColor" stroke-width="1.5"/></svg> Dashboard</div>
+
+    <div class="nav-grp collapsible" id="grp-ops" onclick="toggleNavGroup('ops')">
+      <span>Water Operations</span>
+      <svg class="nav-grp-chevron" viewBox="0 0 10 10" fill="none"><path d="M2 3.5l3 3 3-3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </div>
+    <div class="nav-section" id="sec-ops">
+    <div class="nav-item" data-page="production" onclick="navigate('production')">
+      <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M1 11s2-4 4-4 3 3 5 3 4-4 5-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="M1 14h14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg> Production & NRW</div>
+    <div class="nav-item" data-page="wt-ei" onclick="navigate('wt-ei')">
+      <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="5" stroke="currentColor" stroke-width="1.5"/><path d="M8 5v3l2 2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg> WT & Energy</div>
+    <div class="nav-item" data-page="pipelines" onclick="navigate('pipelines')">
+      <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M2 5h12M2 11h12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg> Pipelines</div>
+    <div class="nav-item" data-page="breakdowns" onclick="navigate('breakdowns')">
+      <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M8 2L2 14h12z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M8 7v3M8 12v.3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg> Breakdowns</div>
+    </div>
+
+    <div class="nav-grp collapsible" id="grp-cust" onclick="toggleNavGroup('cust')">
+      <span>Customers</span>
+      <svg class="nav-grp-chevron" viewBox="0 0 10 10" fill="none"><path d="M2 3.5l3 3 3-3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </div>
+    <div class="nav-section" id="sec-cust">
+    <div class="nav-item" data-page="customers" onclick="navigate('customers')">
+      <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><circle cx="6" cy="5" r="2.5" stroke="currentColor" stroke-width="1.5"/><path d="M1 14c0-2.76 2.24-5 5-5s5 2.24 5 5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><circle cx="12" cy="5" r="2" stroke="currentColor" stroke-width="1.5"/><path d="M14.5 14c0-2-.9-3.7-2.25-4.7" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg> Customers</div>
+    <div class="nav-item" data-page="connections" onclick="navigate('connections')">
+      <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="1.5"/><path d="M8 5v6M5 8h6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg> NWCs</div>
+    <div class="nav-item" data-page="stuck" onclick="navigate('stuck')">
+      <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><rect x="2" y="6" width="12" height="7" rx="1.5" stroke="currentColor" stroke-width="1.5"/><path d="M5 6V4.5a3 3 0 016 0V6" stroke="currentColor" stroke-width="1.5"/><circle cx="8" cy="9.5" r="1" fill="currentColor"/></svg> Stuck Meters</div>
+    <div class="nav-item" data-page="connectivity" onclick="navigate('connectivity')">
+      <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M3 13l4-4 2 2 4-5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg> Connectivity</div>
+    </div>
+
+    <div class="nav-grp collapsible" id="grp-fin" onclick="toggleNavGroup('fin')">
+      <span>Financial</span>
+      <svg class="nav-grp-chevron" viewBox="0 0 10 10" fill="none"><path d="M2 3.5l3 3 3-3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </div>
+    <div class="nav-section" id="sec-fin">
+    <div class="nav-item" data-page="billed" onclick="navigate('billed')">
+      <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><rect x="2" y="2" width="12" height="12" rx="2" stroke="currentColor" stroke-width="1.5"/><path d="M5 6h6M5 9h4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg> Billed Amount</div>
+    <div class="nav-item" data-page="collections" onclick="navigate('collections')">
+      <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M2 12l3-5 3 3 3-6 3 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg> Bills & Collections</div>
+    <div class="nav-item" data-page="charges" onclick="navigate('charges')">
+      <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="1.5"/><path d="M8 5v1.5M8 9.5V11" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg> Charges</div>
+    <div class="nav-item" data-page="expenses" onclick="navigate('expenses')">
+      <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M2 12l3-5 3 3 3-6 3 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg> Expenses</div>
+    <div class="nav-item" data-page="debtors" onclick="navigate('debtors')">
+      <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M2 14V7l6-5 6 5v7" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><rect x="5.5" y="9" width="5" height="5" rx="1" stroke="currentColor" stroke-width="1.5"/></svg> Debtors</div>
+    </div>
+
+    <div class="nav-bottom">
+      <div class="user-chip">
+        <div class="user-avatar" id="user-av">?</div>
+        <div><div class="user-name" id="user-nm">—</div><div class="user-role" id="user-rl">—</div></div>
+      </div>
+      <button class="btn-logout" onclick="logout()">Sign out</button>
+    </div>
+  </nav>
+
+  <!-- Filter / Slicer Panel -->
+  <div id="filter-panel">
+    <div class="fp-header">
+      <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M1 3h14M3 8h10M6 13h4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+      <span class="fp-header-title">⚡ Filters</span>
+      <button class="fp-close" onclick="closeFilter()">
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M3 3l10 10M13 3L3 13" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+      </button>
+    </div>
+    <div class="fp-body">
+      <div class="fp-section">
+        <div class="fp-sec-hdr">
+          <span class="fp-sec-icon">🗺</span>
+          <span class="fp-sec-title">Zone</span>
+          <button class="fp-sec-clear" onclick="clearFilter('zones')">Clear</button>
+        </div>
+        <div class="fbtn-grid" id="fp-zones"></div>
+        <div class="fp-all-label" onclick="clearFilter('zones')">All zones</div>
+      </div>
+      <div class="fp-section">
+        <div class="fp-sec-hdr">
+          <span class="fp-sec-icon">📍</span>
+          <span class="fp-sec-title">Scheme</span>
+          <button class="fp-sec-clear" onclick="clearFilter('schemes')">Clear</button>
+        </div>
+        <div class="fbtn-grid" id="fp-schemes"></div>
+        <div class="fp-all-label" onclick="clearFilter('schemes')">All schemes</div>
+      </div>
+      <div class="fp-section">
+        <div class="fp-sec-hdr">
+          <span class="fp-sec-icon">📅</span>
+          <span class="fp-sec-title">Month</span>
+          <button class="fp-sec-clear" onclick="clearFilter('months')">Clear</button>
+        </div>
+        <div id="fp-months">
+          <div class="fbtn-grid">
+            <span class="q-row-label">Q1</span>
+            <button class="fbtn" data-month="April"   onclick="toggleMonth(this)">Apr</button>
+            <button class="fbtn" data-month="May"     onclick="toggleMonth(this)">May</button>
+            <button class="fbtn" data-month="June"    onclick="toggleMonth(this)">Jun</button>
+            <span class="q-row-label">Q2</span>
+            <button class="fbtn" data-month="July"    onclick="toggleMonth(this)">Jul</button>
+            <button class="fbtn" data-month="August"  onclick="toggleMonth(this)">Aug</button>
+            <button class="fbtn" data-month="September" onclick="toggleMonth(this)">Sep</button>
+            <span class="q-row-label">Q3</span>
+            <button class="fbtn" data-month="October" onclick="toggleMonth(this)">Oct</button>
+            <button class="fbtn" data-month="November" onclick="toggleMonth(this)">Nov</button>
+            <button class="fbtn" data-month="December" onclick="toggleMonth(this)">Dec</button>
+            <span class="q-row-label">Q4</span>
+            <button class="fbtn" data-month="January" onclick="toggleMonth(this)">Jan</button>
+            <button class="fbtn" data-month="February" onclick="toggleMonth(this)">Feb</button>
+            <button class="fbtn" data-month="March"   onclick="toggleMonth(this)">Mar</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="fp-footer">
+      <button class="fp-reset" onclick="resetAllFilters()">
+        <svg width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M14 8A6 6 0 112 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="M14 4v4h-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        Reset All Filters
+      </button>
+    </div>
+  </div>
+
+  <!-- Main content -->
+  <div id="db-main">
+
+    <!-- Overview -->
+    <div id="page-overview" class="db-page active">
+      <div class="pg-hdr">
+        <div><div class="pg-title">Dashboard Overview</div><div class="pg-sub">Board-level KPIs · current financial year</div></div>
+        <div class="pg-hdr-right">
+          <button class="filter-toggle-btn" id="filter-btn-overview" onclick="openFilter()"><svg width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M1 3h14M3 8h10M6 13h4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg><span class="filter-dot"></span>Filters</button>
+          <button class="refresh-btn" onclick="reloadPage('overview')">&#8635; Refresh</button>
+        </div>
+      </div>
+      <div id="ov-kpis" class="kpi-row kpi-g4"></div>
+      <div class="chart-row">
+        <div class="chart-card"><div class="chart-title">Active Customers — Monthly</div><div class="ch-wrap"><canvas id="ch-ov-cust"></canvas></div></div>
+        <div class="chart-card"><div class="chart-title">Collections vs Billed (MWK)</div><div class="ch-wrap"><canvas id="ch-ov-coll"></canvas></div></div>
+      </div>
+      <div class="chart-row">
+        <div class="chart-card"><div class="chart-title">NRW % — Monthly Trend</div><div class="ch-wrap"><canvas id="ch-ov-nrw"></canvas></div></div>
+        <div class="chart-card"><div class="chart-title">Zone Performance — Vol. Produced</div><div class="ch-wrap"><canvas id="ch-ov-zone"></canvas></div></div>
+      </div>
+    </div>
+
+    <!-- Production & NRW -->
+    <div id="page-production" class="db-page">
+      <div class="pg-hdr"><div class="pg-hdr-left"><div class="pg-title">Production, Consumption, RW & NRW</div><div class="pg-sub">Water produced, revenue water and non-revenue water</div></div><div class="pg-hdr-right"><button class="filter-toggle-btn" onclick="openFilter()"><svg width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M1 3h14M3 8h10M6 13h4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg><span class="filter-dot"></span>Filters</button><button class="refresh-btn" onclick="reloadPage('production')">&#8635; Refresh</button></div></div>
+      <div id="pr-kpis" class="kpi-row kpi-g4"></div>
+      <div class="chart-row">
+        <div class="chart-card chart-full"><div class="chart-title">Monthly Volume Produced (m³) & NRW %</div><div class="legend" id="pr-leg"></div><div class="ch-wrap" style="height:200px"><canvas id="ch-pr-main"></canvas></div></div>
+      </div>
+      <div class="chart-row">
+        <div class="chart-card"><div class="chart-title">NRW % by Zone</div><div class="ch-wrap"><canvas id="ch-pr-zone"></canvas></div></div>
+        <div class="chart-card"><div class="chart-title">Volume Produced by Zone (m³)</div><div class="ch-wrap"><canvas id="ch-pr-vol"></canvas></div></div>
+      </div>
+      <div id="tbl-production"></div>
+    </div>
+
+    <!-- WT & EI -->
+    <div id="page-wt-ei" class="db-page">
+      <div class="pg-hdr"><div class="pg-hdr-left"><div class="pg-title">Water Treatment & Environmental Issues</div><div class="pg-sub">Treatment chemicals usage · power consumption · supply hours</div></div><div class="pg-hdr-right"><button class="filter-toggle-btn" onclick="openFilter()"><svg width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M1 3h14M3 8h10M6 13h4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg><span class="filter-dot"></span>Filters</button><button class="refresh-btn" onclick="reloadPage('wt-ei')">&#8635; Refresh</button></div></div>
+      <div id="wt-kpis" class="kpi-row kpi-g4"></div>
+      <div class="chart-row">
+        <div class="chart-card"><div class="chart-title">Chemical Cost (MWK) — Monthly</div><div class="ch-wrap"><canvas id="ch-wt-chem"></canvas></div></div>
+        <div class="chart-card"><div class="chart-title">Power Usage (kWh) — Monthly</div><div class="ch-wrap"><canvas id="ch-wt-power"></canvas></div></div>
+      </div>
+      <div class="chart-row">
+        <div class="chart-card"><div class="chart-title">Chemical Consumption by Type (kg)</div><div class="ch-wrap"><canvas id="ch-wt-split"></canvas></div></div>
+        <div class="chart-card"><div class="chart-title">Supply Hours vs Power Failure Hours</div><div class="ch-wrap"><canvas id="ch-wt-hours"></canvas></div></div>
+      </div>
+      <div id="tbl-wt-ei"></div>
+    </div>
+
+    <!-- Customers -->
+    <div id="page-customers" class="db-page">
+      <div class="pg-hdr"><div class="pg-hdr-left"><div class="pg-title">Customers</div><div class="pg-sub">Active customers, postpaid and prepaid by zone</div></div><div class="pg-hdr-right"><button class="filter-toggle-btn" onclick="openFilter()"><svg width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M1 3h14M3 8h10M6 13h4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg><span class="filter-dot"></span>Filters</button><button class="refresh-btn" onclick="reloadPage('customers')">&#8635; Refresh</button></div></div>
+      <div id="cu-kpis" class="kpi-row kpi-g4"></div>
+      <div class="chart-row">
+        <div class="chart-card"><div class="chart-title">Active Customers — Monthly</div><div class="ch-wrap"><canvas id="ch-cu-main"></canvas></div></div>
+        <div class="chart-card"><div class="chart-title">Postpaid vs Prepaid by Zone</div><div class="ch-wrap"><canvas id="ch-cu-zone"></canvas></div></div>
+      </div>
+      <div id="tbl-customers"></div>
+    </div>
+
+    <!-- NWCs -->
+    <div id="page-connections" class="db-page">
+      <div class="pg-hdr"><div class="pg-hdr-left"><div class="pg-title">New Water Connections</div><div class="pg-sub">Applications, completions and backlog by month and zone</div></div><div class="pg-hdr-right"><button class="filter-toggle-btn" onclick="openFilter()"><svg width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M1 3h14M3 8h10M6 13h4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg><span class="filter-dot"></span>Filters</button><button class="refresh-btn" onclick="reloadPage('connections')">&#8635; Refresh</button></div></div>
+      <div id="cn-kpis" class="kpi-row kpi-g3"></div>
+      <div class="chart-row">
+        <div class="chart-card"><div class="chart-title">Applications vs Connections Done</div><div class="ch-wrap"><canvas id="ch-cn-main"></canvas></div></div>
+        <div class="chart-card"><div class="chart-title">Connections by Zone</div><div class="ch-wrap"><canvas id="ch-cn-zone"></canvas></div></div>
+      </div>
+      <div id="tbl-connections"></div>
+    </div>
+
+    <!-- Stuck Meters -->
+    <div id="page-stuck" class="db-page">
+      <div class="pg-hdr"><div class="pg-hdr-left"><div class="pg-title">Stuck Meters</div><div class="pg-sub">Carried forward, new, repaired and replaced each month</div></div><div class="pg-hdr-right"><button class="filter-toggle-btn" onclick="openFilter()"><svg width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M1 3h14M3 8h10M6 13h4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg><span class="filter-dot"></span>Filters</button><button class="refresh-btn" onclick="reloadPage('stuck')">&#8635; Refresh</button></div></div>
+      <div id="st-kpis" class="kpi-row kpi-g3"></div>
+      <div class="chart-row">
+        <div class="chart-card"><div class="chart-title">Stuck Meters — Monthly Movement</div><div class="ch-wrap"><canvas id="ch-st-main"></canvas></div></div>
+        <div class="chart-card"><div class="chart-title">Carried Forward by Zone</div><div class="ch-wrap"><canvas id="ch-st-zone"></canvas></div></div>
+      </div>
+      <div id="tbl-stuck"></div>
+    </div>
+
+    <!-- Connectivity -->
+    <div id="page-connectivity" class="db-page">
+      <div class="pg-hdr"><div class="pg-hdr-left"><div class="pg-title">Connectivity</div><div class="pg-sub">Connection performance and query resolution metrics</div></div><div class="pg-hdr-right"><button class="filter-toggle-btn" onclick="openFilter()"><svg width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M1 3h14M3 8h10M6 13h4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg><span class="filter-dot"></span>Filters</button><button class="refresh-btn" onclick="reloadPage('connectivity')">&#8635; Refresh</button></div></div>
+      <div id="co-kpis" class="kpi-row kpi-g4"></div>
+      <div class="chart-row">
+        <div class="chart-card"><div class="chart-title">Days to Quotation & Days to Connect</div><div class="ch-wrap"><canvas id="ch-co-days"></canvas></div></div>
+        <div class="chart-card"><div class="chart-title">Applications vs Completed Connections</div><div class="ch-wrap"><canvas id="ch-co-conn"></canvas></div></div>
+      </div>
+      <div id="tbl-connectivity"></div>
+    </div>
+
+    <!-- Breakdowns -->
+    <div id="page-breakdowns" class="db-page">
+      <div class="pg-hdr"><div class="pg-hdr-left"><div class="pg-title">Breakdowns</div><div class="pg-sub">Pipe and pump failures by month and zone</div></div><div class="pg-hdr-right"><button class="filter-toggle-btn" onclick="openFilter()"><svg width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M1 3h14M3 8h10M6 13h4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg><span class="filter-dot"></span>Filters</button><button class="refresh-btn" onclick="reloadPage('breakdowns')">&#8635; Refresh</button></div></div>
+      <div id="bd-kpis" class="kpi-row kpi-g4"></div>
+      <div class="chart-row">
+        <div class="chart-card"><div class="chart-title">Pipe & Pump Breakdowns — Monthly</div><div class="ch-wrap"><canvas id="ch-bd-main"></canvas></div></div>
+        <div class="chart-card"><div class="chart-title">Breakdowns by Zone</div><div class="ch-wrap"><canvas id="ch-bd-zone"></canvas></div></div>
+      </div>
+      <div id="tbl-breakdowns"></div>
+    </div>
+
+    <!-- Pipelines -->
+    <div id="page-pipelines" class="db-page">
+      <div class="pg-hdr"><div class="pg-hdr-left"><div class="pg-title">Pipelines Extension</div><div class="pg-sub">Development lines installed by size class and zone</div></div><div class="pg-hdr-right"><button class="filter-toggle-btn" onclick="openFilter()"><svg width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M1 3h14M3 8h10M6 13h4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg><span class="filter-dot"></span>Filters</button><button class="refresh-btn" onclick="reloadPage('pipelines')">&#8635; Refresh</button></div></div>
+      <div id="pl-kpis" class="kpi-row kpi-g3"></div>
+      <div class="chart-row">
+        <div class="chart-card"><div class="chart-title">Dev Lines by Size Class (m)</div><div class="ch-wrap"><canvas id="ch-pl-split"></canvas></div></div>
+        <div class="chart-card"><div class="chart-title">Monthly Dev Lines Installed (m)</div><div class="ch-wrap"><canvas id="ch-pl-main"></canvas></div></div>
+      </div>
+      <div id="tbl-pipelines"></div>
+    </div>
+
+    <!-- Billed Amount -->
+    <div id="page-billed" class="db-page">
+      <div class="pg-hdr"><div class="pg-hdr-left"><div class="pg-title">Billed Amount</div><div class="pg-sub">Postpaid and prepaid billing detail by month and zone</div></div><div class="pg-hdr-right"><button class="filter-toggle-btn" onclick="openFilter()"><svg width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M1 3h14M3 8h10M6 13h4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg><span class="filter-dot"></span>Filters</button><button class="refresh-btn" onclick="reloadPage('billed')">&#8635; Refresh</button></div></div>
+      <div id="bi-kpis" class="kpi-row kpi-g3"></div>
+      <div class="chart-row">
+        <div class="chart-card chart-full"><div class="chart-title">Postpaid vs Prepaid Billed (MWK)</div><div class="ch-wrap" style="height:200px"><canvas id="ch-bi-main"></canvas></div></div>
+      </div>
+      <div class="chart-row">
+        <div class="chart-card"><div class="chart-title">Total Billed by Zone (MWK)</div><div class="ch-wrap"><canvas id="ch-bi-zone"></canvas></div></div>
+        <div class="chart-card"><div class="chart-title">Postpaid vs Prepaid Split (%)</div><div class="ch-wrap"><canvas id="ch-bi-split"></canvas></div></div>
+      </div>
+      <div id="tbl-billed"></div>
+    </div>
+
+    <!-- Bills & Collections -->
+    <div id="page-collections" class="db-page">
+      <div class="pg-hdr"><div class="pg-hdr-left"><div class="pg-title">Bills & Collections</div><div class="pg-sub">Billing performance and cash collection by month</div></div><div class="pg-hdr-right"><button class="filter-toggle-btn" onclick="openFilter()"><svg width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M1 3h14M3 8h10M6 13h4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg><span class="filter-dot"></span>Filters</button><button class="refresh-btn" onclick="reloadPage('collections')">&#8635; Refresh</button></div></div>
+      <div id="cl-kpis" class="kpi-row kpi-g3"></div>
+      <div class="chart-row">
+        <div class="chart-card chart-full"><div class="chart-title">Billed vs Collected (MWK)</div><div class="ch-wrap" style="height:200px"><canvas id="ch-cl-main"></canvas></div></div>
+      </div>
+      <div class="chart-row">
+        <div class="chart-card"><div class="chart-title">Collection Rate by Zone (%)</div><div class="ch-wrap"><canvas id="ch-cl-rate"></canvas></div></div>
+        <div class="chart-card"><div class="chart-title">PP vs Prepaid Cash Collected (MWK)</div><div class="ch-wrap"><canvas id="ch-cl-split"></canvas></div></div>
+      </div>
+      <div id="tbl-collections"></div>
+    </div>
+
+    <!-- Charges -->
+    <div id="page-charges" class="db-page">
+      <div class="pg-hdr"><div class="pg-hdr-left"><div class="pg-title">Service Charges & Meter Rentals</div><div class="pg-sub">Service charges and meter rental by month and zone</div></div><div class="pg-hdr-right"><button class="filter-toggle-btn" onclick="openFilter()"><svg width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M1 3h14M3 8h10M6 13h4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg><span class="filter-dot"></span>Filters</button><button class="refresh-btn" onclick="reloadPage('charges')">&#8635; Refresh</button></div></div>
+      <div id="ch-kpis" class="kpi-row kpi-g3"></div>
+      <div class="chart-row">
+        <div class="chart-card chart-full"><div class="chart-title">Service Charge vs Meter Rental (MWK)</div><div class="ch-wrap" style="height:200px"><canvas id="ch-ch-main"></canvas></div></div>
+      </div>
+      <div class="chart-row">
+        <div class="chart-card"><div class="chart-title">Total Sales by Zone (MWK)</div><div class="ch-wrap"><canvas id="ch-ch-zone"></canvas></div></div>
+        <div class="chart-card"><div class="chart-title">Charge Composition</div><div class="ch-wrap"><canvas id="ch-ch-split"></canvas></div></div>
+      </div>
+      <div id="tbl-charges"></div>
+    </div>
+
+    <!-- Expenses -->
+    <div id="page-expenses" class="db-page">
+      <div class="pg-hdr"><div class="pg-hdr-left"><div class="pg-title">Operating Expenses</div><div class="pg-sub">Cost breakdown by category and zone</div></div><div class="pg-hdr-right"><button class="filter-toggle-btn" onclick="openFilter()"><svg width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M1 3h14M3 8h10M6 13h4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg><span class="filter-dot"></span>Filters</button><button class="refresh-btn" onclick="reloadPage('expenses')">&#8635; Refresh</button></div></div>
+      <div id="ex-kpis" class="kpi-row kpi-g4"></div>
+      <div class="chart-row">
+        <div class="chart-card"><div class="chart-title">Cost Composition</div><div class="ch-wrap"><canvas id="ch-ex-split"></canvas></div></div>
+        <div class="chart-card"><div class="chart-title">OpEx by Zone (MWK)</div><div class="ch-wrap"><canvas id="ch-ex-zone"></canvas></div></div>
+      </div>
+      <div id="tbl-expenses"></div>
+    </div>
+
+    <!-- Debtors -->
+    <div id="page-debtors" class="db-page">
+      <div class="pg-hdr"><div class="pg-hdr-left"><div class="pg-title">Debtors</div><div class="pg-sub">Outstanding balances — public and private</div></div><div class="pg-hdr-right"><button class="filter-toggle-btn" onclick="openFilter()"><svg width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M1 3h14M3 8h10M6 13h4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg><span class="filter-dot"></span>Filters</button><button class="refresh-btn" onclick="reloadPage('debtors')">&#8635; Refresh</button></div></div>
+      <div id="de-kpis" class="kpi-row kpi-g4"></div>
+      <div class="chart-row">
+        <div class="chart-card"><div class="chart-title">Debtors — Monthly Trend (MWK)</div><div class="ch-wrap"><canvas id="ch-de-main"></canvas></div></div>
+        <div class="chart-card"><div class="chart-title">Public vs Private by Zone (MWK)</div><div class="ch-wrap"><canvas id="ch-de-zone"></canvas></div></div>
+      </div>
+      <div id="tbl-debtors"></div>
+    </div>
+
+  </div><!-- /db-main -->
+</div><!-- /srwb-app -->
+</div><!-- /app-view -->
+
+<script>
+const API='__API_BASE__',TOKEN_KEY='srwb_token',USER_KEY='srwb_user';
+function saveSession(t,u,p){const s=p?localStorage:sessionStorage;s.setItem(TOKEN_KEY,t);s.setItem(USER_KEY,JSON.stringify(u))}
+function getToken(){return localStorage.getItem(TOKEN_KEY)||sessionStorage.getItem(TOKEN_KEY)}
+function getUser(){const r=localStorage.getItem(USER_KEY)||sessionStorage.getItem(USER_KEY);try{return r?JSON.parse(r):null}catch{return null}}
+function clearSession(){[localStorage,sessionStorage].forEach(s=>{s.removeItem(TOKEN_KEY);s.removeItem(USER_KEY)})}
+function decodeJwt(t){try{return JSON.parse(atob(t.split('.')[1].replace(/-/g,'+').replace(/_/g,'/')))}catch{return null}}
+function isExpired(t){const p=decodeJwt(t);return!p||!p.exp||Date.now()>=p.exp*1000}
+(function(){const t=getToken();if(t&&!isExpired(t))showApp(getUser())})();
+async function handleLogin(e){
+  e.preventDefault();const username=document.getElementById('username').value.trim();const password=document.getElementById('password').value;const remember=document.getElementById('remember-me').checked;
+  if(!username||!password)return showError('Please enter your username and password.');setLoading(true);clearError();
+  try{let token=await tryLogin(username,password,'json');if(token===null)token=await tryLogin(username,password,'form');if(!token)throw new Error('Invalid username or password.');const d=decodeJwt(token);const user={username:d?.sub||username,role:d?.role||'user'};saveSession(token,user,remember);showApp(user);}
+  catch(err){showError(err.message||'Unable to sign in.')}finally{setLoading(false)}
+}
+async function tryLogin(u,p,fmt){const isJ=fmt==='json';let res;try{res=await fetch(`${API}/api/auth/login`,{method:'POST',headers:{'Content-Type':isJ?'application/json':'application/x-www-form-urlencoded'},body:isJ?JSON.stringify({username:u,password:p}):new URLSearchParams({username:u,password:p})});}catch{throw new Error('Cannot reach the server.')}
+if(res.status===422&&isJ)return null;if(res.status===401||res.status===403)throw new Error('Invalid username or password.');if(!res.ok)throw new Error(`Server error (${res.status}).`);const d=await res.json();return d.access_token||d.token||null;}
+function showApp(user){document.getElementById('login-view').style.display='none';document.getElementById('app-view').style.display='block';initDashboard();}
+function logout(){clearSession();location.reload()}
+function setLoading(on){document.getElementById('login-btn').disabled=on;document.getElementById('spinner').style.display=on?'block':'none';document.getElementById('btn-label').textContent=on?'Signing in…':'Sign in';}
+function showError(msg){document.getElementById('err-text').textContent=msg;const b=document.getElementById('err-box');b.classList.remove('shake');void b.offsetWidth;b.classList.add('show','shake');['username','password'].forEach(id=>document.getElementById(id).classList.add('err'));}
+function clearError(){document.getElementById('err-box').classList.remove('show');['username','password'].forEach(id=>document.getElementById(id).classList.remove('err'));}
+['username','password'].forEach(id=>document.getElementById(id).addEventListener('input',clearError));
+function togglePwd(){const inp=document.getElementById('password');const vis=inp.type==='text';inp.type=vis?'password':'text';document.getElementById('eye-show').style.display=vis?'':'none';document.getElementById('eye-hide').style.display=vis?'none':'';}
+
+/* ══════════════════════ FILTER STATE ══════════════════════════════════ */
+const filterState={zones:[],schemes:[],months:[]};
+let allZoneSchemes={};  // {zone:[scheme,...]}
+
+function openFilter(){document.getElementById('filter-panel').classList.add('open');document.getElementById('filter-overlay').classList.add('show');}
+function closeFilter(){document.getElementById('filter-panel').classList.remove('open');document.getElementById('filter-overlay').classList.remove('show');}
+function hasActiveFilters(){return filterState.zones.length||filterState.schemes.length||filterState.months.length;}
+function updateFilterDots(){document.querySelectorAll('.filter-dot').forEach(d=>d.style.display=hasActiveFilters()?'inline-block':'none');}
+
+async function loadZoneSchemes(){
+  try{const token=getToken();const d=await fetch(`${API}/api/catalogue/zone-schemes`,{headers:{Authorization:'Bearer '+token}}).then(r=>r.ok?r.json():{});allZoneSchemes=d;renderZoneButtons();renderSchemeButtons();}
+  catch{}
+}
+function renderZoneButtons(){
+  const c=document.getElementById('fp-zones');if(!c)return;
+  c.innerHTML=Object.keys(allZoneSchemes).map(z=>`<button class="fbtn${filterState.zones.includes(z)?' active-zone':''}" onclick="toggleZone(this,'${z}')">${z}</button>`).join('');
+}
+function renderSchemeButtons(){
+  const c=document.getElementById('fp-schemes');if(!c)return;
+  const activeZones=filterState.zones.length?filterState.zones:Object.keys(allZoneSchemes);
+  const schemes=[...new Set(activeZones.flatMap(z=>allZoneSchemes[z]||[]))].sort();
+  c.innerHTML=schemes.map(s=>`<button class="fbtn${filterState.schemes.includes(s)?' active-scheme':''}" onclick="toggleScheme(this,'${s}')">${s}</button>`).join('');
+}
+function toggleZone(btn,zone){
+  const idx=filterState.zones.indexOf(zone);
+  if(idx>=0)filterState.zones.splice(idx,1);else filterState.zones.push(zone);
+  btn.classList.toggle('active-zone');
+  // Update scheme buttons (filtered by selected zones)
+  renderSchemeButtons();
+  onFilterChange();
+}
+function toggleScheme(btn,scheme){
+  const idx=filterState.schemes.indexOf(scheme);
+  if(idx>=0)filterState.schemes.splice(idx,1);else filterState.schemes.push(scheme);
+  btn.classList.toggle('active-scheme');
+  onFilterChange();
+}
+function toggleMonth(btn){
+  const m=btn.dataset.month;
+  const idx=filterState.months.indexOf(m);
+  if(idx>=0)filterState.months.splice(idx,1);else filterState.months.push(m);
+  btn.classList.toggle('active-month');
+  onFilterChange();
+}
+function clearFilter(type){
+  filterState[type]=[];
+  if(type==='zones'){renderZoneButtons();renderSchemeButtons();}
+  else if(type==='schemes')renderSchemeButtons();
+  else if(type==='months')document.querySelectorAll('#fp-months .fbtn').forEach(b=>b.classList.remove('active-month'));
+  onFilterChange();
+}
+function resetAllFilters(){
+  filterState.zones=[];filterState.schemes=[];filterState.months=[];
+  renderZoneButtons();renderSchemeButtons();
+  document.querySelectorAll('#fp-months .fbtn').forEach(b=>b.classList.remove('active-month'));
+  onFilterChange();
+}
+function onFilterChange(){
+  updateFilterDots();
+  Object.keys(pageCache).forEach(k=>delete pageCache[k]);
+  loadPage(currentPage);
+}
+
+/* ══════════════════════ API ════════════════════════════════════════════ */
+function buildParams(extra={}){
+  const p=new URLSearchParams({year:dbState.year,...extra});
+  if(filterState.zones.length)p.set('zones',filterState.zones.join(','));
+  if(filterState.schemes.length)p.set('schemes',filterState.schemes.join(','));
+  if(filterState.months.length)p.set('months',filterState.months.join(','));
+  return p.toString();
+}
+async function api(path){
+  const token=getToken();const base=path.includes('?')?path+'&':path+'?';
+  const res=await fetch(API+base+buildParams(),{headers:{Authorization:'Bearer '+token}});
+  if(!res.ok)throw new Error('API '+res.status);return res.json();
+}
+async function apiPanel(panel){
+  const token=getToken();
+  const res=await fetch(`${API}/api/panels/${panel}?${buildParams()}`,{headers:{Authorization:'Bearer '+token}});
+  if(!res.ok)throw new Error('API '+res.status);return res.json();
+}
+
+/* ══════════════════════ REPORT TABLE ENGINE ═══════════════════════════ */
+const FY_MO=['April','May','June','July','August','September','October','November','December','January','February','March'];
+const MS={April:'APR',May:'MAY',June:'JUN',July:'JUL',August:'AUG',September:'SEP',October:'OCT',November:'NOV',December:'DEC',January:'JAN',February:'FEB',March:'MAR'};
+const Q_END_MAP={June:'1ST',September:'2ND',December:'3RD',March:'4TH'};
+
+function fv(v,fmt,dec,zeroOk){
+  if(v==null||v===undefined)return'<span class="rpt-dash">—</span>';
+  const n=Number(v);if(isNaN(n))return'<span class="rpt-dash">—</span>';
+  if(n===0&&!zeroOk)return'<span class="rpt-dash">—</span>';
+  if(n===0)return'0';
+  switch(fmt){
+    case'num':return Math.round(n).toLocaleString();
+    case'mwk':return Math.round(n).toLocaleString();
+    case'dec1':return n.toFixed(1);
+    case'dec2':return n.toFixed(2);
+    case'dec3':return n.toFixed(3);
+    case'pct': return n.toFixed(1)+'%';
+    case'raw': return n.toFixed(dec||0);
+    default:   return Math.round(n).toLocaleString();
+  }
+}
+
+function renderTable(containerId,title,rows,moData){
+  const el=document.getElementById(containerId);if(!el)return;
+  const bm={};for(const m of moData)if(m.has_data)bm[m.month]=m;
+
+  let h=`<div class="rpt-wrap"><table class="rpt"><caption>${title}</caption><thead><tr>`;
+  h+=`<th style="min-width:210px;text-align:left">Metric</th>`;
+  for(let i=0;i<12;i++){
+    const m=FY_MO[i],qe=Q_END_MAP[m];
+    if(qe)h+=`<th class="qend-th">${MS[m]}<span class="qend-sub">${qe}</span></th>`;
+    else   h+=`<th>${MS[m]}</th>`;
+  }
+  h+=`<th class="ann-th">ANNUAL</th></tr></thead><tbody>`;
+
+  for(const row of rows){
+    if(row.type==='spacer'){h+=`<tr><td colspan="14" style="height:5px;border:none;background:transparent"></td></tr>`;continue;}
+    if(row.type==='section'){h+=`<tr class="row-section"><td colspan="14">${row.label}</td></tr>`;continue;}
+    const rc=[row.bold?'row-total':'',row.color?'row-'+row.color:''].filter(Boolean).join(' ');
+    h+=`<tr class="${rc}"><td class="rpt-lbl">${row.label}</td>`;
+    let annSum=0,annLast=null,annCnt=0,annNumSum=0,annDenSum=0;
+    for(let i=0;i<12;i++){
+      const m=FY_MO[i],qe=Q_END_MAP[m],md=bm[m];
+      const cls=qe?'rh-qend-cell':'';
+      if(!md){h+=`<td class="${cls}"><span class="rpt-dash">—</span></td>`;continue;}
+      let v;
+      if(row.computed)v=row.computed(md);else v=md[row.field];
+      const n=Number(v);
+      if(!isNaN(n)&&n!==0){annSum+=n;annCnt++;annLast=n;}
+      if(row.annType==='ratio'){annNumSum+=Number(md[row.numF])||0;annDenSum+=Number(md[row.denF])||0;}
+      h+=`<td class="${cls}">${fv(v,row.fmt,row.dec,row.zeroOk)}</td>`;
+    }
+    // Annual cell
+    let annV=null;
+    if(annCnt>0){
+      if(!row.annType||row.annType==='sum')annV=annSum;
+      else if(row.annType==='last')annV=annLast;
+      else if(row.annType==='avg')annV=annSum/annCnt;
+      else if(row.annType==='ratio')annV=annDenSum?annNumSum/annDenSum*(row.ratioMul||1):null;
+    }
+    h+=`<td class="ann-cell">${annV!=null?fv(annV,row.fmt,row.dec,row.zeroOk):'<span class="rpt-dash">—</span>'}</td></tr>`;
+  }
+  h+=`</tbody></table></div>`;
+  el.innerHTML=h;
+}
+
+// Pipelines variant: shows separate QTR columns
+function renderPipelinesTable(containerId,moData){
+  const el=document.getElementById(containerId);if(!el)return;
+  const bm={};for(const m of moData)if(m.has_data)bm[m.month]=m;
+  const Q=['April','May','June','July','August','September','October','November','December','January','February','March'];
+  const QG=[[0,1,2],[3,4,5],[6,7,8],[9,10,11]];
+  const QL=['1ST QTR','2ND QTR','3RD QTR','4TH QTR'];
+  const rows=[
+    {label:'32mm',  field:'dev_lines_32mm'},
+    {label:'50mm',  field:'dev_lines_50mm'},
+    {label:'63mm',  field:'dev_lines_63mm'},
+    {label:'90mm',  field:'dev_lines_90mm'},
+    {label:'110mm', field:'dev_lines_110mm'},
+    {label:'Total dev. lines done',field:'dev_lines_total',bold:true},
+  ];
+  let h=`<div class="rpt-wrap"><table class="rpt"><caption>PIPELINES EXTENSION REPORT</caption><thead><tr>`;
+  h+=`<th style="min-width:160px;text-align:left">Size</th>`;
+  for(let qi=0;qi<4;qi++){for(const mi of QG[qi]){const m=FY_MO[mi];h+=`<th>${MS[m]}</th>`;}h+=`<th class="qtr-th">${QL[qi]}</th>`;}
+  h+=`<th class="ann-th">ANNUAL</th></tr></thead><tbody>`;
+  for(const row of rows){
+    const rc=row.bold?'row-total':'';
+    h+=`<tr class="${rc}"><td class="rpt-lbl">${row.label}</td>`;
+    let annSum=0;
+    for(let qi=0;qi<4;qi++){
+      let qSum=0;
+      for(const mi of QG[qi]){const m=FY_MO[mi],md=bm[m];const v=md?Number(md[row.field]||0):0;qSum+=v;annSum+=v;h+=`<td>${v?Math.round(v).toLocaleString():'<span class="rpt-dash">—</span>'}</td>`;}
+      h+=`<td class="qtr-cell">${qSum?Math.round(qSum).toLocaleString():'<span class="rpt-dash">—</span>'}</td>`;
+    }
+    h+=`<td class="ann-cell">${annSum?Math.round(annSum).toLocaleString():'<span class="rpt-dash">—</span>'}</td></tr>`;
+  }
+  h+=`</tbody></table></div>`;
+  el.innerHTML=h;
+}
+
+/* Row definitions for each report */
+const ROWS={
+  production:[
+    {label:'Vol. Produced (m³)',             field:'vol_produced',             fmt:'num', annType:'sum'},
+    {label:'Total Revenue Water (m³)',        field:'revenue_water',            fmt:'num', annType:'sum', color:'green'},
+    {label:'Total NRW (m³)',                  field:'nrw',                      fmt:'num', annType:'sum', color:'orange'},
+    {label:'Vol. Billed — Postpaid (m³)',     field:'total_vol_billed_pp',      fmt:'num', annType:'sum'},
+    {label:'Vol. Billed — Prepaid (m³)',      field:'total_vol_billed_prepaid', fmt:'num', annType:'sum'},
+    {label:'% NRW',                           field:'pct_nrw',                  fmt:'pct', annType:'avg', color:'orange'},
+  ],
+  wt_ei:[
+    {label:'Chlorine (kg)',                   field:'chlorine_kg',          fmt:'num', annType:'sum', color:'blue'},
+    {label:'Aluminium Sulphate (kg)',          field:'alum_kg',              fmt:'num', annType:'sum', color:'blue'},
+    {label:'Soda Ash (kg)',                   field:'soda_ash_kg',          fmt:'num', annType:'sum', color:'blue'},
+    {label:'Algae Floc (litres)',             field:'algae_floc_litres',    fmt:'num', annType:'sum', color:'blue'},
+    {label:'Sud Floc (litres)',               field:'sud_floc_litres',      fmt:'num', annType:'sum', color:'blue'},
+    {label:'Potassium Permanganate (kg)',      field:'kmno4_kg',             fmt:'num', annType:'sum', color:'blue'},
+    {label:'Cost of Chemicals (MWK)',          field:'chem_cost',            fmt:'mwk', annType:'sum', bold:true},
+    {label:'Vol. Produced (m³)',              field:'vol_produced',         fmt:'num', annType:'sum', color:'green'},
+    // Ratio = vol_produced / chem_cost (production per MWK of chemical spend)
+    {label:'Ratio (Prd. v Chem. Cost)',
+     computed:m=>m.chem_cost?m.vol_produced/m.chem_cost:null,
+     fmt:'dec3', annType:'ratio', numF:'vol_produced', denF:'chem_cost', ratioMul:1},
+    // Cost per m³ produced
+    {label:'Cost/Vol. Produced — Chemicals (MWK/m³)',
+     field:'chem_cost_per_m3', fmt:'dec2',
+     annType:'ratio', numF:'chem_cost', denF:'vol_produced', ratioMul:1},
+  ],
+  customers:[
+    {label:'Metered Customers',               field:'total_metered',         fmt:'num', annType:'last'},
+    {label:'Disconnected Customers',          field:'total_disconnected',    fmt:'num', annType:'last'},
+    {label:'Active Customers',                field:'active_customers',      fmt:'num', annType:'last', bold:true, color:'red'},
+    {label:'Active Postpaid Customers',       field:'active_postpaid',       fmt:'num', annType:'last'},
+    {label:'Active Prepaid Customers',        field:'active_prepaid',        fmt:'num', annType:'last'},
+    {type:'spacer'},
+    {label:'Active Post. Ind. Consumers',     field:'active_post_individual',fmt:'num', annType:'last'},
+    {label:'Active Prep. Ind. Consumers',     field:'active_prep_individual',fmt:'num', annType:'last'},
+    {label:'Active Post. Inst. Consumers',    field:'active_post_inst',      fmt:'num', annType:'last'},
+    {label:'Active Prep. Inst. Consumers',    field:'active_prep_inst',      fmt:'num', annType:'last'},
+    {label:'Active Post. Com. Consumers',     field:'active_post_commercial',fmt:'num', annType:'last'},
+    {label:'Active Prep. Com. Consumers',     field:'active_prep_commercial',fmt:'num', annType:'last'},
+    {label:'Active Prep. CWP',               field:'active_prep_cwp',       fmt:'num', annType:'last'},
+  ],
+  connections:[
+    {label:'NWCs B/F',                        field:'all_conn_bfwd',              fmt:'num', annType:'last', color:'blue'},
+    {label:'NWCs Applied (Postpaid)',          field:'conn_applied',               fmt:'num', annType:'sum',  zeroOk:true},
+    {label:'NWCs Done (Postpaid)',
+     computed:m=>Math.max(0,(m.new_connections||0)-(m.prepaid_meters_installed||0)),
+     fmt:'num', annType:'sum', zeroOk:true},
+    {label:'Prepaid Meters Installed',        field:'prepaid_meters_installed',   fmt:'num', annType:'sum',  zeroOk:true},
+    {label:'NWCs Done',                       field:'new_connections',            fmt:'num', annType:'sum',  bold:true, zeroOk:true},
+    {label:'NWCs C/F',                        field:'all_conn_cfwd',              fmt:'num', annType:'last', color:'green'},
+  ],
+  stuck:[
+    // B/F computed in patchStuckBF() — row[0] gets replaced at runtime
+    {label:'Stuck Meters B/F',               computed:m=>null, fmt:'num', annType:'none'},
+    {label:'Stuck Meters New',               field:'stuck_new',     fmt:'num', annType:'sum', color:'red',    zeroOk:true},
+    {label:'Stuck Meters Repaired',          field:'stuck_repaired',fmt:'num', annType:'sum', color:'green',  zeroOk:true},
+    {label:'Stuck Meters Replaced',          field:'stuck_replaced',fmt:'num', annType:'sum', color:'green',  zeroOk:true},
+    {label:'Stuck Meters C/F',              field:'stuck_meters',  fmt:'num', annType:'last', bold:true},
+  ],
+  connectivity:[
+    {label:'Customers Applied for New Connection', field:'conn_applied',       fmt:'num',  annType:'sum'},
+    {label:'Days Taken to Give a Quotation',       field:'days_to_quotation',  fmt:'dec1', annType:'avg'},
+    {label:'Customers Fully Paid',                 field:'conn_fully_paid',    fmt:'num',  annType:'sum'},
+    {label:'Days Taken to Connect Paid-up Custs',  field:'days_to_connect',    fmt:'dec1', annType:'avg'},
+    {label:'Connectivity Rate (%)',                field:'connectivity_rate',  fmt:'dec1', annType:'avg'},
+    {label:'Queries Received',                     field:'queries_received',   fmt:'num',  annType:'sum', zeroOk:true},
+    {label:'Time Taken to Resolve Queries (days)', field:'time_to_resolve',    fmt:'dec1', annType:'avg'},
+  ],
+  breakdowns:[
+    {label:'Total Pipe + Pump Breakdowns',
+     computed:m=>(m.pipe_breakdowns||0)+(m.pump_breakdowns||0),
+     fmt:'num', annType:'sum', bold:true, zeroOk:true},
+    {type:'spacer'},
+    {label:'PVC Pipes',     field:'pipe_pvc',    fmt:'num', annType:'sum', color:'blue',   zeroOk:true},
+    {label:'GI Pipes',      field:'pipe_gi',     fmt:'num', annType:'sum', color:'green',  zeroOk:true},
+    {label:'DI Pipes',      field:'pipe_di',     fmt:'num', annType:'sum', color:'orange', zeroOk:true},
+    {label:'HDPE & AC Pipes',field:'pipe_hdpe_ac',fmt:'num',annType:'sum',                 zeroOk:true},
+    {label:'Pump Breakdowns',field:'pump_breakdowns',fmt:'num',annType:'sum',color:'red',  zeroOk:true},
+    {label:'Pump Hours Lost',field:'pump_hours_lost',fmt:'num',annType:'sum',               zeroOk:true},
+    {label:'Avg Supply Hours',field:'supply_hours',  fmt:'dec1',annType:'avg'},
+  ],
+  billed:[
+    {label:'Billed (Prepaid)',    field:'amt_billed_prepaid', fmt:'mwk', annType:'sum', color:'blue'},
+    {label:'Collected (Prepaid)', field:'cash_coll_prepaid',  fmt:'mwk', annType:'sum', color:'blue'},
+    {label:'Billed (Postpaid)',   field:'amt_billed_pp',      fmt:'mwk', annType:'sum', color:'orange'},
+    {label:'Collected (Postpaid)',field:'cash_coll_pp',       fmt:'mwk', annType:'sum', color:'orange'},
+    {label:'Total Billed',        field:'amt_billed',         fmt:'mwk', annType:'sum', bold:true},
+    {label:'Total Collections',   field:'cash_collected',     fmt:'mwk', annType:'sum', bold:true, color:'green'},
+  ],
+  collections:[
+    {label:'Billed (Prepaid)',    field:'amt_billed_prepaid', fmt:'mwk', annType:'sum'},
+    {label:'Collected (Prepaid)', field:'cash_coll_prepaid',  fmt:'mwk', annType:'sum'},
+    {label:'Billed (Postpaid)',   field:'amt_billed_pp',      fmt:'mwk', annType:'sum'},
+    {label:'Collected (Postpaid)',field:'cash_coll_pp',       fmt:'mwk', annType:'sum'},
+    {label:'Total Billed',        field:'amt_billed',         fmt:'mwk', annType:'sum', bold:true},
+    {label:'Total Collections',   field:'cash_collected',     fmt:'mwk', annType:'sum', bold:true, color:'green'},
+    {label:'Collection Rate (%)', field:'collection_rate',    fmt:'pct', annType:'ratio', numF:'cash_collected', denF:'amt_billed', ratioMul:100},
+  ],
+  charges:[
+    {label:'Service Charge',     field:'service_charge', fmt:'mwk', annType:'sum', color:'green'},
+    {label:'Meter Rental',       field:'meter_rental',   fmt:'mwk', annType:'sum', color:'blue'},
+    {label:'Ratio (SC/MR)',      field:'sc_mr_ratio',    fmt:'dec2', annType:'avg'},
+    {label:'Total Sales',        field:'total_sales',    fmt:'mwk', annType:'sum', bold:true},
+  ],
+  expenses:[
+    {label:'Chemicals',          field:'chem_cost',    fmt:'mwk', annType:'sum', color:'blue'},
+    {label:'Electricity',        field:'power_cost',   fmt:'mwk', annType:'sum', color:'orange'},
+    {label:'Fuel',               field:'fuel_cost',    fmt:'mwk', annType:'sum'},
+    {label:'Maintenance',        field:'maintenance',  fmt:'mwk', annType:'sum'},
+    {label:'Staff',              field:'staff_costs',  fmt:'mwk', annType:'sum', color:'green'},
+    {label:'Wages',              field:'wages',        fmt:'mwk', annType:'sum', color:'green'},
+    {label:'Other Overhead',     field:'other_overhead',fmt:'mwk',annType:'sum'},
+    {label:'Total Operating Costs',field:'op_cost',   fmt:'mwk', annType:'sum', bold:true},
+  ],
+  debtors:[
+    {label:'Private Debtors',    field:'private_debtors', fmt:'mwk', annType:'last', color:'orange'},
+    {label:'Public Debtors',     field:'public_debtors',  fmt:'mwk', annType:'last', color:'blue'},
+    {label:'Total Debtors',      field:'total_debtors',   fmt:'mwk', annType:'last', bold:true, color:'red'},
+  ],
+};
+
+/* Patch stuck B/F: use previous month's stuck_meters as B/F */
+function patchStuckBF(moData){
+  const bm={};for(const m of moData)bm[m.month]=m;
+  const prev={};
+  for(let i=0;i<FY_MO.length;i++){
+    const m=FY_MO[i];const prevM=i>0?FY_MO[i-1]:null;
+    if(prevM&&bm[prevM])prev[m]=bm[prevM].stuck_meters;
+  }
+  // Override B/F computed field
+  ROWS.stuck[0]={label:'Stuck Meters B/F',computed:m=>prev[m.month]??null,fmt:'num',annType:'none'};
+}
+
+/* ══════════════════════ CHARTS & STATE ════════════════════════════════ */
+const MONTHS_SHORT={April:'Apr',May:'May',June:'Jun',July:'Jul',August:'Aug',September:'Sep',October:'Oct',November:'Nov',December:'Dec',January:'Jan',February:'Feb',March:'Mar'};
+let dbState={year:2026};
+const pageCache={},chartReg={};
+const F={
+  num:n=>n==null?'—':Math.round(n).toLocaleString(),
+  M:n=>{if(n==null)return'—';const a=Math.abs(n);return a>=1e9?(n/1e9).toFixed(2)+'B':a>=1e6?(n/1e6).toFixed(1)+'M':Math.round(n).toLocaleString()},
+  pct:n=>n==null?'—':n.toFixed(1)+'%',m3:n=>{if(n==null)return'—';return n>=1e6?(n/1e6).toFixed(2)+'M m³':Math.round(n).toLocaleString()+' m³'},
+  mwk:n=>'MWK '+F.M(n),dec:n=>n==null?'—':n.toFixed(1),
+};
+const GC='rgba(0,0,0,0.04)',LC='#94A3B8';
+const baseScales=(yFmt)=>({
+  x:{ticks:{color:LC,font:{size:10},maxRotation:0,autoSkip:false},grid:{color:GC,drawBorder:false}},
+  y:{ticks:{color:LC,font:{size:10},callback:yFmt||undefined},grid:{color:GC},border:{display:false}}
+});
+const tooltipPlugin={
+  plugins:{
+    tooltip:{
+      backgroundColor:'rgba(26,43,60,.92)',
+      titleFont:{size:11,weight:'600'},
+      bodyFont:{size:11},
+      padding:10,
+      cornerRadius:6,
+      callbacks:{
+        label:ctx=>{
+          const v=ctx.raw;if(v==null)return '';
+          const a=Math.abs(v);
+          if(a>=1e9)return ` ${(v/1e9).toFixed(2)}B`;
+          if(a>=1e6)return ` ${(v/1e6).toFixed(2)}M`;
+          if(a>=1e3)return ` ${Math.round(v).toLocaleString()}`;
+          return ` ${v}`;
+        }
+      }
+    },
+    legend:{display:false}
+  }
+};
+const baseOpts=(yFmt)=>({responsive:true,maintainAspectRatio:false,animation:{duration:400},scales:baseScales(yFmt),...tooltipPlugin});
+function mkChart(id,cfg){
+  try{
+    if(chartReg[id])chartReg[id].destroy();
+    const el=document.getElementById(id);if(!el)return;
+    chartReg[id]=new Chart(el,cfg);
+  }catch(e){
+    console.warn('Chart error ['+id+']:',e.message);
+    const el=document.getElementById(id);
+    if(el)el.parentElement.innerHTML='<div style="display:flex;align-items:center;justify-content:center;height:100%;color:#94A3B8;font-size:11px">Chart unavailable</div>';
+  }
+}
+function kpis(cid,cards){
+  document.getElementById(cid).innerHTML=cards.map(c=>`
+    <div class="kc">
+      <div class="kc-lbl">${c.l}</div>
+      <div class="kc-val">${c.v}</div>
+      ${c.s?`<div class="kc-sub ${c.cls||''}">${c.s}</div>`:''}
+    </div>`).join('');
+}
+function errMsg(pid,msg){
+  document.getElementById(pid).innerHTML=`
+    <div class="err-shell">
+      <svg width="28" height="28" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.8"/><path d="M12 8v5M12 15.5v.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+      <div><strong>Unable to load data</strong></div>
+      <div style="font-size:11px;opacity:.7">${msg||'Check the server is running.'}</div>
+    </div>`;
+}
+function renderFilterChips(containerId){
+  const el=document.getElementById(containerId);if(!el)return;
+  const chips=[];
+  filterState.zones.forEach(z=>chips.push(`<span class="chip chip-zone">${z}</span>`));
+  filterState.schemes.forEach(s=>chips.push(`<span class="chip chip-scheme">${s}</span>`));
+  filterState.months.forEach(m=>chips.push(`<span class="chip chip-month">${m.slice(0,3)}</span>`));
+  el.innerHTML=chips.length?`<div class="filter-chips">${chips.join('')}</div>`:'';
+}
+let currentPage='overview';
+function navigate(page){
+  document.querySelectorAll('.db-page').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
+  document.getElementById('page-'+page).classList.add('active');
+  const navItem = document.querySelector(`[data-page="${page}"]`);
+  navItem?.classList.add('active');
+
+  // Auto-expand the group containing this item (if it's collapsed)
+  if (navItem) {
+    const parentSec = navItem.closest('.nav-section');
+    if (parentSec && parentSec.classList.contains('collapsed')) {
+      const grpId = parentSec.id.replace('sec-','');
+      const grp = document.getElementById('grp-' + grpId);
+      if (grp) {
+        grp.classList.remove('collapsed');
+        parentSec.classList.remove('collapsed');
+        _setSectionHeight(parentSec);
+        _saveNavState();
+      }
+    }
+  }
+
+  currentPage=page;if(!pageCache[page])loadPage(page);
+}
+function reloadPage(page){delete pageCache[page];loadPage(page);}
+function onFyChange(val){dbState.year=parseInt(val);Object.keys(pageCache).forEach(k=>delete pageCache[k]);loadPage(currentPage);}
+async function loadPage(page){
+  try{
+    const map={overview:loadOverview,production:loadProduction,'wt-ei':loadWtEi,customers:loadCustomers,connections:loadConnections,stuck:loadStuck,connectivity:loadConnectivity,breakdowns:loadBreakdowns,pipelines:loadPipelines,billed:loadBilled,collections:loadCollections,charges:loadCharges,expenses:loadExpenses,debtors:loadDebtors};
+    if(map[page])await map[page]();pageCache[page]=true;
+  }catch(e){console.error(page,e);}
+}
+
+async function loadOverview(){
+  kpis('ov-kpis',[{l:'Loading…',v:'—'}]);
+  try{
+    const [kpi,monthly,byZone]=await Promise.all([api('/api/analytics/kpi'),api('/api/analytics/monthly'),api('/api/analytics/by-zone')]);
+    kpis('ov-kpis',[
+      {l:'Active Customers', v:F.num(kpi.active_customers)},
+      {l:'Vol. Produced',    v:F.m3(kpi.vol_produced)},
+      {l:'NRW Rate',         v:F.pct(kpi.nrw_pct), s:kpi.nrw_pct>30?'▲ Above 30% target':'▼ Within target', cls:kpi.nrw_pct>30?'kc-dn':'kc-up'},
+      {l:'Cash Collected',   v:F.mwk(kpi.cash_collected)},
+      {l:'Total Billed',     v:F.mwk(kpi.amt_billed)},
+      {l:'Collection Rate',  v:F.pct(kpi.collection_rate), s:kpi.collection_rate>=90?'▲ On target':'▼ Below 90%', cls:kpi.collection_rate>=90?'kc-up':'kc-dn'},
+      {l:'Total Debtors',    v:F.mwk(kpi.total_debtors)},
+      {l:'Stuck Meters',     v:F.num(kpi.stuck_meters)},
+      {l:'New Connections',  v:F.num(kpi.new_connections)},
+      {l:'Avg Supply Hours', v:F.dec(kpi.supply_hours_avg)+' h'},
+      {l:'Power Cost',       v:F.mwk(kpi.power_cost)},
+      {l:'Op. Cost',         v:F.mwk(kpi.op_cost)},
+    ]);
+    document.getElementById('ov-kpis').className='kpi-row kpi-g4';
+    const dm=monthly.filter(m=>m.has_data),lb=dm.map(m=>MONTHS_SHORT[m.month]||m.month);
+    mkChart('ch-ov-cust',{type:'line',data:{labels:lb,datasets:[{data:dm.map(m=>m.active_customers||0),borderColor:'#1A8FD1',backgroundColor:'rgba(26,143,209,.08)',tension:.3,pointRadius:3,fill:true}]},options:{...baseOpts(v=>(v/1000).toFixed(0)+'K')}});
+    mkChart('ch-ov-coll',{type:'bar',data:{labels:lb,datasets:[{label:'Billed',data:dm.map(m=>+(m.amt_billed/1e6).toFixed(1)),backgroundColor:'rgba(26,143,209,.65)',borderRadius:3},{label:'Collected',data:dm.map(m=>+(m.cash_collected/1e6).toFixed(1)),backgroundColor:'rgba(22,163,74,.65)',borderRadius:3}]},options:{...baseOpts(v=>v+'M'),plugins:{...tooltipPlugin.plugins,legend:{display:true,labels:{font:{size:10},color:LC}}}}});
+    mkChart('ch-ov-nrw',{type:'line',data:{labels:lb,datasets:[{data:dm.map(m=>m.pct_nrw||0),borderColor:'#d97706',backgroundColor:'rgba(217,119,6,.08)',tension:.3,pointRadius:3,fill:true}]},options:{...baseOpts(v=>v+'%')}});
+    const zones=byZone.slice().sort((a,b)=>b.vol_produced-a.vol_produced);
+    mkChart('ch-ov-zone',{type:'bar',data:{labels:zones.map(z=>z.zone),datasets:[{data:zones.map(z=>+(z.vol_produced/1e6).toFixed(2)),backgroundColor:zones.map(z=>z.color||'#64748b'),borderRadius:4}]},options:{...baseOpts(v=>v+'M'),indexAxis:'y'}});
+  }catch(e){errMsg('ov-kpis','Overview failed — '+e.message);}
+}
+
+async function loadProduction(){
+  kpis('pr-kpis',[{l:'Loading…',v:'—'}]);
+  try{
+    const d=await apiPanel('production'),k=d.kpi;
+    kpis('pr-kpis',[{l:'Vol. Produced',v:F.m3(k.vol_produced)},{l:'Revenue Water',v:F.m3(k.revenue_water)},{l:'NRW Volume',v:F.m3(k.nrw)},{l:'NRW Rate',v:F.pct(k.nrw_pct),s:k.nrw_pct>30?'Above 30% target':'Within target',cls:k.nrw_pct>30?'kc-dn':'kc-up'}]);
+    document.getElementById('pr-kpis').className='kpi-row kpi-g4';
+    const dm=d.monthly.filter(m=>m.has_data),lb=dm.map(m=>MONTHS_SHORT[m.month]||m.month);
+    document.getElementById('pr-leg').innerHTML='<span class="legend-item"><span class="legend-sq" style="background:#1A8FD1"></span>Vol. Produced</span><span class="legend-item"><span class="legend-sq" style="background:#d97706"></span>NRW %</span>';
+    mkChart('ch-pr-main',{type:'bar',data:{labels:lb,datasets:[{label:'Vol.',data:dm.map(m=>+(m.vol_produced/1e6).toFixed(2)),backgroundColor:'rgba(26,143,209,.65)',borderRadius:3,yAxisID:'y'},{type:'line',label:'NRW %',data:dm.map(m=>m.pct_nrw||0),borderColor:'#d97706',tension:.3,pointRadius:3,yAxisID:'y1'}]},options:{responsive:true,maintainAspectRatio:false,animation:{duration:400},scales:{x:{ticks:{color:LC,font:{size:10},maxRotation:0},grid:{color:GC,drawBorder:false}},y:{ticks:{color:LC,font:{size:10},callback:v=>v+'M'},grid:{color:GC},border:{display:false}},y1:{position:'right',ticks:{color:'#d97706',font:{size:10},callback:v=>v+'%'},grid:{display:false},border:{display:false}}},...tooltipPlugin}});
+    const bz=d.by_zone;
+    mkChart('ch-pr-zone',{type:'bar',data:{labels:bz.map(z=>z.zone),datasets:[{data:bz.map(z=>z.nrw_pct),backgroundColor:bz.map(z=>z.color||'#64748b'),borderRadius:4}]},options:{...baseOpts(v=>v+'%'),indexAxis:'y'}});
+    mkChart('ch-pr-vol',{type:'bar',data:{labels:bz.map(z=>z.zone),datasets:[{data:bz.map(z=>+(z.vol_produced/1e6).toFixed(2)),backgroundColor:bz.map(z=>z.color||'#64748b'),borderRadius:4}]},options:{...baseOpts(v=>v+'M'),indexAxis:'y'}});
+    renderTable('tbl-production','PRODUCTION, CONSUMPTION, RW & NRW REPORT',ROWS.production,d.monthly);
+  }catch(e){errMsg('pr-kpis','Production failed');}
+}
+
+async function loadWtEi(){
+  kpis('wt-kpis',[{l:'Loading…',v:'—'}]);
+  try{
+    const d=await apiPanel('wt-ei'),k=d.kpi;
+    kpis('wt-kpis',[{l:'Chemical Cost',v:F.mwk(k.chem_cost)},{l:'Chem / m³',v:'MWK '+F.dec(k.chem_per_m3)},{l:'Power (kWh)',v:F.num(k.power_kwh)+' kWh'},{l:'Power Cost',v:F.mwk(k.power_cost)},{l:'Power / m³',v:'MWK '+F.dec(k.power_per_m3)},{l:'Avg Supply Hours',v:F.dec(k.supply_hours_avg)+' h'},{l:'Power Fail Hours',v:F.num(k.power_fail_hours)+' h'},{l:'Chlorine Used',v:F.num(k.chlorine_kg)+' kg'}]);
+    document.getElementById('wt-kpis').className='kpi-row kpi-g4';
+    const dm=d.monthly.filter(m=>m.has_data),lb=dm.map(m=>MONTHS_SHORT[m.month]||m.month);
+    mkChart('ch-wt-chem',{type:'bar',data:{labels:lb,datasets:[{data:dm.map(m=>+(m.chem_cost/1e6).toFixed(2)),backgroundColor:'rgba(124,58,237,.65)',borderRadius:3}]},options:{...baseOpts(v=>v+'M')}});
+    mkChart('ch-wt-power',{type:'bar',data:{labels:lb,datasets:[{data:dm.map(m=>+(m.power_kwh/1000).toFixed(1)),backgroundColor:'rgba(217,119,6,.65)',borderRadius:3}]},options:{...baseOpts(v=>v+'K kWh')}});
+    mkChart('ch-wt-split',{type:'doughnut',data:{labels:['Chlorine','Alum','Soda Ash','KMnO₄'],datasets:[{data:[k.chlorine_kg,k.alum_kg,k.soda_ash_kg,k.kmno4_kg],backgroundColor:['#0077b6','#0d9488','#16a34a','#d97706'],borderWidth:2}]},options:{responsive:true,maintainAspectRatio:false,cutout:'55%',...tooltipPlugin,plugins:{...tooltipPlugin.plugins,legend:{position:'right',labels:{font:{size:11},color:LC}}}}});
+    mkChart('ch-wt-hours',{type:'bar',data:{labels:lb,datasets:[{label:'Supply',data:dm.map(m=>m.supply_hours||0),backgroundColor:'rgba(22,163,74,.6)',borderRadius:3,stack:'s'},{label:'Fail',data:dm.map(m=>m.power_fail_hours||0),backgroundColor:'rgba(220,38,38,.6)',borderRadius:3,stack:'s'}]},options:{...baseOpts(v=>v+' h')}});
+    renderTable('tbl-wt-ei','WATER TREATMENT & ENVIRONMENTAL ISSUES REPORT',ROWS.wt_ei,d.monthly);
+  }catch(e){errMsg('wt-kpis','WT & EI failed');}
+}
+
+async function loadCustomers(){
+  kpis('cu-kpis',[{l:'Loading…',v:'—'}]);
+  try{
+    const d=await apiPanel('customers'),k=d.kpi;
+    kpis('cu-kpis',[{l:'Active Customers',v:F.num(k.active_customers)},{l:'Postpaid',v:F.num(k.active_postpaid)},{l:'Prepaid',v:F.num(k.active_prepaid)},{l:'Population Served',v:F.num(k.pop_supplied)},{l:'Permanent Staff',v:F.num(k.perm_staff)},{l:'Temporary Staff',v:F.num(k.temp_staff)}]);
+    document.getElementById('cu-kpis').className='kpi-row kpi-g3';
+    const dm=d.monthly.filter(m=>m.has_data),lb=dm.map(m=>MONTHS_SHORT[m.month]||m.month);
+    mkChart('ch-cu-main',{type:'line',data:{labels:lb,datasets:[{label:'Active',data:dm.map(m=>m.active_customers||0),borderColor:'#1A8FD1',tension:.3,pointRadius:3},{label:'Postpaid',data:dm.map(m=>m.active_postpaid||0),borderColor:'#0d9488',tension:.3,borderDash:[4,2],pointRadius:3},{label:'Prepaid',data:dm.map(m=>m.active_prepaid||0),borderColor:'#7c3aed',tension:.3,borderDash:[4,2],pointRadius:3}]},options:{...baseOpts(v=>(v/1000).toFixed(0)+'K')}});
+    mkChart('ch-cu-zone',{type:'bar',data:{labels:d.by_zone.map(z=>z.zone),datasets:[{label:'Postpaid',data:d.by_zone.map(z=>z.active_postpaid),backgroundColor:'#1A8FD1',borderRadius:3,stack:'s'},{label:'Prepaid',data:d.by_zone.map(z=>z.active_prepaid),backgroundColor:'#7c3aed',borderRadius:3,stack:'s'}]},options:{...baseOpts(),indexAxis:'y'}});
+    renderTable('tbl-customers','CUSTOMERS REPORT',ROWS.customers,d.monthly);
+  }catch(e){errMsg('cu-kpis','Customers failed');}
+}
+
+async function loadConnections(){
+  kpis('cn-kpis',[{l:'Loading…',v:'—'}]);
+  try{
+    const d=await apiPanel('connections'),k=d.kpi;
+    kpis('cn-kpis',[{l:'New Connections',v:F.num(k.new_connections)},{l:'Applications',v:F.num(k.conn_applied)},{l:'Backlog (C/Fwd)',v:F.num(k.all_conn_cfwd)},{l:'Prepaid Installed',v:F.num(k.prepaid_installed)},{l:'Distance (km)',v:F.dec(k.distances_km)+' km'}]);
+    document.getElementById('cn-kpis').className='kpi-row kpi-g3';
+    const dm=d.monthly.filter(m=>m.has_data),lb=dm.map(m=>MONTHS_SHORT[m.month]||m.month);
+    mkChart('ch-cn-main',{type:'bar',data:{labels:lb,datasets:[{label:'Applied',data:dm.map(m=>m.conn_applied||0),backgroundColor:'rgba(26,143,209,.4)',borderRadius:3},{label:'Done',data:dm.map(m=>m.new_connections||0),backgroundColor:'rgba(22,163,74,.7)',borderRadius:3}]},options:{...baseOpts()}});
+    mkChart('ch-cn-zone',{type:'bar',data:{labels:d.by_zone.map(z=>z.zone),datasets:[{data:d.by_zone.map(z=>z.new_connections),backgroundColor:d.by_zone.map(z=>z.color||'#64748b'),borderRadius:4}]},options:{...baseOpts(),indexAxis:'y'}});
+    renderTable('tbl-connections','NEW WATER CONNECTIONS REPORT',ROWS.connections,d.monthly);
+  }catch(e){errMsg('cn-kpis','NWCs failed');}
+}
+
+async function loadStuck(){
+  kpis('st-kpis',[{l:'Loading…',v:'—'}]);
+  try{
+    const d=await apiPanel('stuck'),k=d.kpi;
+    kpis('st-kpis',[{l:'Stuck C/Fwd',v:F.num(k.stuck_meters)},{l:'New Stuck',v:F.num(k.stuck_new)},{l:'Repaired',v:F.num(k.stuck_repaired)},{l:'Replaced',v:F.num(k.stuck_replaced)},{l:'Per 1K Customers',v:F.dec(k.per_1k_customers)},{l:'Repair Rate',v:F.pct(k.repair_rate)}]);
+    document.getElementById('st-kpis').className='kpi-row kpi-g3';
+    const dm=d.monthly.filter(m=>m.has_data),lb=dm.map(m=>MONTHS_SHORT[m.month]||m.month);
+    mkChart('ch-st-main',{type:'bar',data:{labels:lb,datasets:[{label:'New',data:dm.map(m=>m.stuck_new||0),backgroundColor:'rgba(220,38,38,.65)',borderRadius:3,stack:'s'},{label:'Repaired',data:dm.map(m=>-(m.stuck_repaired||0)),backgroundColor:'rgba(22,163,74,.65)',borderRadius:3,stack:'s'},{label:'Replaced',data:dm.map(m=>-(m.stuck_replaced||0)),backgroundColor:'rgba(13,148,136,.65)',borderRadius:3,stack:'s'}]},options:{...baseOpts()}});
+    mkChart('ch-st-zone',{type:'bar',data:{labels:d.by_zone.map(z=>z.zone),datasets:[{data:d.by_zone.map(z=>z.stuck_meters),backgroundColor:d.by_zone.map(z=>z.color||'#64748b'),borderRadius:4}]},options:{...baseOpts(),indexAxis:'y'}});
+    patchStuckBF(d.monthly);
+    renderTable('tbl-stuck','STUCK METERS REPORT',ROWS.stuck,d.monthly);
+  }catch(e){errMsg('st-kpis','Stuck Meters failed');}
+}
+
+async function loadConnectivity(){
+  kpis('co-kpis',[{l:'Loading…',v:'—'}]);
+  try{
+    const d=await apiPanel('connectivity'),k=d.kpi;
+    kpis('co-kpis',[{l:'Applications',v:F.num(k.conn_applied)},{l:'Fully Paid',v:F.num(k.conn_fully_paid)},{l:'Days to Quotation',v:F.dec(k.days_to_quotation)+' d'},{l:'Days to Connect',v:F.dec(k.days_to_connect)+' d'},{l:'Connectivity Rate',v:F.pct(k.connectivity_rate)},{l:'Queries Received',v:F.num(k.queries_received)},{l:'Time to Resolve',v:F.dec(k.time_to_resolve)+' d'},{l:'Avg Response Time',v:F.dec(k.response_time_avg)+' d'}]);
+    document.getElementById('co-kpis').className='kpi-row kpi-g4';
+    const dm=d.monthly.filter(m=>m.has_data),lb=dm.map(m=>MONTHS_SHORT[m.month]||m.month);
+    mkChart('ch-co-days',{type:'line',data:{labels:lb,datasets:[{label:'Days to Quotation',data:dm.map(m=>m.days_to_quotation||0),borderColor:'#d97706',tension:.3,pointRadius:3},{label:'Days to Connect',data:dm.map(m=>m.days_to_connect||0),borderColor:'#7c3aed',tension:.3,pointRadius:3}]},options:{...baseOpts(v=>v+' d'),plugins:{...tooltipPlugin.plugins,legend:{labels:{color:LC,font:{size:10}}}}}});
+    mkChart('ch-co-conn',{type:'bar',data:{labels:lb,datasets:[{label:'Applied',data:dm.map(m=>m.conn_applied||0),backgroundColor:'rgba(26,143,209,.4)',borderRadius:3},{label:'Done',data:dm.map(m=>m.new_connections||0),backgroundColor:'rgba(22,163,74,.7)',borderRadius:3}]},options:{...baseOpts()}});
+    renderTable('tbl-connectivity','CONNECTIVITY REPORT',ROWS.connectivity,d.monthly);
+  }catch(e){errMsg('co-kpis','Connectivity failed');}
+}
+
+async function loadBreakdowns(){
+  kpis('bd-kpis',[{l:'Loading…',v:'—'}]);
+  try{
+    const d=await apiPanel('breakdowns'),k=d.kpi;
+    kpis('bd-kpis',[{l:'Pipe Breakdowns',v:F.num(k.pipe_breakdowns)},{l:'Pump Breakdowns',v:F.num(k.pump_breakdowns)},{l:'Total Breakdowns',v:F.num(k.total)},{l:'Per 1K Customers',v:F.dec(k.per_1k_customers)},{l:'Pump Hours Lost',v:F.num(k.pump_hours_lost)+' h'}]);
+    document.getElementById('bd-kpis').className='kpi-row kpi-g3';
+    const dm=d.monthly.filter(m=>m.has_data),lb=dm.map(m=>MONTHS_SHORT[m.month]||m.month);
+    mkChart('ch-bd-main',{type:'bar',data:{labels:lb,datasets:[{label:'Pipe',data:dm.map(m=>m.pipe_breakdowns||0),backgroundColor:'rgba(220,38,38,.65)',borderRadius:3,stack:'s'},{label:'Pump',data:dm.map(m=>m.pump_breakdowns||0),backgroundColor:'rgba(217,119,6,.65)',borderRadius:3,stack:'s'}]},options:{...baseOpts()}});
+    mkChart('ch-bd-zone',{type:'bar',data:{labels:d.by_zone.map(z=>z.zone),datasets:[{label:'Pipe',data:d.by_zone.map(z=>z.pipe_breakdowns),backgroundColor:'rgba(220,38,38,.65)',borderRadius:3,stack:'s'},{label:'Pump',data:d.by_zone.map(z=>z.pump_breakdowns),backgroundColor:'rgba(217,119,6,.65)',borderRadius:3,stack:'s'}]},options:{...baseOpts(),indexAxis:'y'}});
+    renderTable('tbl-breakdowns','BREAKDOWNS REPORT',ROWS.breakdowns,d.monthly);
+  }catch(e){errMsg('bd-kpis','Breakdowns failed');}
+}
+
+async function loadPipelines(){
+  kpis('pl-kpis',[{l:'Loading…',v:'—'}]);
+  try{
+    const d=await apiPanel('pipelines'),k=d.kpi;
+    kpis('pl-kpis',[{l:'Total Dev Lines',v:F.num(k.dev_lines_total)+' m'},{l:'32mm',v:F.num(k.dev_lines_32mm)+' m'},{l:'50mm',v:F.num(k.dev_lines_50mm)+' m'},{l:'63mm',v:F.num(k.dev_lines_63mm)+' m'},{l:'90mm',v:F.num(k.dev_lines_90mm)+' m'},{l:'110mm',v:F.num(k.dev_lines_110mm)+' m'}]);
+    document.getElementById('pl-kpis').className='kpi-row kpi-g3';
+    const sp=d.size_split.filter(s=>s.value>0);
+    mkChart('ch-pl-split',{type:'doughnut',data:{labels:sp.map(s=>s.label),datasets:[{data:sp.map(s=>s.value),backgroundColor:sp.map(s=>s.color),borderWidth:2}]},options:{responsive:true,maintainAspectRatio:false,cutout:'55%',...tooltipPlugin,plugins:{...tooltipPlugin.plugins,legend:{position:'right',labels:{font:{size:11},color:LC}}}}});
+    const dm=d.monthly.filter(m=>m.has_data),lb=dm.map(m=>MONTHS_SHORT[m.month]||m.month);
+    mkChart('ch-pl-main',{type:'bar',data:{labels:lb,datasets:[{data:dm.map(m=>m.dev_lines_total||0),backgroundColor:'rgba(22,163,74,.65)',borderRadius:3}]},options:{...baseOpts()}});
+    renderPipelinesTable('tbl-pipelines',d.monthly);
+  }catch(e){errMsg('pl-kpis','Pipelines failed');}
+}
+
+async function loadBilled(){
+  kpis('bi-kpis',[{l:'Loading…',v:'—'}]);
+  try{
+    const d=await apiPanel('billed'),k=d.kpi;
+    kpis('bi-kpis',[{l:'Total Billed',v:F.mwk(k.amt_billed)},{l:'Postpaid Billed',v:F.mwk(k.amt_billed_pp),s:'('+F.pct(k.pp_pct)+')',cls:'kc-nt'},{l:'Prepaid Billed',v:F.mwk(k.amt_billed_prepaid),s:'('+F.pct(k.prepaid_pct)+')',cls:'kc-nt'},{l:'Total Sales',v:F.mwk(k.total_sales)}]);
+    document.getElementById('bi-kpis').className='kpi-row kpi-g4';
+    const dm=d.monthly.filter(m=>m.has_data),lb=dm.map(m=>MONTHS_SHORT[m.month]||m.month);
+    mkChart('ch-bi-main',{type:'bar',data:{labels:lb,datasets:[{label:'Postpaid',data:dm.map(m=>+(m.amt_billed_pp/1e6).toFixed(1)),backgroundColor:'rgba(26,143,209,.7)',borderRadius:3,stack:'s'},{label:'Prepaid',data:dm.map(m=>+(m.amt_billed_prepaid/1e6).toFixed(1)),backgroundColor:'rgba(124,58,237,.7)',borderRadius:3,stack:'s'}]},options:{...baseOpts(v=>v+'M'),plugins:{...tooltipPlugin.plugins,legend:{labels:{color:LC,font:{size:10}}}}}});
+    mkChart('ch-bi-zone',{type:'bar',data:{labels:d.by_zone.map(z=>z.zone),datasets:[{data:d.by_zone.map(z=>+(z.amt_billed/1e6).toFixed(1)),backgroundColor:d.by_zone.map(z=>z.color||'#64748b'),borderRadius:4}]},options:{...baseOpts(v=>v+'M'),indexAxis:'y'}});
+    mkChart('ch-bi-split',{type:'doughnut',data:{labels:['Postpaid','Prepaid'],datasets:[{data:[k.amt_billed_pp,k.amt_billed_prepaid],backgroundColor:['#1A8FD1','#7c3aed'],borderWidth:2}]},options:{responsive:true,maintainAspectRatio:false,cutout:'55%',...tooltipPlugin,plugins:{...tooltipPlugin.plugins,legend:{position:'right',labels:{font:{size:11},color:LC}}}}});
+    renderTable('tbl-billed','BILLED AMOUNTS & COLLECTIONS REPORT',ROWS.billed,d.monthly);
+  }catch(e){errMsg('bi-kpis','Billed Amount failed');}
+}
+
+async function loadCollections(){
+  kpis('cl-kpis',[{l:'Loading…',v:'—'}]);
+  try{
+    const d=await apiPanel('collections'),k=d.kpi;
+    kpis('cl-kpis',[{l:'Total Billed',v:F.mwk(k.amt_billed)},{l:'Cash Collected',v:F.mwk(k.cash_collected)},{l:'Collection Rate',v:F.pct(k.collection_rate),s:k.collection_rate>=90?'On target':'Below 90%',cls:k.collection_rate>=90?'kc-up':'kc-dn'},{l:'Billing Gap',v:F.mwk(k.billing_gap)},{l:'PP Collected',v:F.mwk(k.cash_coll_pp)},{l:'Prepaid Collected',v:F.mwk(k.cash_coll_prepaid)}]);
+    document.getElementById('cl-kpis').className='kpi-row kpi-g3';
+    const dm=d.monthly.filter(m=>m.has_data),lb=dm.map(m=>MONTHS_SHORT[m.month]||m.month);
+    mkChart('ch-cl-main',{type:'bar',data:{labels:lb,datasets:[{label:'Billed',data:dm.map(m=>+(m.amt_billed/1e6).toFixed(1)),backgroundColor:'rgba(26,143,209,.6)',borderRadius:3},{label:'Collected',data:dm.map(m=>+(m.cash_collected/1e6).toFixed(1)),backgroundColor:'rgba(22,163,74,.7)',borderRadius:3}]},options:{...baseOpts(v=>v+'M'),plugins:{...tooltipPlugin.plugins,legend:{labels:{color:LC,font:{size:10}}}}}});
+    mkChart('ch-cl-rate',{type:'bar',data:{labels:d.by_zone.map(z=>z.zone),datasets:[{data:d.by_zone.map(z=>z.amt_billed>0?+(z.cash_collected/z.amt_billed*100).toFixed(1):0),backgroundColor:d.by_zone.map(z=>z.color||'#64748b'),borderRadius:4}]},options:{...baseOpts(v=>v+'%'),indexAxis:'y'}});
+    mkChart('ch-cl-split',{type:'bar',data:{labels:lb,datasets:[{label:'PP',data:dm.map(m=>+(m.cash_coll_pp/1e6).toFixed(1)),backgroundColor:'rgba(26,143,209,.7)',borderRadius:3,stack:'s'},{label:'Prepaid',data:dm.map(m=>+(m.cash_coll_prepaid/1e6).toFixed(1)),backgroundColor:'rgba(124,58,237,.7)',borderRadius:3,stack:'s'}]},options:{...baseOpts(v=>v+'M')}});
+    renderTable('tbl-collections','BILLED AMOUNTS & COLLECTIONS REPORT',ROWS.collections,d.monthly);
+  }catch(e){errMsg('cl-kpis','Collections failed');}
+}
+
+async function loadCharges(){
+  kpis('ch-kpis',[{l:'Loading…',v:'—'}]);
+  try{
+    const d=await apiPanel('charges'),k=d.kpi;
+    kpis('ch-kpis',[{l:'Service Charge',v:F.mwk(k.service_charge),s:'('+F.pct(k.sc_pct)+' of sales)',cls:'kc-nt'},{l:'Meter Rental',v:F.mwk(k.meter_rental),s:'('+F.pct(k.mr_pct)+' of sales)',cls:'kc-nt'},{l:'Total Sales',v:F.mwk(k.total_sales)}]);
+    document.getElementById('ch-kpis').className='kpi-row kpi-g3';
+    const dm=d.monthly.filter(m=>m.has_data),lb=dm.map(m=>MONTHS_SHORT[m.month]||m.month);
+    mkChart('ch-ch-main',{type:'bar',data:{labels:lb,datasets:[{label:'Service Charge',data:dm.map(m=>+(m.service_charge/1e6).toFixed(2)),backgroundColor:'rgba(22,163,74,.7)',borderRadius:3,stack:'s'},{label:'Meter Rental',data:dm.map(m=>+(m.meter_rental/1e6).toFixed(2)),backgroundColor:'rgba(26,143,209,.7)',borderRadius:3,stack:'s'}]},options:{...baseOpts(v=>v+'M'),plugins:{...tooltipPlugin.plugins,legend:{labels:{color:LC,font:{size:10}}}}}});
+    mkChart('ch-ch-zone',{type:'bar',data:{labels:d.by_zone.map(z=>z.zone),datasets:[{data:d.by_zone.map(z=>+(z.total_sales/1e6).toFixed(1)),backgroundColor:d.by_zone.map(z=>z.color||'#64748b'),borderRadius:4}]},options:{...baseOpts(v=>v+'M'),indexAxis:'y'}});
+    mkChart('ch-ch-split',{type:'doughnut',data:{labels:['Service Charge','Meter Rental'],datasets:[{data:[k.service_charge,k.meter_rental],backgroundColor:['#16a34a','#1A8FD1'],borderWidth:2}]},options:{responsive:true,maintainAspectRatio:false,cutout:'55%',...tooltipPlugin,plugins:{...tooltipPlugin.plugins,legend:{position:'right',labels:{font:{size:11},color:LC}}}}});
+    renderTable('tbl-charges','SERVICE CHARGES & METER RENTALS REPORT',ROWS.charges,d.monthly);
+  }catch(e){errMsg('ch-kpis','Charges failed');}
+}
+
+async function loadExpenses(){
+  kpis('ex-kpis',[{l:'Loading…',v:'—'}]);
+  try{
+    const d=await apiPanel('expenses'),k=d.kpi;
+    kpis('ex-kpis',[{l:'Total OpEx',v:F.mwk(k.op_cost)},{l:'Staff Costs',v:F.mwk(k.staff_costs)},{l:'Wages',v:F.mwk(k.wages)},{l:'Power Costs',v:F.mwk(k.power_cost)},{l:'Chemical Costs',v:F.mwk(k.chem_cost)},{l:'Fuel Costs',v:F.mwk(k.fuel_cost)},{l:'Maintenance',v:F.mwk(k.maintenance)},{l:'Power (kWh)',v:F.num(k.power_kwh)+' kWh'}]);
+    document.getElementById('ex-kpis').className='kpi-row kpi-g4';
+    const sp=d.cost_split.filter(s=>s.value>0);
+    mkChart('ch-ex-split',{type:'doughnut',data:{labels:sp.map(s=>s.label),datasets:[{data:sp.map(s=>+(s.value/1e6).toFixed(1)),backgroundColor:sp.map(s=>s.color),borderWidth:2}]},options:{responsive:true,maintainAspectRatio:false,cutout:'60%',...tooltipPlugin,plugins:{...tooltipPlugin.plugins,legend:{position:'right',labels:{font:{size:11},color:LC}}}}});
+    mkChart('ch-ex-zone',{type:'bar',data:{labels:d.by_zone.map(z=>z.zone),datasets:[{data:d.by_zone.map(z=>+(z.op_cost/1e6).toFixed(1)),backgroundColor:d.by_zone.map(z=>z.color||'#64748b'),borderRadius:4}]},options:{...baseOpts(v=>v+'M'),indexAxis:'y'}});
+    renderTable('tbl-expenses','EXPENSES REPORT',ROWS.expenses,d.monthly);
+  }catch(e){errMsg('ex-kpis','Expenses failed');}
+}
+
+async function loadDebtors(){
+  kpis('de-kpis',[{l:'Loading…',v:'—'}]);
+  try{
+    const d=await apiPanel('debtors'),k=d.kpi;
+    kpis('de-kpis',[{l:'Total Debtors',v:F.mwk(k.total_debtors)},{l:'Private Debtors',v:F.mwk(k.private_debtors)},{l:'Public Debtors',v:F.mwk(k.public_debtors)},{l:'Private Share',v:F.pct(k.private_pct)},{l:'Debtors / Billed',v:F.pct(k.debtors_to_billed)}]);
+    document.getElementById('de-kpis').className='kpi-row kpi-g3';
+    const dm=d.monthly.filter(m=>m.has_data),lb=dm.map(m=>MONTHS_SHORT[m.month]||m.month);
+    mkChart('ch-de-main',{type:'line',data:{labels:lb,datasets:[{label:'Total Debtors',data:dm.map(m=>+(m.total_debtors/1e6).toFixed(2)),borderColor:'#dc2626',backgroundColor:'rgba(220,38,38,.07)',tension:.3,pointRadius:3,fill:true}]},options:{...baseOpts(v=>v+'M')}});
+    mkChart('ch-de-zone',{type:'bar',data:{labels:d.by_zone.map(z=>z.zone),datasets:[{label:'Private',data:d.by_zone.map(z=>+(z.private_debtors/1e6).toFixed(2)),backgroundColor:'#dc2626',borderRadius:3,stack:'s'},{label:'Public',data:d.by_zone.map(z=>+(z.public_debtors/1e6).toFixed(2)),backgroundColor:'#d97706',borderRadius:3,stack:'s'}]},options:{...baseOpts(v=>v+'M'),indexAxis:'y'}});
+    renderTable('tbl-debtors','DEBTORS REPORT',ROWS.debtors,d.monthly);
+  }catch(e){errMsg('de-kpis','Debtors failed');}
+}
+
+/* ══════════════════════ COLLAPSIBLE NAV GROUPS ═══════════════════════ */
+const NAV_GROUPS = ['ops','cust','fin'];
+const NAV_STORAGE_KEY = 'srwb_nav_collapsed';
+
+function _saveNavState() {
+  // Save which groups are currently OPEN so next visit restores the user's choice.
+  // Empty array means "all collapsed" — the default first-run state.
+  const open = NAV_GROUPS.filter(id => !document.getElementById('grp-'+id)?.classList.contains('collapsed'));
+  localStorage.setItem(NAV_STORAGE_KEY, JSON.stringify(open));
+}
+
+function _setSectionHeight(secEl) {
+  // Set explicit max-height so CSS transition works
+  if (!secEl.classList.contains('collapsed')) {
+    secEl.style.maxHeight = secEl.scrollHeight + 'px';
+  } else {
+    secEl.style.maxHeight = '0';
+  }
+}
+
+function toggleNavGroup(id) {
+  const grp = document.getElementById('grp-' + id);
+  const sec = document.getElementById('sec-' + id);
+  if (!grp || !sec) return;
+
+  const isCollapsed = grp.classList.toggle('collapsed');
+  sec.classList.toggle('collapsed', isCollapsed);
+  _setSectionHeight(sec);
+  _saveNavState();
+}
+
+function initNavGroups() {
+  // Measure natural height first so the CSS transition has a target to animate to
+  NAV_GROUPS.forEach(id => {
+    const sec = document.getElementById('sec-' + id);
+    if (sec) sec.style.maxHeight = sec.scrollHeight + 'px';
+  });
+
+  // Which groups did the user explicitly open on their last visit?
+  // Default (first visit / cleared storage) = [] → everything collapses.
+  let savedOpen = [];
+  try { savedOpen = JSON.parse(localStorage.getItem(NAV_STORAGE_KEY) || '[]'); } catch {}
+
+  NAV_GROUPS.forEach(id => {
+    const grp = document.getElementById('grp-' + id);
+    const sec = document.getElementById('sec-' + id);
+    if (!grp || !sec) return;
+    // Collapse unless the user explicitly had this group open last visit
+    if (!savedOpen.includes(id)) {
+      grp.classList.add('collapsed');
+      sec.classList.add('collapsed');
+      sec.style.maxHeight = '0';
+    }
+  });
+}
+
+/* ══════════════════════ INIT ══════════════════════════════════════════ */
+async function initDashboard(){
+  const user=getUser();
+  if(user){document.getElementById('user-av').textContent=user.username?.[0]?.toUpperCase()||'U';document.getElementById('user-nm').textContent=user.username;document.getElementById('user-rl').textContent=user.role;}
+  const now=new Date();const calYear=now.getMonth()>=3?now.getFullYear()+1:now.getFullYear();
+  try{
+    const token=getToken();
+    const years=await fetch(`${API}/api/catalogue/years`,{headers:{Authorization:'Bearer '+token}}).then(r=>r.ok?r.json():[]);
+    // Default to the latest year that has actual data in the DB.
+    // Falls back to the calendar-derived year if the DB is empty.
+    const latestDbYear = years.length ? Math.max(...years) : calYear;
+    dbState.year = latestDbYear;
+    const sel=document.getElementById('fy-select');sel.innerHTML='';
+    const all=[...new Set([...years,calYear])].sort((a,b)=>a-b);
+    for(const y of all){const opt=document.createElement('option');opt.value=y;opt.textContent=`FY ${y-1}/${String(y).slice(-2)}`;if(y===latestDbYear)opt.selected=true;sel.appendChild(opt);}
+  }catch{
+    dbState.year=calYear;
+    const sel=document.getElementById('fy-select');sel.innerHTML=`<option value="${calYear}" selected>FY ${calYear-1}/${String(calYear).slice(-2)}</option>`;
+  }
+  await loadZoneSchemes();
+  initNavGroups();
+  loadPage('overview');
+}
+
+async function loadLoginKpis(){
+  try{const token=getToken();if(!token)return;const kpi=await fetch(`${API}/api/analytics/kpi`,{headers:{Authorization:'Bearer '+token}}).then(r=>r.ok?r.json():null);if(!kpi||!kpi.active_customers)return;document.getElementById('lkpi-cust').textContent=F.num(kpi.active_customers);document.getElementById('lkpi-prod').textContent=F.m3(kpi.vol_produced);document.getElementById('lkpi-nrw').textContent=F.pct(kpi.nrw_pct);document.getElementById('lkpi-cash').textContent=F.mwk(kpi.cash_collected);document.getElementById('login-kpi-grid').style.visibility='visible';}catch{}}
+</script>
+</body>
+</html>
