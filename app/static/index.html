@@ -1630,16 +1630,17 @@ async function initDashboard(){
   try{
     const token=getToken();
     const years=await fetch(`${API}/api/catalogue/years`,{headers:{Authorization:'Bearer '+token}}).then(r=>r.ok?r.json():[]);
-    // Default to the latest year that has actual data in the DB.
-    // Falls back to the calendar-derived year if the DB is empty.
     const latestDbYear = years.length ? Math.max(...years) : calYear;
     dbState.year = latestDbYear;
     const sel=document.getElementById('fy-select');sel.innerHTML='';
-    const all=[...new Set([...years,calYear])].sort((a,b)=>a-b);
+    // Always show a useful range: current FY, previous two, plus any DB years
+    const range=[calYear-2, calYear-1, calYear];
+    const all=[...new Set([...years,...range])].sort((a,b)=>a-b);
     for(const y of all){const opt=document.createElement('option');opt.value=y;opt.textContent=`FY ${y-1}/${String(y).slice(-2)}`;if(y===latestDbYear)opt.selected=true;sel.appendChild(opt);}
   }catch{
     dbState.year=calYear;
-    const sel=document.getElementById('fy-select');sel.innerHTML=`<option value="${calYear}" selected>FY ${calYear-1}/${String(calYear).slice(-2)}</option>`;
+    const sel=document.getElementById('fy-select');sel.innerHTML='';
+    for(const y of [calYear-2,calYear-1,calYear]){const opt=document.createElement('option');opt.value=y;opt.textContent=`FY ${y-1}/${String(y).slice(-2)}`;if(y===calYear)opt.selected=true;sel.appendChild(opt);}
   }
   await loadZoneSchemes();
   initNavGroups();
