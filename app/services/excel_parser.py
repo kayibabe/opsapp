@@ -38,157 +38,201 @@ log = logging.getLogger(__name__)
 # about capitalisation or minor punctuation differences in the Excel header.
 #
 COLUMN_MAP: dict[str, str] = {
-    # ── Dimensions ──────────────────────────────────────────────────────
-    "zone":                       "zone",
-    "scheme":                     "scheme",
-    "month":                      "month",
-    "year":                       "year",
+    # ── DIMENSIONS (row 2 of DataEntry sheet, normalised) ────────────────
+    "zone":                              "zone",
+    "scheme":                            "scheme",
+    "fiscal_year":                       "fiscal_year",
+    "year":                              "year",
+    "month_no":                          "month_no",
+    "month":                             "month",
+    "quarter":                           "quarter",
 
-    # ── Customers ───────────────────────────────────────────────────────
-    "metered_customers":          "cust_metered",
-    "cust_metered":               "cust_metered",
-    "disconnected_customers":     "cust_disconnected",
-    "cust_disconnected":          "cust_disconnected",
-    "active_customers":           "cust_active",
-    "cust_active":                "cust_active",
-    "active_postpaid":            "cust_postpaid",
-    "cust_postpaid":              "cust_postpaid",
-    "active_prepaid":             "cust_prepaid",
-    "cust_prepaid":               "cust_prepaid",
-    "active_post_ind_consumers":  "cust_post_ind",
-    "active_prep_ind_consumers":  "cust_prep_ind",
-    "active_post_inst_consumers": "cust_post_inst",
-    "active_prep_inst_consumers": "cust_prep_inst",
-    "active_post_com_consumers":  "cust_post_com",
-    "active_prep_com_consumers":  "cust_prep_com",
-    "active_prep_cwp":            "cust_prep_cwp",
+    # ── WATER PRODUCTION & NRW ───────────────────────────────────────────
+    # "Volume Produced (m³)"  →  "volume_produced_m"
+    "volume_produced_m":                 "vol_produced",
+    "vol_produced":                      "vol_produced",          # legacy alias
+    # "Vol Billed Individual Postpaid"  →  "vol_billed_individual_postpaid"
+    "vol_billed_individual_postpaid":    "vol_billed_indiv_pp",
+    "vol_billed_cwp_postpaid":           "vol_billed_cwp_pp",
+    "vol_billed_institutions_postpaid":  "vol_billed_inst_pp",
+    "vol_billed_commercial_postpaid":    "vol_billed_comm_pp",
+    "total_vol_billed_postpaid":         "total_vol_billed_pp",
+    "vol_billed_individual_prepaid":     "vol_billed_indiv_prepaid",
+    "vol_billed_cwp_prepaid":            "vol_billed_cwp_prepaid",
+    "vol_billed_institutions_prepaid":   "vol_billed_inst_prepaid",
+    "vol_billed_commercial_prepaid":     "vol_billed_comm_prepaid",
+    "total_vol_billed_prepaid":          "total_vol_billed_prepaid",
+    # "TOTAL Revenue Water m³"  →  "total_revenue_water_m"
+    "total_revenue_water_m":             "revenue_water",
+    # "Non-Revenue Water m³"   →  "non_revenue_water_m"
+    "non_revenue_water_m":               "nrw",
+    # "% NRW"  →  "nrw"  (% stripped, normalise leaves "nrw")
+    "nrw":                               "pct_nrw",
 
-    # ── New Water Connections ────────────────────────────────────────────
-    "nwcs_bf":                    "nwc_bf",
-    "nwc_bf":                     "nwc_bf",
-    "nwcs_applied":               "nwc_applied",
-    "nwcs_applied_postpaid":      "nwc_applied",
-    "nwc_applied":                "nwc_applied",
-    "nwcs_done_postpaid":         "nwc_done_postpaid",
-    "nwc_done_postpaid":          "nwc_done_postpaid",
-    "prepaid_meters_installed":   "nwc_prepaid_installed",
-    "nwc_prepaid_installed":      "nwc_prepaid_installed",
-    "nwcs_done":                  "nwc_done",
-    "nwc_done":                   "nwc_done",
-    "nwcs_cf":                    "nwc_cf",
-    "nwc_cf":                     "nwc_cf",
+    # ── TREATMENT CHEMICALS ───────────────────────────────────────────────
+    "chlorine_kg":                       "chlorine_kg",
+    # "Alum Sulphate kg"  →  "alum_sulphate_kg"
+    "alum_sulphate_kg":                  "alum_kg",
+    "soda_ash_kg":                       "soda_ash_kg",
+    "algae_floc_litres":                 "algae_floc_litres",
+    "sud_floc_litres":                   "sud_floc_litres",
+    # "Potassium Permanganate kg"  →  "potassium_permanganate_kg"
+    "potassium_permanganate_kg":         "kmno4_kg",
+    # "Cost of Chemicals MWK"  →  "cost_of_chemicals_mwk"
+    "cost_of_chemicals_mwk":             "chem_cost",
+    # "Chem Cost per m³"  →  "chem_cost_per_m"
+    "chem_cost_per_m":                   "chem_cost_per_m3",
 
-    # ── Production & NRW ────────────────────────────────────────────────
-    "vol_produced":               "vol_produced",
-    "volume_produced":            "vol_produced",
-    "total_rw":                   "vol_rw",
-    "vol_rw":                     "vol_rw",
-    "total_nrw":                  "vol_nrw",
-    "vol_nrw":                    "vol_nrw",
-    "vol_billed_postpaid":        "vol_billed_postpaid",
-    "vol_billed_prepaid":         "vol_billed_prepaid",
-    "nrw_pct":                    "nrw_pct",
-    "nrw_":                       "nrw_pct",   # catches "NRW %" after normalise
-    "nrw_percent":                "nrw_pct",
-    "nrw_fy_2324":                "nrw_pct",   # legacy header variant
+    # ── POWER ─────────────────────────────────────────────────────────────
+    # "Power Usage kWh"  →  "power_usage_kwh"
+    "power_usage_kwh":                   "power_kwh",
+    # "Cost of Power MWK"  →  "cost_of_power_mwk"
+    "cost_of_power_mwk":                 "power_cost",
+    # "Power Cost per m³"  →  "power_cost_per_m"
+    "power_cost_per_m":                  "power_cost_per_m3",
 
-    # ── Billed & Collections ─────────────────────────────────────────────
-    "billed_prepaid":             "billed_prepaid",
-    "collected_prepaid":          "collected_prepaid",
-    "billed_postpaid":            "billed_postpaid",
-    "collected_postpaid":         "collected_postpaid",
-    "total_billed":               "total_billed",
-    "total_collections":          "total_collections",
+    # ── TRANSPORT & OPERATIONS ────────────────────────────────────────────
+    # "Distances Covered km"  →  "distances_covered_km"
+    "distances_covered_km":              "distances_km",
+    "fuel_used_litres":                  "fuel_used_litres",
+    # "Cost of Fuel MWK"  →  "cost_of_fuel_mwk"
+    "cost_of_fuel_mwk":                  "fuel_cost",
+    # "Maintenance MWK"  →  "maintenance_mwk"
+    "maintenance_mwk":                   "maintenance",
+    # "Staff Costs MWK"  →  "staff_costs_mwk"
+    "staff_costs_mwk":                   "staff_costs",
+    # "Wages MWK"  →  "wages_mwk"
+    "wages_mwk":                         "wages",
+    # "Other Overhead MWK"  →  "other_overhead_mwk"
+    "other_overhead_mwk":                "other_overhead",
+    # "TOTAL Operating Costs MWK"  →  "total_operating_costs_mwk"
+    "total_operating_costs_mwk":         "op_cost",
+    # "OpCost per m³ Produced"  →  "opcost_per_m_produced"
+    "opcost_per_m_produced":             "op_cost_per_m3_produced",
+    # "OpCost per m³ Billed"  →  "opcost_per_m_billed"
+    "opcost_per_m_billed":               "op_cost_per_m3_billed",
 
-    # ── Expenses ─────────────────────────────────────────────────────────
-    "chemicals":                  "exp_chemicals",
-    "exp_chemicals":              "exp_chemicals",
-    "electricity":                "exp_electricity",
-    "exp_electricity":            "exp_electricity",
-    "fuel":                       "exp_fuel",
-    "exp_fuel":                   "exp_fuel",
-    "maintenance":                "exp_maintenance",
-    "exp_maintenance":            "exp_maintenance",
-    "staff":                      "exp_staff",
-    "exp_staff":                  "exp_staff",
-    "wages":                      "exp_wages",
-    "exp_wages":                  "exp_wages",
-    "other_overhead":             "exp_other",
-    "other_overheads":            "exp_other",
-    "exp_other":                  "exp_other",
-    "total_operating_costs":      "exp_total",
-    "exp_total":                  "exp_total",
+    # ── STAFFING ──────────────────────────────────────────────────────────
+    "permanent_staff":                   "perm_staff",
+    "temporary_staff":                   "temp_staff",
 
-    # ── Service Charges & Rentals ─────────────────────────────────────────
-    "service_charge":             "sc_service_charge",
-    "sc_service_charge":          "sc_service_charge",
-    "meter_rental":               "sc_meter_rental",
-    "sc_meter_rental":            "sc_meter_rental",
-    "total_sales":                "total_sales",
+    # ── CONNECTIONS — AGGREGATED (individual types not stored in DB) ──────
+    # "ALL Conn BroughtFwd"  →  "all_conn_broughtfwd"
+    "all_conn_broughtfwd":               "all_conn_bfwd",
+    "all_conn_applied":                  "all_conn_applied",
+    # "ALL Conn TOTAL Done"  →  "all_conn_total_done"
+    "all_conn_total_done":               "new_connections",
+    # "ALL Conn CarriedFwd"  →  "all_conn_carriedfwd"
+    "all_conn_carriedfwd":               "all_conn_cfwd",
+    "prepaid_meters_installed":          "prepaid_meters_installed",
 
-    # ── Water Treatment ───────────────────────────────────────────────────
-    "chlorine_kg":                "chem_chlorine_kg",
-    "chem_chlorine_kg":           "chem_chlorine_kg",
-    "aluminium_sulphate_kg":      "chem_aluminium_kg",
-    "chem_aluminium_kg":          "chem_aluminium_kg",
-    "soda_kg":                    "chem_soda_kg",
-    "chem_soda_kg":               "chem_soda_kg",
-    "algae_floc_litres":          "chem_algae_floc_l",
-    "chem_algae_floc_l":          "chem_algae_floc_l",
-    "cost_of_chemicals":          "chem_cost",
-    "chem_cost":                  "chem_cost",
-    "prdchem_ratio":              "chem_prd_ratio",
-    "chem_prd_ratio":             "chem_prd_ratio",
-    "costvol_produced_chemicals": "chem_cost_per_vol",
-    "chem_cost_per_vol":          "chem_cost_per_vol",
+    # ── DISCONNECTIONS ────────────────────────────────────────────────────
+    "disconnected_individual":           "disconnected_individual",
+    # "Disconnected Institutional"  →  "disconnected_institutional"
+    "disconnected_institutional":        "disconnected_inst",
+    "disconnected_commercial":           "disconnected_commercial",
+    "disconnected_cwp":                  "disconnected_cwp",
+    "total_disconnected":                "total_disconnected",
 
-    # ── Connectivity ──────────────────────────────────────────────────────
-    "customers_applied_for_new_connection": "conn_applied",
-    "customers_applied":          "conn_applied",
-    "conn_applied":               "conn_applied",
-    "days_taken_to_give_a_quotation": "conn_days_quotation",
-    "days_quotation":             "conn_days_quotation",
-    "conn_days_quotation":        "conn_days_quotation",
-    "customers_fully_paid":       "conn_fully_paid",
-    "conn_fully_paid":            "conn_fully_paid",
-    "paidup_new_water_applicants": "conn_paid_applicants",
-    "conn_paid_applicants":       "conn_paid_applicants",
-    "days_taken_to_connect_paid_up_customers": "conn_days_connect",
-    "days_to_connect":            "conn_days_connect",
-    "conn_days_connect":          "conn_days_connect",
-    "time_taken_to_resolve_queries": "conn_queries_days",
-    "conn_queries_days":          "conn_queries_days",
+    # ── ACTIVE CONSUMERS — POSTPAID ───────────────────────────────────────
+    # "Active Postpaid Individual"  →  "active_postpaid_individual"
+    "active_postpaid_individual":        "active_post_individual",
+    "active_postpaid_institutional":     "active_post_inst",
+    "active_postpaid_commercial":        "active_post_commercial",
+    "active_postpaid_cwp":               "active_post_cwp",
+    "total_active_postpaid":             "active_postpaid",
 
-    # ── Stuck Meters ─────────────────────────────────────────────────────
-    "stuck_meters_bf":            "stuck_bf",
-    "stuck_bf":                   "stuck_bf",
-    "stuck_meters_new":           "stuck_new",
-    "stuck_new":                  "stuck_new",
-    "stuck_meters_repaired":      "stuck_repaired",
-    "stuck_repaired":             "stuck_repaired",
-    "stuck_meters_replaced":      "stuck_replaced",
-    "stuck_replaced":             "stuck_replaced",
-    "stuck_meters_cf":            "stuck_cf",
-    "stuck_cf":                   "stuck_cf",
+    # ── ACTIVE CONSUMERS — PREPAID ────────────────────────────────────────
+    "active_prepaid_individual":         "active_prep_individual",
+    "active_prepaid_institutional":      "active_prep_inst",
+    "active_prepaid_commercial":         "active_prep_commercial",
+    "active_prepaid_cwp":                "active_prep_cwp",
+    "total_active_prepaid":              "active_prepaid",
 
-    # ── Breakdowns ────────────────────────────────────────────────────────
-    "total_breakdowns":           "breakdown_total",
-    "breakdown_total":            "breakdown_total",
+    # ── ACTIVE TOTALS ─────────────────────────────────────────────────────
+    "total_active_customers":            "active_customers",
+    "total_metered_consumers":           "total_metered",
 
-    # ── Pipelines ─────────────────────────────────────────────────────────
-    "pipe_32mm":                  "pipe_32mm",
-    "32mm":                       "pipe_32mm",
-    "pipe_50mm":                  "pipe_50mm",
-    "50mm":                       "pipe_50mm",
-    "pipe_63mm":                  "pipe_63mm",
-    "63mm":                       "pipe_63mm",
-    "pipe_90mm":                  "pipe_90mm",
-    "90mm":                       "pipe_90mm",
-    "pipe_110mm":                 "pipe_110mm",
-    "110mm":                      "pipe_110mm",
-    "total_dev_lines_done":       "pipe_total",
-    "total_dev_lines":            "pipe_total",
-    "pipe_total":                 "pipe_total",
+    # ── POPULATION ────────────────────────────────────────────────────────
+    "population_supply_area":            "pop_supply_area",
+    "population_supplied":               "pop_supplied",
+    "pct_population_supplied":           "pct_pop_supplied",
+
+    # ── STUCK METERS — AGGREGATED (by-type not stored in DB) ─────────────
+    # "ALL StuckM BroughtFwd"  →  "all_stuckm_broughtfwd"
+    "all_stuckm_broughtfwd":             "stuck_meters",
+    "all_stuckm_new":                    "stuck_new",
+    "all_stuckm_repaired":               "stuck_repaired",
+    "all_stuckm_replaced":               "stuck_replaced",
+    # CarriedFwd not in DB — intentionally skipped
+
+    # ── PIPE BREAKDOWNS (individual sizes summed into material totals) ────
+    # "TOTAL Pipe Breakdowns"  →  "total_pipe_breakdowns"
+    "total_pipe_breakdowns":             "pipe_breakdowns",
+    # Individual PVC sizes → summed into pipe_pvc by post-processing hook
+    # (per-size columns not stored individually in the DB)
+
+    # ── PUMPS & SUPPLY HOURS ──────────────────────────────────────────────
+    "pump_breakdowns":                   "pump_breakdowns",
+    "pump_hours_lost":                   "pump_hours_lost",
+    # "Normal Supply Hours"  →  "normal_supply_hours"
+    "normal_supply_hours":               "supply_hours",
+    # "Power Failure Hours"  →  "power_failure_hours"
+    "power_failure_hours":               "power_fail_hours",
+
+    # ── DEVELOPMENT LINES ─────────────────────────────────────────────────
+    "devlines_32mm":                     "dev_lines_32mm",
+    "devlines_50mm":                     "dev_lines_50mm",
+    "devlines_63mm":                     "dev_lines_63mm",
+    "devlines_90mm":                     "dev_lines_90mm",
+    "devlines_110mm":                    "dev_lines_110mm",
+    # "TOTAL Dev Lines Done"  →  "total_dev_lines_done"
+    "total_dev_lines_done":              "dev_lines_total",
+
+    # ── CASH COLLECTED (aggregates only) ──────────────────────────────────
+    "total_cash_coll_pp":                "cash_coll_pp",
+    "total_cash_coll_prepaid":           "cash_coll_prepaid",
+    "total_cash_collected":              "cash_collected",
+
+    # ── AMOUNTS BILLED (aggregates only) ─────────────────────────────────
+    "total_amt_billed_pp":               "amt_billed_pp",
+    "total_amt_billed_prepaid":          "amt_billed_prepaid",
+    "total_amount_billed":               "amt_billed",
+
+    # ── SERVICE CHARGES & METER RENTAL ───────────────────────────────────
+    "total_service_charge":              "service_charge",
+    "total_meter_rental":                "meter_rental",
+    # "TOTAL Sales MWK"  →  "total_sales_mwk"
+    "total_sales_mwk":                   "total_sales",
+
+    # ── DEBTORS ───────────────────────────────────────────────────────────
+    # "Private Debtors MWK"  →  "private_debtors_mwk"
+    "private_debtors_mwk":               "private_debtors",
+    "public_debtors_mwk":                "public_debtors",
+    "total_debtors_mwk":                 "total_debtors",
+
+    # ── FINANCIAL KPIs ────────────────────────────────────────────────────
+    # "OpCost per Sales"  →  "opcost_per_sales"
+    "opcost_per_sales":                  "op_cost_per_sales",
+    # "Cash Collection Rate"  →  "cash_collection_rate"
+    "cash_collection_rate":              "collection_rate",
+    # "Collection per Total Sales"  →  "collection_per_total_sales"
+    "collection_per_total_sales":        "collection_per_sales",
+
+    # ── CONNECTION PERFORMANCE ────────────────────────────────────────────
+    # "Cust Applied Connection"  →  "cust_applied_connection"
+    "cust_applied_connection":           "conn_applied",
+    "days_to_quotation":                 "days_to_quotation",
+    # "Cust Fully Paid"  →  "cust_fully_paid"
+    "cust_fully_paid":                   "conn_fully_paid",
+    "days_to_connect":                   "days_to_connect",
+    "connectivity_rate":                 "connectivity_rate",
+
+    # ── QUERY PERFORMANCE ─────────────────────────────────────────────────
+    "queries_received":                  "queries_received",
+    # "Time to Resolve Queries"  →  "time_to_resolve_queries"
+    "time_to_resolve_queries":           "time_to_resolve",
+    "response_time_avg":                 "response_time_avg",
 }
 
 # Columns that must be present and non-null on every row
@@ -352,7 +396,7 @@ class ExcelParser:
             )
 
         for row_num, raw_row in enumerate(
-            ws.iter_rows(min_row=2, values_only=True), start=2
+            ws.iter_rows(min_row=3, values_only=True), start=3
         ):
             if all(cell is None for cell in raw_row):
                 continue
@@ -387,7 +431,7 @@ class ExcelParser:
         Preferred sheet names in priority order.
         Falls back to the first (active) sheet.
         """
-        preferred = ("rawdata", "data", "sheet1", "records")
+        preferred = ("DataEntry", "dataentry", "rawdata", "data", "sheet1", "records")
         lower_map = {name.lower(): name for name in wb.sheetnames}
         for p in preferred:
             if p in lower_map:
@@ -428,7 +472,11 @@ class ExcelParser:
           unrecognised      – raw header strings not in COLUMN_MAP
           missing_required  – required DB dim columns absent from the sheet
         """
-        header_row = next(ws.iter_rows(min_row=1, max_row=1, values_only=True))
+        # DataEntry sheet has TWO header rows:
+        #   Row 1: section group labels (WATER PRODUCTION & NRW, STAFFING …)
+        #   Row 2: actual column names (Zone, Scheme, Volume Produced (m³) …)
+        # We must read row 2 for the column name map.
+        header_row = next(ws.iter_rows(min_row=2, max_row=2, values_only=True))
 
         col_map: dict[int, str] = {}
         unrecognised: list[str] = []

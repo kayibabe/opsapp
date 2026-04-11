@@ -117,6 +117,23 @@ def _by_zone(rows):
             "soda_ash_kg":       round(_nz_sum(zrows,'soda_ash_kg'),1),
             "pipe_breakdowns":   round(_nz_sum(zrows,'pipe_breakdowns')),
             "pump_breakdowns":   round(_nz_sum(zrows,'pump_breakdowns')),
+            "pipe_pvc":          round(_nz_sum(zrows,'pipe_pvc')),
+            "pipe_gi":           round(_nz_sum(zrows,'pipe_gi')),
+            "pipe_di":           round(_nz_sum(zrows,'pipe_di')),
+            "pipe_hdpe_ac":      round(_nz_sum(zrows,'pipe_hdpe_ac')),
+            "pvc_20mm":          round(_nz_sum(zrows,'pvc_20mm')),
+            "pvc_25mm":          round(_nz_sum(zrows,'pvc_25mm')),
+            "pvc_32mm":          round(_nz_sum(zrows,'pvc_32mm')),
+            "pvc_40mm":          round(_nz_sum(zrows,'pvc_40mm')),
+            "pvc_50mm":          round(_nz_sum(zrows,'pvc_50mm')),
+            "pvc_63mm":          round(_nz_sum(zrows,'pvc_63mm')),
+            "pvc_75mm":          round(_nz_sum(zrows,'pvc_75mm')),
+            "pvc_90mm":          round(_nz_sum(zrows,'pvc_90mm')),
+            "pvc_110mm":         round(_nz_sum(zrows,'pvc_110mm')),
+            "pvc_160mm":         round(_nz_sum(zrows,'pvc_160mm')),
+            "pvc_200mm":         round(_nz_sum(zrows,'pvc_200mm')),
+            "pvc_250mm":         round(_nz_sum(zrows,'pvc_250mm')),
+            "pvc_315mm":         round(_nz_sum(zrows,'pvc_315mm')),
             "dev_lines_total":   round(_nz_sum(zrows,'dev_lines_total')),
             "service_charge":    round(_nz_sum(zrows,'service_charge'),2),
             "meter_rental":      round(_nz_sum(zrows,'meter_rental'),2),
@@ -187,8 +204,8 @@ def _monthly(rows):
             "power_kwh":          round(_nz_sum(mr,'power_kwh'), 1),
             "power_cost":         round(power, 2),
             "power_cost_per_m3":  round(power/vol, 2) if vol else 0,
-            # supply_hours: cap at 744 (31d×24h) to remove bogus values
-            "supply_hours":       _nz_avg(mr, 'supply_hours', cap=744),
+            # supply_hours: cap at 744 (31d×24h) then convert to daily average
+            "supply_hours":       round(_nz_avg(mr, 'supply_hours', cap=744) / 30.44, 1),
             "power_fail_hours":   round(_nz_sum(mr,'power_fail_hours')),
 
             # ── Customers (stock — latest per scheme) ─────────────────
@@ -237,6 +254,20 @@ def _monthly(rows):
             "pipe_gi":           round(_nz_sum(mr,'pipe_gi')),
             "pipe_di":           round(_nz_sum(mr,'pipe_di')),
             "pipe_hdpe_ac":      round(_nz_sum(mr,'pipe_hdpe_ac')),
+            # PVC by size
+            "pvc_20mm":          round(_nz_sum(mr,'pvc_20mm')),
+            "pvc_25mm":          round(_nz_sum(mr,'pvc_25mm')),
+            "pvc_32mm":          round(_nz_sum(mr,'pvc_32mm')),
+            "pvc_40mm":          round(_nz_sum(mr,'pvc_40mm')),
+            "pvc_50mm":          round(_nz_sum(mr,'pvc_50mm')),
+            "pvc_63mm":          round(_nz_sum(mr,'pvc_63mm')),
+            "pvc_75mm":          round(_nz_sum(mr,'pvc_75mm')),
+            "pvc_90mm":          round(_nz_sum(mr,'pvc_90mm')),
+            "pvc_110mm":         round(_nz_sum(mr,'pvc_110mm')),
+            "pvc_160mm":         round(_nz_sum(mr,'pvc_160mm')),
+            "pvc_200mm":         round(_nz_sum(mr,'pvc_200mm')),
+            "pvc_250mm":         round(_nz_sum(mr,'pvc_250mm')),
+            "pvc_315mm":         round(_nz_sum(mr,'pvc_315mm')),
             "pump_breakdowns":   round(_nz_sum(mr,'pump_breakdowns')),
             "pump_hours_lost":   round(_nz_sum(mr,'pump_hours_lost')),
 
@@ -329,15 +360,20 @@ def panel_wt_ei(zones:Optional[str]=None,schemes:Optional[str]=None,
     vol=_nz_sum(rows,'vol_produced') or 1
     chem=_nz_sum(rows,'chem_cost'); power=_nz_sum(rows,'power_cost')
     kwh=_nz_sum(rows,'power_kwh')
+    sh_raw   = _nz_avg(rows, 'supply_hours', cap=744)   # monthly hours per scheme
+    sh_daily = round(sh_raw / 30.44, 1) if sh_raw else 0  # convert to hours/day
     return {
         "kpi":{
             "chem_cost":round(chem,2),"chem_per_m3":round(chem/vol,2),
             "chlorine_kg":round(_nz_sum(rows,'chlorine_kg'),1),
             "alum_kg":round(_nz_sum(rows,'alum_kg'),1),
             "soda_ash_kg":round(_nz_sum(rows,'soda_ash_kg'),1),
+            "algae_floc_litres":round(_nz_sum(rows,'algae_floc_litres'),1),
+            "sud_floc_litres":round(_nz_sum(rows,'sud_floc_litres'),1),
+            "kmno4_kg":round(_nz_sum(rows,'kmno4_kg'),1),
             "power_kwh":round(kwh,1),"power_cost":round(power,2),
             "power_per_m3":round(power/vol,2),
-            "supply_hours_avg":_nz_avg(rows,'supply_hours',cap=744),
+            "supply_hours_avg": sh_daily,
             "power_fail_hours":round(_nz_sum(rows,'power_fail_hours')),
         },
         "by_zone":[{"zone":z["zone"],"color":z["color"],
@@ -377,8 +413,7 @@ def panel_connections(zones:Optional[str]=None,schemes:Optional[str]=None,
                "conn_applied":round(_nz_sum(rows,'conn_applied')),
                "all_conn_bfwd":round(sum(r.all_conn_bfwd for r in lv)),
                "all_conn_cfwd":round(sum(r.all_conn_cfwd for r in lv)),
-               "prepaid_installed":round(_nz_sum(rows,'prepaid_meters_installed')),
-               "distances_km":round(_nz_sum(rows,'distances_km'),1)},
+               "prepaid_installed":round(_nz_sum(rows,'prepaid_meters_installed'))},
         "by_zone":[{"zone":z["zone"],"color":z["color"],
                     "new_connections":z["new_connections"],
                     "conn_applied":z["conn_applied"]} for z in bz],
@@ -430,14 +465,29 @@ def panel_breakdowns(zones:Optional[str]=None,schemes:Optional[str]=None,
     rows,bz,mo=_base(zones,schemes,months,year,db)
     pipe=_nz_sum(rows,'pipe_breakdowns'); pump=_nz_sum(rows,'pump_breakdowns')
     lv=_latest(rows); active=sum(r.active_customers for r in lv) or 1
+    pvc_sizes=['pvc_20mm','pvc_25mm','pvc_32mm','pvc_40mm','pvc_50mm','pvc_63mm',
+               'pvc_75mm','pvc_90mm','pvc_110mm','pvc_160mm','pvc_200mm','pvc_250mm','pvc_315mm']
+    pvc_kpis={s:round(_nz_sum(rows,s)) for s in pvc_sizes}
+    pvc_total=sum(pvc_kpis.values())
     return {
-        "kpi":{"pipe_breakdowns":round(pipe),"pump_breakdowns":round(pump),
-               "total":round(pipe+pump),
-               "per_1k_customers":round((pipe+pump)/active*1000,1),
-               "pump_hours_lost":round(_nz_sum(rows,'pump_hours_lost'))},
-        "by_zone":[{"zone":z["zone"],"color":z["color"],
-                    "pipe_breakdowns":z["pipe_breakdowns"],
-                    "pump_breakdowns":z["pump_breakdowns"]} for z in bz],
+        "kpi":{
+            "pipe_breakdowns":round(pipe),"pump_breakdowns":round(pump),
+            "total":round(pipe+pump),
+            "per_1k_customers":round((pipe+pump)/active*1000,1),
+            "pump_hours_lost":round(_nz_sum(rows,'pump_hours_lost')),
+            "pvc_total":round(_nz_sum(rows,'pipe_pvc')),
+            **pvc_kpis,
+        },
+        "by_zone":[{
+            "zone":z["zone"],"color":z["color"],
+            "pipe_breakdowns":z["pipe_breakdowns"],
+            "pump_breakdowns":z["pump_breakdowns"],
+            "pipe_pvc":z["pipe_pvc"],
+            "pipe_gi":z["pipe_gi"],
+            "pipe_di":z["pipe_di"],
+            "pipe_hdpe_ac":z["pipe_hdpe_ac"],
+            **{s:z.get(s,0) for s in pvc_sizes},
+        } for z in bz],
         "monthly":mo,
     }
 
@@ -535,7 +585,8 @@ def panel_expenses(zones:Optional[str]=None,schemes:Optional[str]=None,
         "kpi":{"op_cost":round(op,2),"chem_cost":round(chem,2),
                "power_cost":round(power,2),"power_kwh":round(kwh,1),
                "fuel_cost":round(fuel,2),"staff_costs":round(staff,2),
-               "wages":round(wages,2),"maintenance":round(maint,2)},
+               "wages":round(wages,2),"maintenance":round(maint,2),
+               "distances_km":round(_nz_sum(rows,'distances_km'),1)},
         "by_zone":[{"zone":z["zone"],"color":z["color"],"op_cost":z["op_cost"],
                     "chem_cost":z["chem_cost"],"power_cost":z["power_cost"]} for z in bz],
         "cost_split":[
@@ -621,6 +672,10 @@ def panel_executive(zones: Optional[str] = None, schemes: Optional[str] = None,
         "rev_per_conn": rev_per_conn,
         "net_margin": net_margin,
         "net_margin_flag": "GOOD" if net_margin > 50 else ("WATCH" if net_margin > 20 else "LOW"),
+        "collection_rate": round(cash / revenue * 100, 1) if revenue else 0,
+        "collection_rate_flag": "GOOD" if (cash / revenue * 100 if revenue else 0) >= 90 else ("WATCH" if (cash / revenue * 100 if revenue else 0) >= 75 else "HIGH"),
+        "cash_collected": round(cash, 2),
+        "amt_billed": round(revenue, 2),
     }
 
     # ── 2. NRW Intelligence ───────────────────────────────────────
@@ -758,6 +813,10 @@ def panel_executive(zones: Optional[str] = None, schemes: Optional[str] = None,
         "rev_per_conn": rev_per_conn,
         "net_margin": net_margin,
         "net_margin_flag": "GOOD" if net_margin > 50 else ("WATCH" if net_margin > 20 else "LOW"),
+        "collection_rate": round(cash / revenue * 100, 1) if revenue else 0,
+        "collection_rate_flag": "GOOD" if (cash / revenue * 100 if revenue else 0) >= 90 else ("WATCH" if (cash / revenue * 100 if revenue else 0) >= 75 else "HIGH"),
+        "cash_collected": round(cash, 2),
+        "amt_billed": round(revenue, 2),
     }
 
     # 2. NRW Intelligence

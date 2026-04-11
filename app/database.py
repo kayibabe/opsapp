@@ -106,12 +106,26 @@ class Record(Base):
     stuck_new                = Column(Float, default=0.0)
     stuck_repaired           = Column(Float, default=0.0)
     stuck_replaced           = Column(Float, default=0.0)
-    # Pipe breakdowns
+    # Pipe breakdowns — material totals
     pipe_pvc                 = Column(Float, default=0.0)
     pipe_gi                  = Column(Float, default=0.0)
     pipe_di                  = Column(Float, default=0.0)
     pipe_hdpe_ac             = Column(Float, default=0.0)
     pipe_breakdowns          = Column(Float, default=0.0)
+    # PVC breakdowns by pipe size
+    pvc_20mm                 = Column(Float, default=0.0)
+    pvc_25mm                 = Column(Float, default=0.0)
+    pvc_32mm                 = Column(Float, default=0.0)
+    pvc_40mm                 = Column(Float, default=0.0)
+    pvc_50mm                 = Column(Float, default=0.0)
+    pvc_63mm                 = Column(Float, default=0.0)
+    pvc_75mm                 = Column(Float, default=0.0)
+    pvc_90mm                 = Column(Float, default=0.0)
+    pvc_110mm                = Column(Float, default=0.0)
+    pvc_160mm                = Column(Float, default=0.0)
+    pvc_200mm                = Column(Float, default=0.0)
+    pvc_250mm                = Column(Float, default=0.0)
+    pvc_315mm                = Column(Float, default=0.0)
     # Pumps & supply hours
     pump_breakdowns          = Column(Float, default=0.0)
     pump_hours_lost          = Column(Float, default=0.0)
