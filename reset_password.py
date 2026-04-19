@@ -16,16 +16,16 @@ db = SessionLocal()
 admin = db.query(User).filter(User.username == "admin").first()
 
 if admin:
-    admin.password_hash = hash_password("Admin@SRWB2025")
+    admin.password_hash = hash_password("Admin123")
     db.commit()
-    ok = verify_password("Admin@SRWB2025", admin.password_hash)
+    ok = verify_password("Admin123", admin.password_hash)
     print(f"✓ Password reset successful")
 else:
     # No admin exists — create one
     from app.database import User as UserModel
     new_admin = UserModel(
         username="admin",
-        password_hash=hash_password("Admin@SRWB2025"),
+        password_hash=hash_password("Admin123"),
         role="admin",
         is_active=True,
         created_by="reset_script",
@@ -35,6 +35,6 @@ else:
     print(f"✓ Admin account created")
 
 print(f"\n  Username: admin")
-print(f"  Password: Admin@SRWB2025")
+print(f"  Password: Admin123")
 print(f"\nRestart uvicorn and log in.")
 db.close()

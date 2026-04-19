@@ -128,6 +128,16 @@ FIELD_MAP = {
     "ALL StuckM BroughtFwd": "stuck_meters", "ALL StuckM New": "stuck_new",
     "ALL StuckM Repaired": "stuck_repaired", "ALL StuckM Replaced": "stuck_replaced",
     "TOTAL Pipe Breakdowns": "pipe_breakdowns", "Pump Breakdowns": "pump_breakdowns",
+    "PVC 20mm": "pvc_20mm", "PVC 25mm": "pvc_25mm", "PVC 32mm": "pvc_32mm",
+    "PVC 40mm": "pvc_40mm", "PVC 50mm": "pvc_50mm", "PVC 63mm": "pvc_63mm",
+    "PVC 75mm": "pvc_75mm", "PVC 90mm": "pvc_90mm", "PVC 110mm": "pvc_110mm",
+    "PVC 160mm": "pvc_160mm", "PVC 200mm": "pvc_200mm", "PVC 250mm": "pvc_250mm",
+    "PVC 315mm": "pvc_315mm",
+    "GI 15mm": "_gi_15mm", "GI 20mm": "_gi_20mm", "GI 25mm": "_gi_25mm", "GI 40mm": "_gi_40mm",
+    "GI 50mm": "_gi_50mm", "GI 75mm": "_gi_75mm", "GI 100mm": "_gi_100mm", "GI 150mm": "_gi_150mm", "GI 200mm": "_gi_200mm",
+    "DI 150mm": "_di_150mm", "DI 200mm": "_di_200mm", "DI 250mm": "_di_250mm", "DI 300mm": "_di_300mm", "DI 350mm": "_di_350mm", "DI 525mm": "_di_525mm",
+    "HDPE 20mm": "_hdpe_20mm", "HDPE 25mm": "_hdpe_25mm", "HDPE 32mm": "_hdpe_32mm", "HDPE 50mm": "_hdpe_50mm",
+    "AC 50mm": "_ac_50mm", "AC 75mm": "_ac_75mm", "AC 100mm": "_ac_100mm", "AC 150mm": "_ac_150mm",
     "Pump Hours Lost": "pump_hours_lost",
     "Normal Supply Hours": "supply_hours", "Power Failure Hours": "power_fail_hours",
     "DevLines 32mm": "dev_lines_32mm", "DevLines 50mm": "dev_lines_50mm",
@@ -152,12 +162,31 @@ FIELD_MAP = {
 
 
 def map_row(raw: dict) -> dict:
-    """Convert camelCase dict (JSON/Excel) to ORM snake_case dict."""
+    """Convert JSON/Excel row to ORM-ready snake_case dict, including breakdown rollups."""
     mapped = {}
     for src, dst in FIELD_MAP.items():
         if src in raw:
             v = raw[src]
-            mapped[dst] = float(v) if isinstance(v, (int, float)) and dst not in ("zone","scheme","month","quarter") else v
+            mapped[dst] = float(v) if isinstance(v, (int, float)) and dst not in ("zone","scheme","month","quarter","fiscal_year") else v
+
+    def _sum(fields):
+        total = 0.0
+        for field in fields:
+            v = mapped.get(field)
+            if isinstance(v, (int, float)):
+                total += float(v)
+        return total
+
+    pvc_fields = ['pvc_20mm','pvc_25mm','pvc_32mm','pvc_40mm','pvc_50mm','pvc_63mm','pvc_75mm','pvc_90mm','pvc_110mm','pvc_160mm','pvc_200mm','pvc_250mm','pvc_315mm']
+    gi_fields = ['_gi_15mm','_gi_20mm','_gi_25mm','_gi_40mm','_gi_50mm','_gi_75mm','_gi_100mm','_gi_150mm','_gi_200mm']
+    di_fields = ['_di_150mm','_di_200mm','_di_250mm','_di_300mm','_di_350mm','_di_525mm']
+    hdpe_ac_fields = ['_hdpe_20mm','_hdpe_25mm','_hdpe_32mm','_hdpe_50mm','_ac_50mm','_ac_75mm','_ac_100mm','_ac_150mm']
+    mapped['pipe_pvc'] = _sum(pvc_fields)
+    mapped['pipe_gi'] = _sum(gi_fields)
+    mapped['pipe_di'] = _sum(di_fields)
+    mapped['pipe_hdpe_ac'] = _sum(hdpe_ac_fields)
+    for field in gi_fields + di_fields + hdpe_ac_fields:
+        mapped.pop(field, None)
     return mapped
 
 

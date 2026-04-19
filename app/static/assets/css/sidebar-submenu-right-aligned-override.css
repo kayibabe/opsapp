@@ -1,0 +1,92 @@
+/* Sidebar submenu right-aligned / inset block patch
+   Assumption: "right aligned" means child menus should sit further inward
+   as a secondary block under the parent, not that the text itself should
+   align to the right edge.
+*/
+
+.sidebar .nav-children,
+.app-sidebar .nav-children,
+.sidebar .sidebar-submenu,
+.app-sidebar .sidebar-submenu {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 8px !important;
+
+  /* Push the whole submenu block inward */
+  margin: 8px 0 12px 38px !important;
+  padding: 0 !important;
+  width: calc(100% - 38px) !important;
+  box-sizing: border-box !important;
+}
+
+.sidebar .nav-child,
+.app-sidebar .nav-child,
+.sidebar .submenu-item,
+.app-sidebar .submenu-item,
+.sidebar .sidebar-subitem,
+.app-sidebar .sidebar-subitem {
+  position: relative !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: flex-start !important;
+  min-height: 38px !important;
+  width: 100% !important;
+  margin: 0 !important;
+  padding: 8px 12px 8px 28px !important;
+  box-sizing: border-box !important;
+  text-align: left !important;
+  border-radius: 16px !important;
+}
+
+.sidebar .nav-child::before,
+.app-sidebar .nav-child::before,
+.sidebar .submenu-item::before,
+.app-sidebar .submenu-item::before,
+.sidebar .sidebar-subitem::before,
+.app-sidebar .sidebar-subitem::before {
+  content: "•" !important;
+  position: absolute !important;
+  left: 12px !important;
+  top: 50% !important;
+  transform: translateY(-50%) !important;
+}
+
+.sidebar .nav-child.is-active,
+.app-sidebar .nav-child.is-active,
+.sidebar .submenu-item.is-active,
+.app-sidebar .submenu-item.is-active,
+.sidebar .sidebar-subitem.is-active,
+.app-sidebar .sidebar-subitem.is-active {
+  width: 100% !important;
+  margin: 0 !important;
+  padding-left: 28px !important;
+}
+
+@media (max-width: 1200px) {
+  .sidebar .nav-children,
+  .app-sidebar .nav-children,
+  .sidebar .sidebar-submenu,
+  .app-sidebar .sidebar-submenu {
+    margin-left: 30px !important;
+    width: calc(100% - 30px) !important;
+  }
+
+  .sidebar .nav-child,
+  .app-sidebar .nav-child,
+  .sidebar .submenu-item,
+  .app-sidebar .submenu-item,
+  .sidebar .sidebar-subitem,
+  .app-sidebar .sidebar-subitem {
+    min-height: 36px !important;
+    padding-left: 26px !important;
+  }
+
+  .sidebar .nav-child::before,
+  .app-sidebar .nav-child::before,
+  .sidebar .submenu-item::before,
+  .app-sidebar .submenu-item::before,
+  .sidebar .sidebar-subitem::before,
+  .app-sidebar .sidebar-subitem::before {
+    left: 11px !important;
+  }
+}

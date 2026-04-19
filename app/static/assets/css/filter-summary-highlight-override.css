@@ -1,0 +1,66 @@
+/* Filter summary highlight patch
+   Purpose:
+   Make the filter/state summary line more visible whenever FY / Zone / Period changes.
+   Recommended behavior is a professional highlight + soft pulse, not a harsh blink.
+*/
+
+#pageMetaLine,
+#filterSummaryLine,
+#headerFilterSummary,
+.page-meta-line,
+.page-context-meta,
+.report-context-line,
+.toolbar-context-line,
+.filter-summary-line,
+[data-filter-summary] {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  padding: 7px 12px !important;
+  border-radius: 999px !important;
+  border: 1px solid rgba(37, 99, 235, 0.18) !important;
+  background: linear-gradient(180deg, rgba(239, 246, 255, 0.98), rgba(248, 250, 252, 0.98)) !important;
+  color: #1e3a8a !important;
+  font-weight: 600 !important;
+  letter-spacing: 0.01em !important;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04), 0 8px 18px rgba(37, 99, 235, 0.08) !important;
+}
+
+/* stronger emphasis immediately after a filter change */
+.filter-summary-emphasis {
+  border-color: rgba(37, 99, 235, 0.34) !important;
+  background: linear-gradient(180deg, rgba(219, 234, 254, 1), rgba(239, 246, 255, 1)) !important;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.12), 0 10px 24px rgba(37, 99, 235, 0.12) !important;
+  animation: filterSummaryPulse 1.4s ease-in-out 1 !important;
+}
+
+@keyframes filterSummaryPulse {
+  0% {
+    transform: translateY(0);
+    box-shadow: 0 0 0 0 rgba(37, 99, 235, 0.28), 0 8px 18px rgba(37, 99, 235, 0.08);
+  }
+  30% {
+    transform: translateY(-1px);
+    box-shadow: 0 0 0 7px rgba(37, 99, 235, 0.10), 0 12px 28px rgba(37, 99, 235, 0.14);
+  }
+  100% {
+    transform: translateY(0);
+    box-shadow: 0 0 0 0 rgba(37, 99, 235, 0.00), 0 8px 18px rgba(37, 99, 235, 0.08);
+  }
+}
+
+/* Optional softer dot separators if the summary uses bullets */
+#pageMetaLine .separator,
+#filterSummaryLine .separator,
+.page-meta-line .separator,
+.filter-summary-line .separator,
+[data-filter-summary] .separator {
+  color: #60a5fa !important;
+  opacity: 0.9 !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .filter-summary-emphasis {
+    animation: none !important;
+  }
+}

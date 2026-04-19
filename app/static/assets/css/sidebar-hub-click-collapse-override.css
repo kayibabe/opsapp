@@ -1,0 +1,17 @@
+/* Hub click-collapse visual support */
+
+.nav-group .nav-children[hidden] {
+  display: none !important;
+}
+
+.hub-trigger .nav-chevron,
+.hub-trigger .sidebar-chevron,
+.hub-trigger .chevron {
+  transition: transform 0.18s ease !important;
+}
+
+.nav-group.is-expanded .hub-trigger .nav-chevron,
+.nav-group.is-expanded .hub-trigger .sidebar-chevron,
+.nav-group.is-expanded .hub-trigger .chevron {
+  transform: rotate(90deg) !important;
+}

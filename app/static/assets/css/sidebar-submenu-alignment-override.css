@@ -1,0 +1,85 @@
+/* Sidebar submenu alignment patch
+   Ensures all submenu links sit on one clean secondary-navigation column.
+*/
+
+.sidebar .nav-children,
+.app-sidebar .nav-children,
+.sidebar .sidebar-submenu,
+.app-sidebar .sidebar-submenu {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 6px !important;
+  margin: 6px 0 10px 22px !important;
+  padding: 0 0 0 10px !important;
+}
+
+.sidebar .nav-child,
+.app-sidebar .nav-child,
+.sidebar .submenu-item,
+.app-sidebar .submenu-item,
+.sidebar .sidebar-subitem,
+.app-sidebar .sidebar-subitem {
+  position: relative !important;
+  display: flex !important;
+  align-items: center !important;
+  min-height: 38px !important;
+  width: calc(100% - 6px) !important;
+  margin: 0 !important;
+  padding: 8px 12px 8px 28px !important;
+  border-radius: 16px !important;
+  box-sizing: border-box !important;
+  text-align: left !important;
+}
+
+.sidebar .nav-child::before,
+.app-sidebar .nav-child::before,
+.sidebar .submenu-item::before,
+.app-sidebar .submenu-item::before,
+.sidebar .sidebar-subitem::before,
+.app-sidebar .sidebar-subitem::before {
+  content: "•" !important;
+  position: absolute !important;
+  left: 12px !important;
+  top: 50% !important;
+  transform: translateY(-50%) !important;
+}
+
+.sidebar .nav-child.is-active,
+.app-sidebar .nav-child.is-active,
+.sidebar .submenu-item.is-active,
+.app-sidebar .submenu-item.is-active,
+.sidebar .sidebar-subitem.is-active,
+.app-sidebar .sidebar-subitem.is-active {
+  width: calc(100% - 6px) !important;
+  margin: 0 !important;
+  padding-left: 28px !important;
+}
+
+@media (max-width: 1200px) {
+  .sidebar .nav-children,
+  .app-sidebar .nav-children,
+  .sidebar .sidebar-submenu,
+  .app-sidebar .sidebar-submenu {
+    margin-left: 18px !important;
+    padding-left: 8px !important;
+  }
+
+  .sidebar .nav-child,
+  .app-sidebar .nav-child,
+  .sidebar .submenu-item,
+  .app-sidebar .submenu-item,
+  .sidebar .sidebar-subitem,
+  .app-sidebar .sidebar-subitem {
+    min-height: 36px !important;
+    padding-left: 26px !important;
+  }
+
+  .sidebar .nav-child::before,
+  .app-sidebar .nav-child::before,
+  .sidebar .submenu-item::before,
+  .app-sidebar .submenu-item::before,
+  .sidebar .sidebar-subitem::before,
+  .app-sidebar .sidebar-subitem::before {
+    left: 11px !important;
+  }
+}

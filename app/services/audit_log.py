@@ -1,5 +1,19 @@
+from __future__ import annotations
 
-from datetime import datetime
+import logging
+from typing import Any
 
-def log_event(db, user, action, detail):
-    db.execute("INSERT INTO audit_logs VALUES (?, ?, ?, ?)", (user, action, detail, datetime.utcnow()))
+log = logging.getLogger("opsapp.audit")
+
+
+def log_event(db: Any, user: str, action: str, detail: str, *, request_id: str | None = None) -> None:
+    """Lightweight audit logging hook using structured application logs."""
+    log.info(
+        "audit_event",
+        extra={
+            "username": user,
+            "action": action,
+            "detail": detail,
+            "request_id": request_id,
+        },
+    )

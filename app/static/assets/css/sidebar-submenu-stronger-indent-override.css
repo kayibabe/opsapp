@@ -1,0 +1,59 @@
+/* Sidebar submenu stronger indent patch
+   Push child menu items further to the right so they read clearly as secondary navigation.
+*/
+
+.sidebar .nav-children,
+.app-sidebar .nav-children,
+.sidebar .sidebar-submenu,
+.app-sidebar .sidebar-submenu {
+  margin-left: 12px !important;
+  padding-left: 8px !important;
+}
+
+.sidebar .nav-child,
+.app-sidebar .nav-child,
+.sidebar .submenu-item,
+.app-sidebar .submenu-item,
+.sidebar .sidebar-subitem,
+.app-sidebar .sidebar-subitem {
+  padding-left: 26px !important;
+  margin-left: 6px !important;
+}
+
+.sidebar .nav-child::before,
+.app-sidebar .nav-child::before,
+.sidebar .submenu-item::before,
+.app-sidebar .submenu-item::before,
+.sidebar .sidebar-subitem::before,
+.app-sidebar .sidebar-subitem::before {
+  left: 12px !important;
+}
+
+@media (max-width: 1200px) {
+  .sidebar .nav-children,
+  .app-sidebar .nav-children,
+  .sidebar .sidebar-submenu,
+  .app-sidebar .sidebar-submenu {
+    margin-left: 10px !important;
+    padding-left: 6px !important;
+  }
+
+  .sidebar .nav-child,
+  .app-sidebar .nav-child,
+  .sidebar .submenu-item,
+  .app-sidebar .submenu-item,
+  .sidebar .sidebar-subitem,
+  .app-sidebar .sidebar-subitem {
+    padding-left: 22px !important;
+    margin-left: 4px !important;
+  }
+
+  .sidebar .nav-child::before,
+  .app-sidebar .nav-child::before,
+  .sidebar .submenu-item::before,
+  .app-sidebar .submenu-item::before,
+  .sidebar .sidebar-subitem::before,
+  .app-sidebar .sidebar-subitem::before {
+    left: 10px !important;
+  }
+}

@@ -32,6 +32,7 @@ from app.auth import (
     VALID_ROLES,
     create_access_token,
     get_current_user,
+    require_admin,
     hash_password,
     verify_password,
 )
@@ -56,6 +57,7 @@ class TokenOut(BaseModel):
     token_type:   str = "bearer"
     username:     str
     role:         str
+    full_name:    Optional[str] = None
 
 
 class ChangePasswordIn(BaseModel):
@@ -73,6 +75,7 @@ class ChangePasswordIn(BaseModel):
 class UserOut(BaseModel):
     id:         int
     username:   str
+    full_name:  Optional[str] = None
     role:       str
     is_active:  bool
     created_at: Optional[datetime]
@@ -82,9 +85,10 @@ class UserOut(BaseModel):
 
 
 class CreateUserIn(BaseModel):
-    username: str
-    password: str
-    role:     str = "user"
+    username:  str
+    full_name: Optional[str] = None
+    password:  str
+    role:      str = "user"
 
     @field_validator("role")
     @classmethod
@@ -110,6 +114,7 @@ class CreateUserIn(BaseModel):
 
 
 class UpdateUserIn(BaseModel):
+    full_name: Optional[str] = None
     role:      Optional[str] = None
     is_active: Optional[bool] = None
 
@@ -162,11 +167,12 @@ def login(request: Request, payload: LoginIn, db: Session = Depends(get_db)):
             detail="Incorrect username or password.",
         )
 
-    token = create_access_token(user.username, user.role)
+    token = create_access_token(user.username, user.role, user.full_name)
     return TokenOut(
         access_token=token,
         username=user.username,
         role=user.role,
+        full_name=user.full_name,
     )
 
 
@@ -199,6 +205,7 @@ def change_password(
 
 @admin_router.get("/users", response_model=List[UserOut])
 def list_users(
+    current_user: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
     """List all user accounts.  Admin only."""
@@ -208,7 +215,7 @@ def list_users(
 @admin_router.post("/users", response_model=UserOut, status_code=201)
 def create_user(
     payload: CreateUserIn,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
     """Create a new user account.  Admin only."""
@@ -217,6 +224,7 @@ def create_user(
 
     user = User(
         username=payload.username,
+        full_name=payload.full_name,
         password_hash=hash_password(payload.password),
         role=payload.role,
         created_by=current_user.username,
@@ -231,7 +239,7 @@ def create_user(
 def update_user(
     user_id: int,
     payload: UpdateUserIn,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
     """Update a user's role or active status.  Admin only."""
@@ -246,6 +254,7 @@ def update_user(
         if payload.is_active is False:
             raise HTTPException(400, "You cannot deactivate your own account.")
 
+    if payload.full_name  is not None: user.full_name  = payload.full_name
     if payload.role      is not None: user.role      = payload.role
     if payload.is_active is not None: user.is_active = payload.is_active
 
@@ -258,6 +267,7 @@ def update_user(
 def reset_password(
     user_id: int,
     payload: ResetPasswordIn,
+    current_user: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
     """
@@ -275,7 +285,7 @@ def reset_password(
 @admin_router.delete("/users/{user_id}", status_code=204)
 def delete_user(
     user_id: int,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
     """

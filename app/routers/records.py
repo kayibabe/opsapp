@@ -14,7 +14,10 @@ from __future__ import annotations
 
 import csv
 import io
+from datetime import datetime
 from typing import List, Optional
+
+from openpyxl import Workbook
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
@@ -44,6 +47,26 @@ def _apply_filters(q, zones, schemes, months, quarters, year):
 
 def _record_to_dict(r: Record) -> dict:
     return {c.name: getattr(r, c.name) for c in r.__table__.columns}
+
+def _build_export_filename(ext: str, year: Optional[int], zones: Optional[str], schemes: Optional[str]) -> str:
+    date_part = datetime.utcnow().strftime("%Y-%m-%d")
+    fy_part = f"FY{year}" if year else "AllYears"
+    zone_part = "AllZones" if not zones else f"{len(zones.split(','))}Zones"
+    scheme_part = "AllSchemes" if not schemes else f"{len(schemes.split(','))}Schemes"
+    return f"SRWB_Records_{fy_part}_{zone_part}_{scheme_part}_{date_part}.{ext}"
+
+
+def _filtered_rows(db: Session, zones, schemes, months, quarters, year):
+    q = db.query(Record).order_by(Record.zone, Record.scheme, Record.month_no)
+    q = _apply_filters(
+        q,
+        zones.split(",") if zones else None,
+        schemes.split(",") if schemes else None,
+        months.split(",") if months else None,
+        quarters.split(",") if quarters else None,
+        year,
+    )
+    return q.all()
 
 
 # ── GET filtered list ─────────────────────────────────────────
@@ -141,16 +164,7 @@ def export_csv(
     _:        User          = Depends(require_export),   # viewers blocked
     db:       Session       = Depends(get_db),
 ):
-    q = db.query(Record).order_by(Record.zone, Record.scheme, Record.month_no)
-    q = _apply_filters(
-        q,
-        zones.split(",")    if zones    else None,
-        schemes.split(",")  if schemes  else None,
-        months.split(",")   if months   else None,
-        quarters.split(",") if quarters else None,
-        year,
-    )
-    rows = q.all()
+    rows = _filtered_rows(db, zones, schemes, months, quarters, year)
     if not rows:
         raise HTTPException(404, "No records match the given filters")
 
@@ -166,4 +180,52 @@ def export_csv(
         iter([buf.getvalue()]),
         media_type="text/csv",
         headers={"Content-Disposition": "attachment; filename=SRWB_Export.csv"},
+    )
+
+
+@router.get("/export/xlsx")
+def export_xlsx(
+    zones:    Optional[str] = Query(None),
+    schemes:  Optional[str] = Query(None),
+    months:   Optional[str] = Query(None),
+    quarters: Optional[str] = Query(None),
+    year:     Optional[int] = Query(None),
+    _:        User          = Depends(require_export),
+    db:       Session       = Depends(get_db),
+):
+    rows = _filtered_rows(db, zones, schemes, months, quarters, year)
+    if not rows:
+        raise HTTPException(404, "No records match the given filters")
+
+    cols = [c.name for c in Record.__table__.columns]
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Records"
+    ws.append(cols)
+    for r in rows:
+        row = _record_to_dict(r)
+        ws.append([row.get(col) for col in cols])
+
+    meta = wb.create_sheet("Export Summary")
+    meta_rows = [
+        ["SRWB Records Export"],
+        ["Generated", datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")],
+        ["Year", year or "All"],
+        ["Zones", zones or "All"],
+        ["Schemes", schemes or "All"],
+        ["Months", months or "All"],
+        ["Quarters", quarters or "All"],
+        ["Rows", len(rows)],
+    ]
+    for item in meta_rows:
+        meta.append(item)
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    filename = _build_export_filename("xlsx", year, zones, schemes)
+    return StreamingResponse(
+        buf,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )

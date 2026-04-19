@@ -169,8 +169,44 @@ COLUMN_MAP: dict[str, str] = {
     # ── PIPE BREAKDOWNS (individual sizes summed into material totals) ────
     # "TOTAL Pipe Breakdowns"  →  "total_pipe_breakdowns"
     "total_pipe_breakdowns":             "pipe_breakdowns",
-    # Individual PVC sizes → summed into pipe_pvc by post-processing hook
-    # (per-size columns not stored individually in the DB)
+    # PVC sizes are stored individually and also rolled into pipe_pvc
+    "pvc_20mm":                         "pvc_20mm",
+    "pvc_25mm":                         "pvc_25mm",
+    "pvc_32mm":                         "pvc_32mm",
+    "pvc_40mm":                         "pvc_40mm",
+    "pvc_50mm":                         "pvc_50mm",
+    "pvc_63mm":                         "pvc_63mm",
+    "pvc_75mm":                         "pvc_75mm",
+    "pvc_90mm":                         "pvc_90mm",
+    "pvc_110mm":                        "pvc_110mm",
+    "pvc_160mm":                        "pvc_160mm",
+    "pvc_200mm":                        "pvc_200mm",
+    "pvc_250mm":                        "pvc_250mm",
+    "pvc_315mm":                        "pvc_315mm",
+    # Non-PVC breakdown sizes are aggregated to their stored material totals.
+    "gi_15mm":                          "_gi_15mm",
+    "gi_20mm":                          "_gi_20mm",
+    "gi_25mm":                          "_gi_25mm",
+    "gi_40mm":                          "_gi_40mm",
+    "gi_50mm":                          "_gi_50mm",
+    "gi_75mm":                          "_gi_75mm",
+    "gi_100mm":                         "_gi_100mm",
+    "gi_150mm":                         "_gi_150mm",
+    "gi_200mm":                         "_gi_200mm",
+    "di_150mm":                         "_di_150mm",
+    "di_200mm":                         "_di_200mm",
+    "di_250mm":                         "_di_250mm",
+    "di_300mm":                         "_di_300mm",
+    "di_350mm":                         "_di_350mm",
+    "di_525mm":                         "_di_525mm",
+    "hdpe_20mm":                        "_hdpe_20mm",
+    "hdpe_25mm":                        "_hdpe_25mm",
+    "hdpe_32mm":                        "_hdpe_32mm",
+    "hdpe_50mm":                        "_hdpe_50mm",
+    "ac_50mm":                          "_ac_50mm",
+    "ac_75mm":                          "_ac_75mm",
+    "ac_100mm":                         "_ac_100mm",
+    "ac_150mm":                         "_ac_150mm",
 
     # ── PUMPS & SUPPLY HOURS ──────────────────────────────────────────────
     "pump_breakdowns":                   "pump_breakdowns",
@@ -570,7 +606,50 @@ class ExcelParser:
                 )
             metrics[col] = coerced
 
+        self._rollup_breakdown_metrics(metrics)
+
         return parsed
+
+    @staticmethod
+    def _rollup_breakdown_metrics(metrics: dict[str, Any]) -> None:
+        """
+        Roll temporary per-size pipe-breakdown fields into the stored DB columns.
+        - PVC sizes remain stored individually and also contribute to pipe_pvc.
+        - GI, DI, HDPE and AC sizes are aggregated into their material totals.
+        - Temporary fields are removed so commit/import only sees valid DB columns.
+        """
+        def _sum(fields: list[str]) -> float:
+            total = 0.0
+            for field in fields:
+                val = metrics.get(field)
+                if isinstance(val, (int, float)):
+                    total += float(val)
+            return total
+
+        pvc_fields = [
+            'pvc_20mm','pvc_25mm','pvc_32mm','pvc_40mm','pvc_50mm','pvc_63mm',
+            'pvc_75mm','pvc_90mm','pvc_110mm','pvc_160mm','pvc_200mm','pvc_250mm','pvc_315mm',
+        ]
+        gi_fields = ['_gi_15mm','_gi_20mm','_gi_25mm','_gi_40mm','_gi_50mm','_gi_75mm','_gi_100mm','_gi_150mm','_gi_200mm']
+        di_fields = ['_di_150mm','_di_200mm','_di_250mm','_di_300mm','_di_350mm','_di_525mm']
+        hdpe_ac_fields = ['_hdpe_20mm','_hdpe_25mm','_hdpe_32mm','_hdpe_50mm','_ac_50mm','_ac_75mm','_ac_100mm','_ac_150mm']
+
+        pvc_total = _sum(pvc_fields)
+        gi_total = _sum(gi_fields)
+        di_total = _sum(di_fields)
+        hdpe_ac_total = _sum(hdpe_ac_fields)
+
+        if pvc_total or 'pipe_pvc' not in metrics or metrics.get('pipe_pvc') is None:
+            metrics['pipe_pvc'] = pvc_total
+        if gi_total or 'pipe_gi' not in metrics or metrics.get('pipe_gi') is None:
+            metrics['pipe_gi'] = gi_total
+        if di_total or 'pipe_di' not in metrics or metrics.get('pipe_di') is None:
+            metrics['pipe_di'] = di_total
+        if hdpe_ac_total or 'pipe_hdpe_ac' not in metrics or metrics.get('pipe_hdpe_ac') is None:
+            metrics['pipe_hdpe_ac'] = hdpe_ac_total
+
+        for field in gi_fields + di_fields + hdpe_ac_fields:
+            metrics.pop(field, None)
 
     # ── Type coercion helpers ─────────────────────────────────────────────
 

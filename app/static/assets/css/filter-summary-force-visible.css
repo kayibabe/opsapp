@@ -1,0 +1,41 @@
+/* Force-visible filter summary highlight
+   This version is more aggressive: it finds the rendered summary line and styles it visibly.
+*/
+
+.filter-summary-force-pill {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  padding: 8px 14px !important;
+  border-radius: 999px !important;
+  border: 1px solid rgba(37, 99, 235, 0.30) !important;
+  background: linear-gradient(180deg, #dbeafe 0%, #eff6ff 100%) !important;
+  color: #1e3a8a !important;
+  font-weight: 700 !important;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.12), 0 8px 20px rgba(37, 99, 235, 0.10) !important;
+}
+
+.filter-summary-force-pill.is-pulsing {
+  animation: filterSummaryForcePulse 1.6s ease-in-out 2 !important;
+}
+
+@keyframes filterSummaryForcePulse {
+  0% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.18), 0 8px 20px rgba(37, 99, 235, 0.10);
+  }
+  35% {
+    transform: scale(1.015);
+    box-shadow: 0 0 0 8px rgba(59, 130, 246, 0.10), 0 10px 24px rgba(37, 99, 235, 0.14);
+  }
+  100% {
+    transform: scale(1);
+    box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.00), 0 8px 20px rgba(37, 99, 235, 0.10);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .filter-summary-force-pill.is-pulsing {
+    animation: none !important;
+  }
+}

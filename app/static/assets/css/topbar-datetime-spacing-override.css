@@ -1,0 +1,28 @@
+/* Top bar date/time right breathing-space patch
+   Add these rules near the end of your existing base.css if you prefer manual merge.
+*/
+.topbar-right,
+.app-topbar-right,
+.toolbar-right {
+  padding-right: 18px !important;
+}
+
+.topbar-datetime,
+.live-datetime,
+.topbar-live-datetime {
+  margin-right: 12px !important;
+}
+
+@media (max-width: 1200px) {
+  .topbar-right,
+  .app-topbar-right,
+  .toolbar-right {
+    padding-right: 14px !important;
+  }
+
+  .topbar-datetime,
+  .live-datetime,
+  .topbar-live-datetime {
+    margin-right: 10px !important;
+  }
+}

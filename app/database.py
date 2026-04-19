@@ -10,10 +10,16 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import declarative_base, sessionmaker
 
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-DATABASE_URL = f"sqlite:///{os.path.join(BASE_DIR, 'data', 'srwb.db')}"
+from app.core.config import settings
 
-engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False}, echo=False)
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+DATABASE_URL = settings.database_url
+
+_engine_kwargs = {"echo": False}
+if DATABASE_URL.startswith("sqlite"):
+    _engine_kwargs["connect_args"] = {"check_same_thread": False}
+
+engine = create_engine(DATABASE_URL, **_engine_kwargs)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
@@ -170,13 +176,17 @@ class Record(Base):
     response_time_avg        = Column(Float, default=0.0)
 
     __table_args__ = (
-        # Prevent duplicate month/year uploads for the same zone+scheme.
-        # The migration script (scripts/migrate_add_unique_constraint.py)
-        # adds this constraint to existing databases; new installs get it
-        # automatically via create_tables().
-        UniqueConstraint("zone", "scheme", "month", "year",
-                         name="uq_zone_scheme_month_year"),
-        Index("ix_zone_scheme_month_year", "zone", "scheme", "month", "year"),
+        # Canonical business key for one reporting period.
+        # Use month_no (INTEGER) instead of month (TEXT) so legacy rows like
+        # month="4" and canonical rows like month="April" cannot coexist.
+        UniqueConstraint(
+            "zone", "scheme", "year", "month_no",
+            name="uq_zone_scheme_year_monthno",
+        ),
+        Index(
+            "ix_zone_scheme_year_monthno",
+            "zone", "scheme", "year", "month_no",
+        ),
     )
 
 # ── User model (authentication & RBAC) ───────────────────────
@@ -193,6 +203,7 @@ class User(Base):
 
     id            = Column(Integer, primary_key=True, autoincrement=True)
     username      = Column(String(60), unique=True, nullable=False, index=True)
+    full_name     = Column(String(120), nullable=True)
     password_hash = Column(String(128), nullable=False)
     role          = Column(String(20), nullable=False, default="user")
     is_active     = Column(Boolean, nullable=False, default=True)

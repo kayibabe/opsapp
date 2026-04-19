@@ -1,0 +1,52 @@
+/* Sidebar submenu indent patch
+   Apply near the end of base.css if merging manually.
+   This pushes child links slightly inward for a cleaner hierarchy.
+*/
+
+.sidebar .nav-children,
+.app-sidebar .nav-children {
+  padding-left: 10px !important;
+}
+
+.sidebar .nav-child,
+.app-sidebar .nav-child,
+.sidebar .submenu-item,
+.app-sidebar .submenu-item,
+.sidebar .sidebar-subitem,
+.app-sidebar .sidebar-subitem {
+  padding-left: 18px !important;
+}
+
+.sidebar .nav-child::before,
+.app-sidebar .nav-child::before,
+.sidebar .submenu-item::before,
+.app-sidebar .submenu-item::before,
+.sidebar .sidebar-subitem::before,
+.app-sidebar .sidebar-subitem::before {
+  left: 8px !important;
+}
+
+@media (max-width: 1200px) {
+  .sidebar .nav-children,
+  .app-sidebar .nav-children {
+    padding-left: 8px !important;
+  }
+
+  .sidebar .nav-child,
+  .app-sidebar .nav-child,
+  .sidebar .submenu-item,
+  .app-sidebar .submenu-item,
+  .sidebar .sidebar-subitem,
+  .app-sidebar .sidebar-subitem {
+    padding-left: 16px !important;
+  }
+
+  .sidebar .nav-child::before,
+  .app-sidebar .nav-child::before,
+  .sidebar .submenu-item::before,
+  .app-sidebar .submenu-item::before,
+  .sidebar .sidebar-subitem::before,
+  .app-sidebar .sidebar-subitem::before {
+    left: 7px !important;
+  }
+}

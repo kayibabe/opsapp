@@ -88,13 +88,24 @@ def kpi_summary(
     conn  = sum(r.new_connections for r in rows)
 
     # Active customers & debtors: latest snapshot per scheme
-    latest: Dict[str, Record] = {}
+    # Smart selection: prefer rows with actual data over empty stub rows,
+    # and for debtors specifically prefer last non-zero balance.
+    latest_any: Dict[str, Record] = {}
+    latest_data: Dict[str, Record] = {}
+    latest_dbt: Dict[str, Record] = {}
     for r in rows:
         k = (r.zone, r.scheme)
-        if k not in latest or (r.year, r.month_no) > (latest[k].year, latest[k].month_no):
-            latest[k] = r
-    active = sum(max(0, r.active_customers) for r in latest.values())
-    debtors = sum(max(0, r.total_debtors)  for r in latest.values())
+        if k not in latest_any or (r.year, r.month_no) > (latest_any[k].year, latest_any[k].month_no):
+            latest_any[k] = r
+        has_data = (r.active_customers or 0) > 0 or (r.vol_produced or 0) > 0 or (r.amt_billed or 0) > 0
+        if has_data and (k not in latest_data or (r.year, r.month_no) > (latest_data[k].year, latest_data[k].month_no)):
+            latest_data[k] = r
+        if (r.total_debtors or 0) != 0 and (k not in latest_dbt or (r.year, r.month_no) > (latest_dbt[k].year, latest_dbt[k].month_no)):
+            latest_dbt[k] = r
+    lv_stock  = [latest_data.get(k, latest_any[k]) for k in latest_any]
+    lv_debtor = [latest_dbt.get(k, latest_any[k])  for k in latest_any]
+    active  = sum(max(0, r.active_customers) for r in lv_stock)
+    debtors = sum(max(0, r.total_debtors)   for r in lv_debtor)
 
     chem   = sum(r.chem_cost   for r in rows)
     power  = sum(r.power_cost  for r in rows)
@@ -102,9 +113,9 @@ def kpi_summary(
     svc    = sum(r.service_charge  for r in rows)
     meter  = sum(r.meter_rental    for r in rows)
     # Stuck meters: latest snapshot per scheme
-    stuck  = sum(max(0, r.stuck_meters) for r in latest.values())
+    stuck  = sum(max(0, r.stuck_meters) for r in latest_any.values())
     # Population served: latest snapshot per scheme
-    pop    = sum(max(0, r.pop_supplied) for r in latest.values())
+    pop    = sum(max(0, r.pop_supplied) for r in latest_any.values())
     # Supply hours: average across schemes that reported > 0
     sh_vals = [r.supply_hours for r in rows if r.supply_hours and r.supply_hours > 0]
     supply_avg = sum(sh_vals) / len(sh_vals) if sh_vals else 0
@@ -242,11 +253,20 @@ def by_zone(
 
     result = []
     for zone, zrows in sorted(zone_data.items()):
-        latest: Dict[str, Record] = {}
+        latest_any: Dict[str, Record] = {}
+        latest_data: Dict[str, Record] = {}
+        latest_dbt: Dict[str, Record] = {}
         for r in zrows:
-            if r.scheme not in latest or (r.year, r.month_no) > (latest[r.scheme].year, latest[r.scheme].month_no):
-                latest[r.scheme] = r
-        lv = list(latest.values())
+            k = r.scheme
+            if k not in latest_any or (r.year, r.month_no) > (latest_any[k].year, latest_any[k].month_no):
+                latest_any[k] = r
+            has_data = (r.active_customers or 0) > 0 or (r.vol_produced or 0) > 0 or (r.amt_billed or 0) > 0
+            if has_data and (k not in latest_data or (r.year, r.month_no) > (latest_data[k].year, latest_data[k].month_no)):
+                latest_data[k] = r
+            if (r.total_debtors or 0) != 0 and (k not in latest_dbt or (r.year, r.month_no) > (latest_dbt[k].year, latest_dbt[k].month_no)):
+                latest_dbt[k] = r
+        lv      = [latest_data.get(k, latest_any[k]) for k in latest_any]
+        lv_dbt  = [latest_dbt.get(k,  latest_any[k]) for k in latest_any]
         vol = sum(r.vol_produced for r in zrows)
         nrw = sum(r.nrw          for r in zrows)
         result.append({
@@ -270,7 +290,7 @@ def by_zone(
             "temp_staff":       round(sum(r.temp_staff       for r in lv)),
             "pipe_breakdowns":  round(sum(r.pipe_breakdowns  for r in zrows)),
             "stuck_meters":     round(sum(max(0, r.stuck_meters) for r in lv)),
-            "total_debtors":    round(sum(max(0, r.total_debtors) for r in lv), 2),
+            "total_debtors":    round(sum(max(0, r.total_debtors) for r in lv_dbt), 2),
         })
 
     return result

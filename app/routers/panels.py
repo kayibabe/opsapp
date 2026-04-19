@@ -63,6 +63,24 @@ def _latest(rows):
     merged = {k: lv.get(k, lv_any[k]) for k in lv_any}
     return list(merged.values())
 
+
+def _latest_nonzero(rows, field):
+    """Latest row per (zone, scheme) where `field` is non-zero and non-null.
+    Used for stock balance metrics (debtors, stuck meters) where a missing
+    entry is recorded as 0 but the prior balance is still the correct value.
+    Falls back to _latest() for any scheme that never had a non-zero value."""
+    lv_nz  = {}   # latest row where field != 0
+    lv_any = {}   # fallback: latest regardless
+    for r in rows:
+        k = (r.zone, r.scheme)
+        if k not in lv_any or _lk(r) > _lk(lv_any[k]):
+            lv_any[k] = r
+        v = getattr(r, field, None)
+        if v is not None and v != 0 and (k not in lv_nz or _lk(r) > _lk(lv_nz[k])):
+            lv_nz[k] = r
+    merged = {k: lv_nz.get(k, lv_any[k]) for k in lv_any}
+    return list(merged.values())
+
 def _nz_avg(rows, field, cap=None):
     """Average of non-zero values; optionally cap outliers before averaging."""
     vals = []
@@ -83,7 +101,8 @@ def _by_zone(rows):
     for r in rows: zd[r.zone].append(r)
     result = []
     for zone, zrows in sorted(zd.items()):
-        lv  = _latest(zrows)
+        lv   = _latest(zrows)
+        lv_d = _latest_nonzero(zrows, 'total_debtors')  # debtor-aware latest
         vol = _nz_sum(zrows, 'vol_produced')
         nrw = _nz_sum(zrows, 'nrw')
         ch  = _nz_sum(zrows, 'chem_cost')
@@ -138,9 +157,9 @@ def _by_zone(rows):
             "service_charge":    round(_nz_sum(zrows,'service_charge'),2),
             "meter_rental":      round(_nz_sum(zrows,'meter_rental'),2),
             "total_sales":       round(_nz_sum(zrows,'total_sales'),2),
-            "private_debtors":   round(sum(max(0,r.private_debtors) for r in lv),2),
-            "public_debtors":    round(sum(max(0,r.public_debtors)  for r in lv),2),
-            "total_debtors":     round(sum(max(0,r.total_debtors)   for r in lv),2),
+            "private_debtors":   round(sum(max(0,r.private_debtors) for r in lv_d),2),
+            "public_debtors":    round(sum(max(0,r.public_debtors)  for r in lv_d),2),
+            "total_debtors":     round(sum(max(0,r.total_debtors)   for r in lv_d),2),
             "stuck_meters":      round(sum(max(0,r.stuck_meters)    for r in lv)),
             "stuck_new":         round(_nz_sum(zrows,'stuck_new')),
             "stuck_repaired":    round(_nz_sum(zrows,'stuck_repaired')),
@@ -313,9 +332,51 @@ def _monthly(rows):
     return result
 
 
+def _is_canonical_row(r):
+    return (
+        getattr(r, 'fiscal_year', None) not in (None, '', 'NULL')
+        and getattr(r, 'month', None) in FY_MONTHS
+        and getattr(r, 'month_no', None) is not None
+    )
+
+
+def _row_score(r):
+    score = 0
+    if _is_canonical_row(r):
+        score += 100
+    if getattr(r, 'fiscal_year', None) not in (None, '', 'NULL'):
+        score += 10
+    if getattr(r, 'month', None) in FY_MONTHS:
+        score += 10
+    if getattr(r, 'month_no', None) is not None:
+        score += 5
+    if getattr(r, 'quarter', None):
+        score += 1
+    return score
+
+
+def _dedupe_rows(rows):
+    """Keep one logical record per (zone, scheme, year, month_no).
+
+    This prevents double counting where the database contains both:
+      - legacy rows (month stored as 4/5/6..., fiscal_year NULL)
+      - canonical rows (month stored as April/May/June..., fiscal_year set)
+    """
+    best = {}
+    for r in rows:
+        key = (r.zone, r.scheme, r.year, r.month_no)
+        current = best.get(key)
+        if current is None or _row_score(r) > _row_score(current):
+            best[key] = r
+    return list(best.values())
+
+
 def _base(zones, schemes, months, year, db):
-    rows = _filter(db.query(Record),
-                   _parse(zones), _parse(schemes), _parse(months), year).all()
+    rows = _filter(
+        db.query(Record),
+        _parse(zones), _parse(schemes), _parse(months), year,
+    ).all()
+    rows = _dedupe_rows(rows)
     return rows, _by_zone(rows), _monthly(rows)
 
 
@@ -607,7 +668,9 @@ def panel_debtors(zones:Optional[str]=None,schemes:Optional[str]=None,
                   months:Optional[str]=None,year:Optional[int]=None,
                   db:Session=Depends(get_db)):
     rows,bz,mo=_base(zones,schemes,months,year,db)
-    lv=_latest(rows)
+    # Use last month where debtors were non-zero (guards against months
+    # where production/billing data exists but debtors were not entered)
+    lv=_latest_nonzero(rows,'total_debtors')
     total=sum(max(0,r.total_debtors)   for r in lv)
     priv =sum(max(0,r.private_debtors) for r in lv)
     pub  =sum(max(0,r.public_debtors)  for r in lv)
@@ -653,6 +716,10 @@ def panel_executive(zones: Optional[str] = None, schemes: Optional[str] = None,
     stuck     = sum(max(0, r.stuck_meters) for r in lv)
     queries   = _nz_sum(rows, 'queries_received')
     power_kwh = _nz_sum(rows, 'power_kwh')
+    supply_raw = _nz_avg(rows, 'supply_hours', cap=744)
+    supply_daily = round(supply_raw / 30.44, 1) if supply_raw else 0
+    pipe_breakdowns = _nz_sum(rows, 'pipe_breakdowns')
+    pump_breakdowns = _nz_sum(rows, 'pump_breakdowns')
     vol_billed = (_nz_sum(rows, 'total_vol_billed_pp')
                   + _nz_sum(rows, 'total_vol_billed_prepaid'))
     avg_tariff = round(revenue / vol_billed, 2) if vol_billed else 0
@@ -705,6 +772,7 @@ def panel_executive(zones: Optional[str] = None, schemes: Optional[str] = None,
         "stuck_pct": round(stuck / metered * 100, 1) if metered else 0,
         "complaints_1000": int(comp_1000),
         "complaints_flag": "LOW" if comp_1000 < 30 else ("MONITOR" if comp_1000 < 60 else "HIGH"),
+        "supply_hours_avg": supply_daily,
     }
 
     # ── 4. Zone Snapshot (enhanced) ───────────────────────────────
@@ -743,12 +811,15 @@ def panel_executive(zones: Optional[str] = None, schemes: Optional[str] = None,
             "dso": z_dso,
             "op_ratio": round(z_opex / z_rev, 2) if z_rev else 0,
             "rev_per_conn": round(z_rev / z_active, 0) if z_active else 0,
+            "active_customers": round(z_active),
+            "breakdowns_total": round(z.get("pipe_breakdowns", 0) + z.get("pump_breakdowns", 0)),
             "nrw_trend": nrw_trend,
         })
 
     # ── 5. Trend series ───────────────────────────────────────────
     trends = {
         "labels":    [m["month"] for m in data_months],
+        "production": [m.get("vol_produced", 0) for m in data_months],
         "billed":    [m.get("amt_billed", 0) for m in data_months],
         "collected": [m.get("cash_collected", 0) for m in data_months],
         "nrw_pct":   [m.get("pct_nrw", 0) for m in data_months],
@@ -760,8 +831,18 @@ def panel_executive(zones: Optional[str] = None, schemes: Optional[str] = None,
         "financial": financial,
         "nrw": nrw_intel,
         "service": service,
+        "portfolio": {
+            "active_customers": round(active),
+            "supply_hours_avg": supply_daily,
+            "total_breakdowns": round(pipe_breakdowns + pump_breakdowns),
+            "queries_received": round(queries),
+            "zones_covered": len(zone_snap),
+            "schemes_covered": len({(r.zone, r.scheme) for r in lv}),
+            "months_with_data": n_months,
+        },
         "zones": zone_snap,
         "trends": trends,
+        "record_count": len(rows),
     }
 
 
@@ -846,6 +927,7 @@ def panel_executive(zones: Optional[str] = None, schemes: Optional[str] = None,
         "stuck_pct": round(stuck / metered * 100, 1) if metered else 0,
         "complaints_1000": int(comp_1000),
         "complaints_flag": "LOW" if comp_1000 < 30 else ("MONITOR" if comp_1000 < 60 else "HIGH"),
+        "supply_hours_avg": supply_daily,
     }
 
     # 4. Zone Snapshot (enhanced)
@@ -884,12 +966,15 @@ def panel_executive(zones: Optional[str] = None, schemes: Optional[str] = None,
             "dso": z_dso,
             "op_ratio": round(z_opex / z_rev, 2) if z_rev else 0,
             "rev_per_conn": round(z_rev / z_active, 0) if z_active else 0,
+            "active_customers": round(z_active),
+            "breakdowns_total": round(z.get("pipe_breakdowns", 0) + z.get("pump_breakdowns", 0)),
             "nrw_trend": nrw_trend,
         })
 
     # 5. Trend series
     trends = {
         "labels":    [m["month"] for m in data_months],
+        "production": [m.get("vol_produced", 0) for m in data_months],
         "billed":    [m.get("amt_billed", 0) for m in data_months],
         "collected": [m.get("cash_collected", 0) for m in data_months],
         "nrw_pct":   [m.get("pct_nrw", 0) for m in data_months],
@@ -901,6 +986,16 @@ def panel_executive(zones: Optional[str] = None, schemes: Optional[str] = None,
         "financial": financial,
         "nrw": nrw_intel,
         "service": service,
+        "portfolio": {
+            "active_customers": round(active),
+            "supply_hours_avg": supply_daily,
+            "total_breakdowns": round(pipe_breakdowns + pump_breakdowns),
+            "queries_received": round(queries),
+            "zones_covered": len(zone_snap),
+            "schemes_covered": len({(r.zone, r.scheme) for r in lv}),
+            "months_with_data": n_months,
+        },
         "zones": zone_snap,
         "trends": trends,
+        "record_count": len(rows),
     }

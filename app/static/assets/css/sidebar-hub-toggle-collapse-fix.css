@@ -1,0 +1,21 @@
+/* Visual support for true hub toggle behavior */
+
+.nav-group .nav-children[hidden],
+[data-sidebar-children][hidden] {
+  display: none !important;
+}
+
+.nav-group.is-expanded > .hub-trigger .nav-chevron,
+.nav-group.is-expanded > .hub-trigger .sidebar-chevron,
+.nav-group.is-expanded > .hub-trigger .chevron,
+.hub-trigger.is-expanded .nav-chevron,
+.hub-trigger.is-expanded .sidebar-chevron,
+.hub-trigger.is-expanded .chevron {
+  transform: rotate(90deg) !important;
+}
+
+.hub-trigger .nav-chevron,
+.hub-trigger .sidebar-chevron,
+.hub-trigger .chevron {
+  transition: transform 0.18s ease !important;
+}

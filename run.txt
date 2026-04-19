@@ -1,1 +1,19 @@
+pip install -r requirements.txt
+
 uvicorn app.main:app --reload --port 8000
+
+How to run it
+
+Put the script in:
+
+D:\WebApps\OpsApp\
+
+Then run this first as a dry run:
+
+cd /d D:\WebApps\OpsApp
+python sync_sqlite_databases.py srwb.db srwb-server.db --canonical db1 --dry-run
+
+Then run the real sync:
+
+cd /d D:\WebApps\OpsApp
+python sync_sqlite_databases.py srwb.db srwb-server.db --canonical db1

@@ -1,0 +1,44 @@
+/* Force the live date/time block inward so it is fully visible */
+
+.topbar-right,
+.app-topbar-right,
+.toolbar-right,
+.topbar-actions-right,
+.header-actions-right {
+  padding-right: 44px !important;
+  overflow: visible !important;
+  box-sizing: border-box !important;
+}
+
+#liveDateTime,
+#topbarLiveDateTime,
+.topbar-datetime,
+.live-datetime,
+.topbar-live-datetime,
+[data-live-datetime] {
+  position: relative !important;
+  right: 22px !important;
+  margin-right: 0 !important;
+  white-space: nowrap !important;
+  overflow: visible !important;
+  z-index: 2 !important;
+}
+
+@media (max-width: 1200px) {
+  .topbar-right,
+  .app-topbar-right,
+  .toolbar-right,
+  .topbar-actions-right,
+  .header-actions-right {
+    padding-right: 28px !important;
+  }
+
+  #liveDateTime,
+  #topbarLiveDateTime,
+  .topbar-datetime,
+  .live-datetime,
+  .topbar-live-datetime,
+  [data-live-datetime] {
+    right: 14px !important;
+  }
+}

@@ -1,4 +1,4 @@
-﻿__pycache__/
+__pycache__/
 *.py[cod]
 *.pyo
 .env
@@ -14,3 +14,12 @@ excel files/
 Thumbs.db
 .DS_Store
 index - Copy*.html
+dist/
+.pytest_cache/
+.vs/
+.idea/
+.vscode/
+*.sqlite
+*.db
+data/*.secret
+data/*.key

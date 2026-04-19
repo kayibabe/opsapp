@@ -1,0 +1,26 @@
+/* Top bar date/time extra inset patch */
+.topbar-right,
+.app-topbar-right,
+.toolbar-right {
+  padding-right: 34px !important;
+}
+
+.topbar-datetime,
+.live-datetime,
+.topbar-live-datetime {
+  margin-right: 20px !important;
+}
+
+@media (max-width: 1200px) {
+  .topbar-right,
+  .app-topbar-right,
+  .toolbar-right {
+    padding-right: 24px !important;
+  }
+
+  .topbar-datetime,
+  .live-datetime,
+  .topbar-live-datetime {
+    margin-right: 14px !important;
+  }
+}
