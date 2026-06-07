@@ -513,7 +513,7 @@ function buildCompactFilterSummary(){
 
 function updatePageMeta(){
   const stamp=new Date().toLocaleString('en-GB',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'});
-  ['overview','operations','commercial','reports','production','wt-ei','customers','connections','stuck','connectivity','breakdowns','pipelines','billed','collections','charges','expenses','debtors','segment-revenue','workforce','class-connections','stuck-classes','pipe-materials','budget','compliance'].forEach(page=>{
+  ['overview','operations','commercial','reports','production','wt-ei','customers','connections','stuck','connectivity','breakdowns','pipelines','billed','collections','charges','expenses','debtors','segment-revenue','workforce','class-connections','stuck-classes','pipe-materials','budget','compliance','benchmarking'].forEach(page=>{
     const el=document.getElementById(`pg-meta-${page}`);
     if(el)el.innerHTML= DOMPurify.sanitize(`${buildCompactFilterSummary()} <span class="meta-sep">·</span> Updated ${stamp}`);
   });
@@ -1900,6 +1900,7 @@ const PAGE_META={
   'pipe-materials':{section:'Operations',title:'Pipe Failure by Material and Size'},
   budget:{section:'Planning',title:'Budget & Forecast'},
   compliance:{section:'Governance',title:'Compliance & Data Quality'},
+  benchmarking:{section:'Reports',title:'Benchmarking Tool'},
   admin:{section:'Administration',title:'Administration'},
 };
 const NAV_PARENT_MAP={
@@ -1927,11 +1928,15 @@ const NAV_PARENT_MAP={
   'pipe-materials':'operations',
   budget:'budget',
   compliance:'compliance',
+  reports:'reporting',
+  benchmarking:'reporting',
+  'report-centre':'reporting',
   admin:'admin',
 };
 const HUB_DEFAULT_PAGE={
   operations:'production',
   commercial:'customers',
+  reporting:'report-centre',
 };
 let currentPage='overview';
 function updateBreadcrumb(page){
@@ -2162,7 +2167,7 @@ async function loadPage(page){
   try{
     await ensureGovernanceBundle();
     await ensureExportGovernanceBundle();
-const map={overview:loadOverview,operations:loadOperationsHub,commercial:loadCommercialHub,reports:loadReportsHub,admin:loadAdmin,production:loadProduction,'wt-ei':loadWtEi,customers:loadCustomersUnified,connections:loadConnections,stuck:loadStuck,connectivity:loadConnectivity,breakdowns:loadBreakdowns,pipelines:loadPipelines,billed:loadBilled,collections:loadCollections,charges:loadCharges,expenses:loadExpenses,debtors:loadDebtors,'segment-revenue':loadSegmentRevenue,workforce:loadWorkforce,'class-connections':loadClassConnections,'stuck-classes':loadStuckClasses,'pipe-materials':loadPipeMaterials,compliance:loadCompliance,budget:loadBudget,'report-centre':loadReportCentre};
+const map={overview:loadOverview,operations:loadOperationsHub,commercial:loadCommercialHub,reports:loadReportsHub,admin:loadAdmin,production:loadProduction,'wt-ei':loadWtEi,customers:loadCustomersUnified,connections:loadConnections,stuck:loadStuck,connectivity:loadConnectivity,breakdowns:loadBreakdowns,pipelines:loadPipelines,billed:loadBilled,collections:loadCollections,charges:loadCharges,expenses:loadExpenses,debtors:loadDebtors,'segment-revenue':loadSegmentRevenue,workforce:loadWorkforce,'class-connections':loadClassConnections,'stuck-classes':loadStuckClasses,'pipe-materials':loadPipeMaterials,compliance:loadCompliance,budget:loadBudget,benchmarking:loadBenchmarking,'report-centre':loadReportCentre};
     if(map[page])await map[page]();
     await injectChartCredibilityNotes(document.getElementById('page-'+page)||document);
     await injectPageGovernanceStatus(document.getElementById('page-'+page)||document);
@@ -3154,7 +3159,7 @@ function loadReportsHub(){ hydrateHubWorkspace('reports'); }
 
 
 /* ══════════════════════ COLLAPSIBLE NAV GROUPS ═══════════════════════ */
-const NAV_GROUPS=['operations','commercial'];
+const NAV_GROUPS=['operations','commercial','reporting'];
 const NAV_STORAGE_KEY='srwb_nav_open_group';
 
 function _saveNavState(openGroupId=''){
@@ -3315,12 +3320,45 @@ async function loadLoginKpis(){
    ════════════════════════════════════════════════════════════════════════ */
 
 const UM = {
-  file:         null,    // File object chosen by user
+  step:         1,       // 1 = Build RawData, 2 = Import to database
+  file:         null,    // File object chosen by user (manual Step 2 override)
   previewToken: null,    // returned by /api/upload/preview
   mode:         'replace', // global_conflict_mode
+  buildMode:    'fill',  // 'fill' (smart-diff) | 'force' (full refresh)
+  built:        false,   // Step 1 completed successfully this session
   monthNames:   ['January','February','March','April','May','June',
                  'July','August','September','October','November','December'],
 };
+
+// Footer button visibility — pass the IDs that should be shown; the rest hide.
+function umFooter(...show){
+  ['um-btn-cancel','um-btn-back','um-btn-build','um-btn-continue',
+   'um-btn-upload','um-btn-commit','um-btn-done'].forEach(id=>{
+    const el=document.getElementById(id); if(el) el.style.display='none';
+  });
+  show.forEach(id=>{ const el=document.getElementById(id); if(el) el.style.display=''; });
+}
+
+// Switch between Step 1 (build) and Step 2 (import) and update the indicator.
+function umShowStep(n){
+  UM.step = n;
+  document.getElementById('um-stage-build').style.display = n===1 ? '' : 'none';
+  document.getElementById('um-stage-pick').style.display  = n===2 ? '' : 'none';
+  if(n===1){ umHidePreview(); document.getElementById('um-result').style.display='none'; }
+
+  const s1 = document.getElementById('um-step-1'), s2 = document.getElementById('um-step-2');
+  const line = document.getElementById('um-step-line');
+  const ACTIVE='#1A8FD1', MUTE='var(--ds-text-muted,#94a3b8)', BG='var(--ds-border,#e2e8f0)';
+  if(s1){ s1.style.color = ACTIVE; s1.querySelector('.um-step-num').style.background = ACTIVE; s1.querySelector('.um-step-num').style.color='#fff'; }
+  if(s2){
+    const on = n===2;
+    s2.style.color = on ? ACTIVE : MUTE;
+    const num = s2.querySelector('.um-step-num');
+    num.style.background = on ? ACTIVE : BG;
+    num.style.color = on ? '#fff' : 'var(--ds-text-muted,#64748b)';
+    if(line) line.style.background = on ? ACTIVE : BG;
+  }
+}
 
 // ── Public entry points ────────────────────────────────────────────────
 
@@ -3378,9 +3416,7 @@ function umSetFile(f){
   UM.previewToken = null;
   document.getElementById('um-btn-upload').disabled = false;
   document.getElementById('um-btn-label').textContent = 'Upload & Validate';
-  document.getElementById('um-btn-commit').style.display = 'none';
-  document.getElementById('um-btn-upload').style.display = '';
-  document.getElementById('um-btn-done').style.display = 'none';
+  umFooter('um-btn-back','um-btn-upload');
 }
 
 function umClearFile(evt){
@@ -3390,11 +3426,12 @@ function umClearFile(evt){
   const drop = document.getElementById('um-drop-zone');
   drop.classList.remove('has-file','error-state','drag-over');
   document.getElementById('um-file-input').value = '';
+  document.getElementById('um-file-label').style.display='none';
   umHidePreview();
   document.getElementById('um-btn-upload').disabled = true;
-  document.getElementById('um-btn-commit').style.display = 'none';
-  document.getElementById('um-btn-done').style.display = 'none';
-  document.getElementById('um-btn-upload').style.display = '';
+  // Back to the generated-file preview if we have one, else just the drop zone.
+  if(UM.previewToken){ umFooter('um-btn-back','um-btn-cancel','um-btn-commit'); }
+  else { umFooter('um-btn-back','um-btn-upload'); }
 }
 
 function umModeChange(radio){
@@ -3412,20 +3449,27 @@ function umReset(){
   UM.file = null;
   UM.previewToken = null;
   UM.mode = 'replace';
+  UM.buildMode = 'fill';
+  UM.built = false;
   UM.justCommitted = false;
   document.getElementById('um-file-input').value = '';
   const drop = document.getElementById('um-drop-zone');
   drop.classList.remove('has-file','error-state','drag-over');
   umHidePreview();
   document.getElementById('um-result').style.display = 'none';
-  document.getElementById('um-stage-pick').style.display = '';
   document.getElementById('um-progress').style.display = 'none';
-  document.getElementById('um-btn-upload').disabled = true;
-  document.getElementById('um-btn-upload').style.display = '';
-  document.getElementById('um-btn-commit').style.display = 'none';
-  document.getElementById('um-btn-done').style.display = 'none';
   document.getElementById('um-btn-cancel').textContent = 'Cancel';
-  // Reset mode radio to "replace"
+  document.getElementById('um-btn-upload').disabled = true;
+
+  // Step 1 build UI
+  document.getElementById('um-build-result').style.display = 'none';
+  document.getElementById('um-build-issues').innerHTML = '';
+  document.getElementById('um-build-label').textContent = 'Build RawData';
+  document.querySelectorAll('input[name="um-bmode"]').forEach(r=>{ r.checked = r.value === 'fill'; });
+  document.getElementById('um-bmode-fill').classList.add('selected');
+  document.getElementById('um-bmode-force').classList.remove('selected');
+
+  // Reset import mode radio to "replace"
   document.querySelectorAll('input[name="um-mode"]').forEach(r=>{
     r.checked = r.value === 'replace';
   });
@@ -3433,6 +3477,150 @@ function umReset(){
   document.getElementById('um-mode-skip').classList.remove('selected');
   document.getElementById('um-mode-clear').classList.remove('selected');
   umSetSpinner(false);
+
+  document.getElementById('um-steps').style.display = 'flex';
+  umShowStep(1);
+  umFooter('um-btn-cancel','um-btn-build');
+  umLoadZoneStatus();
+}
+
+// ── Step 1: Build RawData via the dataupdater tool ─────────────────────────
+
+function umBuildModeChange(radio){
+  UM.buildMode = radio.value;
+  ['um-bmode-fill','um-bmode-force'].forEach(id=>{
+    const el = document.getElementById(id);
+    if(el) el.classList.toggle('selected', el.querySelector('input').value === UM.buildMode);
+  });
+}
+
+async function umLoadZoneStatus(){
+  const wrap = document.getElementById('um-zone-status');
+  wrap.innerHTML = '';
+  try{
+    const data = await fetchJsonSafe(`${API}/api/upload/zone-files`,{label:'/api/upload/zone-files'});
+    (data.files||[]).forEach(f=>{
+      const ok = f.exists;
+      const pill = document.createElement('div');
+      pill.style.cssText = `display:inline-flex;align-items:center;gap:5px;padding:4px 9px;border-radius:6px;font-size:11px;font-weight:600;`
+        + (ok ? 'background:#ecfdf5;color:#047857;' : 'background:#fef2f2;color:#b91c1c;');
+      const dot = ok
+        ? '<svg width="11" height="11" viewBox="0 0 16 16" fill="none"><path d="M3 8l3.5 3.5L13 5" stroke="#047857" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>'
+        : '<svg width="11" height="11" viewBox="0 0 16 16" fill="none"><path d="M3 3l10 10M13 3L3 13" stroke="#b91c1c" stroke-width="1.8" stroke-linecap="round"/></svg>';
+      pill.innerHTML = DOMPurify.sanitize(`${dot}<span>${f.zone}</span>`);
+      wrap.appendChild(pill);
+    });
+    const buildBtn = document.getElementById('um-btn-build');
+    if(buildBtn) buildBtn.disabled = !data.all_present;
+    if(!data.all_present){
+      const warn = document.createElement('div');
+      warn.style.cssText = 'flex-basis:100%;font-size:11px;color:#b91c1c;font-weight:600;margin-top:4px';
+      warn.textContent = `Missing zone file(s): ${(data.missing||[]).join(', ')} — place them in the dataupdater folder.`;
+      wrap.appendChild(warn);
+    }
+  }catch(err){
+    wrap.innerHTML = DOMPurify.sanitize('<span style="font-size:11px;color:var(--ds-text-muted)">Could not check zone files.</span>');
+  }
+}
+
+async function umBuildRawData(){
+  umBuildSpinner(true);
+  document.getElementById('um-build-label').textContent = 'Building…';
+  umShowProgress('Reading zone workbooks…', 30);
+  try{
+    umShowProgress('Running smart-diff update…', 65);
+    const data = await fetchJsonSafe(`${API}/api/upload/build-rawdata`,{
+      method:'POST',
+      headers:{ 'Content-Type':'application/json' },
+      body: JSON.stringify({ force: UM.buildMode==='force', test: false }),
+      label:'/api/upload/build-rawdata',
+    });
+    umShowProgress('Build complete', 100);
+    await new Promise(r=>setTimeout(r,350));
+    umHideProgress();
+    umBuildSpinner(false);
+    umRenderBuildResult(data);
+  }catch(err){
+    umHideProgress();
+    umBuildSpinner(false);
+    document.getElementById('um-build-label').textContent = 'Build RawData';
+    const list = document.getElementById('um-build-issues');
+    document.getElementById('um-build-result').style.display = 'block';
+    list.innerHTML = '';
+    umAddIssuePill(list,'err', err.message || 'Build failed — check the zone files and try again.');
+  }
+}
+
+function umRenderBuildResult(data){
+  UM.built = !!data.ok;
+  const s = data.summary || {};
+  document.getElementById('um-build-result').style.display = 'block';
+  document.getElementById('um-bstat-files').textContent   = s.source_files_read ?? '—';
+  document.getElementById('um-bstat-filled').textContent  = s.rows_updated ?? 0;
+  document.getElementById('um-bstat-added').textContent   = s.rows_added ?? 0;
+  document.getElementById('um-bstat-skipped').textContent = s.skipped_already_complete ?? 0;
+  document.getElementById('um-bstat-err').textContent     = s.errors ?? 0;
+
+  const list = document.getElementById('um-build-issues');
+  list.innerHTML = '';
+  const changed = data.records_changed ?? 0;
+  if(!data.ok){
+    umAddIssuePill(list,'err',`Build finished with errors (exit code ${data.exit_code}). Review and retry before importing.`);
+  } else if(changed > 0){
+    umAddIssuePill(list,'ok',`${changed} record(s) updated in ${data.output_file}. Ready to import.`);
+  } else {
+    umAddIssuePill(list,'ok',`RawData is already up to date — no new records to fill. You can still continue to import.`);
+  }
+  if((s.skipped_empty_source ?? 0) > 0){
+    umAddIssuePill(list,'warn',`${s.skipped_empty_source} source month-record(s) had no data and were skipped.`);
+  }
+
+  document.getElementById('um-build-label').textContent = 'Rebuild';
+  umFooter('um-btn-cancel','um-btn-build', ...(data.ok ? ['um-btn-continue'] : []));
+}
+
+function umBuildSpinner(on){
+  document.getElementById('um-spinner-build').style.display = on ? 'block' : 'none';
+  const b = document.getElementById('um-btn-build'); if(b) b.disabled = on;
+}
+
+// ── Step 1 → Step 2 hand-off ───────────────────────────────────────────────
+
+async function umContinueToImport(){
+  document.getElementById('um-spinner-continue').style.display = 'block';
+  document.getElementById('um-btn-continue').disabled = true;
+  document.getElementById('um-continue-label').textContent = 'Validating…';
+  umShowProgress('Validating generated RawData…', 60);
+  try{
+    const data = await fetchJsonSafe(`${API}/api/upload/preview-generated`,{
+      method:'POST', label:'/api/upload/preview-generated',
+    });
+    UM.previewToken = data.preview_token;
+    umShowProgress('Validation complete', 100);
+    await new Promise(r=>setTimeout(r,300));
+    umHideProgress();
+    document.getElementById('um-spinner-continue').style.display = 'none';
+    document.getElementById('um-btn-continue').disabled = false;
+    document.getElementById('um-continue-label').textContent = 'Continue to Import →';
+    umShowStep(2);
+    umRenderPreview(data);
+  }catch(err){
+    umHideProgress();
+    document.getElementById('um-spinner-continue').style.display = 'none';
+    document.getElementById('um-btn-continue').disabled = false;
+    document.getElementById('um-continue-label').textContent = 'Continue to Import →';
+    const list = document.getElementById('um-build-issues');
+    list.innerHTML = '';
+    umAddIssuePill(list,'err', err.message || 'Could not validate the generated file.');
+  }
+}
+
+function umBackToBuild(){
+  UM.file = null; UM.previewToken = null;
+  document.getElementById('um-file-input').value = '';
+  document.getElementById('um-drop-zone').classList.remove('has-file','error-state','drag-over');
+  umShowStep(1);
+  umFooter('um-btn-cancel','um-btn-build', ...(UM.built ? ['um-btn-continue'] : []));
 }
 
 // ── Phase 1: Upload & validate ─────────────────────────────────────────
@@ -3501,14 +3689,11 @@ async function umCommit(){
 
 function umRenderPreview(data){
   document.getElementById('um-preview').style.display = 'block';
-  document.getElementById('um-btn-upload').style.display = 'none';
   document.getElementById('um-btn-upload').disabled = false;
   document.getElementById('um-spinner').style.display = 'none';
-  document.getElementById('um-btn-commit').style.display = '';
   document.getElementById('um-btn-commit').disabled = false;
   document.getElementById('um-spinner-commit').style.display = 'none';
   document.getElementById('um-commit-label').textContent = 'Confirm Import';
-  document.getElementById('um-btn-done').style.display = 'none';
 
   // Stats
   document.getElementById('um-stat-total').textContent    = data.total_rows ?? '—';
@@ -3546,13 +3731,13 @@ function umRenderPreview(data){
   }
 
   // Show commit / abort buttons
-  document.getElementById('um-btn-upload').style.display = 'none';
   if((data.importable_count ?? 0) > 0){
     document.getElementById('um-commit-label').textContent = 'Confirm Import';
     document.getElementById('um-btn-cancel').textContent = 'Discard';
+    umFooter('um-btn-back','um-btn-cancel','um-btn-commit');
   } else {
-    document.getElementById('um-btn-commit').style.display = 'none';
     document.getElementById('um-btn-cancel').textContent = 'Close';
+    umFooter('um-btn-back','um-btn-cancel');
   }
 }
 
@@ -3571,13 +3756,12 @@ function umAddIssuePill(container, type, msg){
 // ── Result rendering ───────────────────────────────────────────────────
 
 function umRenderResult(data){
+  document.getElementById('um-steps').style.display       = 'none';
+  document.getElementById('um-stage-build').style.display = 'none';
   document.getElementById('um-stage-pick').style.display  = 'none';
   document.getElementById('um-preview').style.display     = 'none';
   document.getElementById('um-result').style.display      = 'block';
-  document.getElementById('um-btn-commit').style.display  = 'none';
-  document.getElementById('um-btn-upload').style.display  = 'none';
-  document.getElementById('um-btn-cancel').style.display  = 'none';
-  document.getElementById('um-btn-done').style.display    = '';
+  umFooter('um-btn-done');
 
   const icon = document.getElementById('um-result-icon');
   icon.className = 'um-result-icon success';
@@ -3608,13 +3792,12 @@ function umRenderResult(data){
 }
 
 function umRenderResultError(msg){
+  document.getElementById('um-steps').style.display       = 'none';
+  document.getElementById('um-stage-build').style.display = 'none';
   document.getElementById('um-stage-pick').style.display  = 'none';
   document.getElementById('um-preview').style.display     = 'none';
   document.getElementById('um-result').style.display      = 'block';
-  document.getElementById('um-btn-commit').style.display  = 'none';
-  document.getElementById('um-btn-upload').style.display  = 'none';
-  document.getElementById('um-btn-done').style.display    = '';
-  document.getElementById('um-btn-cancel').textContent    = 'Close';
+  umFooter('um-btn-done');
 
   const icon = document.getElementById('um-result-icon');
   icon.className = 'um-result-icon error';
@@ -5521,6 +5704,45 @@ const REPORT_TEMPLATES = {
 
 let _rcCurrentTemplate = null;
 let _rcCurrentData = null;
+
+/* ── Benchmarking Tool (WUP001–WUP107) ─────────────────────── */
+let _bmIndicators=null;   // cached indicator metadata (static)
+
+async function bmGetIndicators(){
+  if(_bmIndicators)return _bmIndicators;
+  _bmIndicators=await fetchJsonSafe(`${API}/api/benchmarking/indicators`,{label:'benchmarking/indicators',fallback:[]});
+  return _bmIndicators;
+}
+
+/* Turn indicator metadata into renderTable row definitions. Section markers
+   become group headings; manual (non-derivable) rows are kept but render blank
+   and tagged with a muted ' · manual' note so coverage stays transparent. */
+function bmBuildRows(meta){
+  return meta.map(m=>{
+    if(m.type==='section')return{type:'section',label:m.label};
+    const label=m.derivable?m.label:`${m.label}  ·  manual`;
+    return{label,field:m.field,fmt:m.fmt||'num',annType:m.ann_type||'sum'};
+  });
+}
+
+async function loadBenchmarking(){
+  kpis('bm-kpis',[{l:'Loading…',v:'—'}]);
+  try{
+    const meta=await bmGetIndicators();
+    const d=await fetchJsonSafe(`${API}/api/benchmarking/monthly?${buildParams()}`,{label:'benchmarking/monthly'});
+    const cov=d.coverage||{derivable:0,manual:0,total:0};
+    const dataMonths=(d.monthly||[]).filter(m=>m.has_data).length;
+    kpis('bm-kpis',[
+      {l:'Total Indicators',v:F.num(cov.total),s:'WUP001–WUP107',icon:ICON.gauge},
+      {l:'Measured from DB',v:F.num(cov.derivable),s:'Auto-derived from monthly returns',cls:'kc-up'},
+      {l:'Manual / No Source',v:F.num(cov.manual),s:'Need a separate data source',cls:'kc-nt'},
+      {l:'Months with Data',v:F.num(dataMonths)+' / 12',s:d.fiscal_year||'Selected fiscal year',icon:ICON.drop},
+    ]);
+    document.getElementById('bm-kpis').className='kpi-row kpi-g4';
+    renderTable('tbl-benchmarking','SRWB BENCHMARKING TOOL — WUP PERFORMANCE INDICATORS',bmBuildRows(meta),d.monthly,'benchmarking');
+    updatePageMeta();
+  }catch(e){console.error('benchmarking',e);errMsg('bm-kpis','Benchmarking failed to load');}
+}
 
 function loadReportCentre() { updatePageMeta(); }
 

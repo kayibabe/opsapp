@@ -21,6 +21,12 @@ from app.core.logging import REQUEST_ID_CTX
 from app.database import engine, get_db
 from app.services.audit_log import log_event
 from app.services.excel_parser import ExcelParser
+from app.services.rawdata_builder import (
+    BuildError,
+    build_rawdata,
+    output_file_path,
+    zone_files_status,
+)
 
 log = logging.getLogger(__name__)
 
@@ -66,6 +72,13 @@ class CommitRequest(BaseModel):
     preview_token: str
     global_conflict_mode: str = "replace"
     conflict_resolutions: dict[str, str] = Field(default_factory=dict)
+
+
+class BuildRequest(BaseModel):
+    # Smart-diff fill (default) vs. full overwrite of existing values.
+    force: bool = False
+    # Dry-run: compute changes but write nothing to disk.
+    test: bool = False
 
 
 def _save_preview(data: dict) -> str:
@@ -168,6 +181,106 @@ async def preview(request: Request, file: UploadFile = File(...), current_user=D
         },
     )
     log_event(None, current_user.username, "upload_preview", f"Created preview for {file.filename}", request_id=request_id)
+
+    return {**preview_data, "preview_token": token}
+
+
+# ── Step 1: Build RawData from the 5 zone workbooks (dataupdater) ──────────────
+
+@router.get("/zone-files")
+def zone_files(current_user=Depends(get_current_user)):
+    """Pre-flight: report which zone source workbooks are present on the server."""
+    try:
+        files = zone_files_status()
+    except BuildError as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+    missing = [f["zone"] for f in files if not f["exists"]]
+    return {
+        "files": files,
+        "all_present": not missing,
+        "missing": missing,
+        "output_file": output_file_path().name,
+    }
+
+
+@router.post("/build-rawdata")
+@limiter.limit("10/hour")
+def build_rawdata_endpoint(
+    request: Request,
+    body: BuildRequest,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    """Run the smart-diff updater against the zone workbooks → RawData_updated.xlsx."""
+    try:
+        result = build_rawdata(test_mode=body.test, force_overwrite=body.force)
+    except BuildError as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:  # pragma: no cover - defensive
+        log.exception("RawData build failed")
+        raise HTTPException(status_code=500, detail=str(exc))
+
+    request_id = REQUEST_ID_CTX.get()
+    log.info(
+        "rawdata_build_completed",
+        extra={
+            "username": current_user.username,
+            "request_id": request_id,
+            "test_mode": body.test,
+            "force": body.force,
+            "records_changed": result.get("records_changed", 0),
+            "exit_code": result.get("exit_code"),
+        },
+    )
+    mode = "force-refresh" if body.force else "smart-diff"
+    if body.test:
+        mode += " (dry-run)"
+    log_event(
+        db,
+        current_user.username,
+        "rawdata_build",
+        f"Built {result.get('output_file')} [{mode}] — {result.get('records_changed', 0)} record(s) changed",
+        request_id=request_id,
+    )
+    return result
+
+
+@router.post("/preview-generated")
+@limiter.limit("20/hour")
+def preview_generated(request: Request, current_user=Depends(get_current_user)):
+    """Step 2 hand-off: validate the workbook just produced by /build-rawdata."""
+    out_path = output_file_path()
+    if not out_path.exists():
+        raise HTTPException(
+            status_code=400,
+            detail="Generated RawData file not found — run Step 1 (Build) first.",
+        )
+
+    file_buf = io.BytesIO(out_path.read_bytes())
+
+    raw_conn = engine.raw_connection()
+    try:
+        result = ExcelParser().parse(file_buf, raw_conn)
+    finally:
+        raw_conn.close()
+
+    preview_data = result.to_dict()
+    preview_data["filename"] = out_path.name
+    token = _save_preview(preview_data)
+    request_id = REQUEST_ID_CTX.get()
+    log.info(
+        "upload_preview_created",
+        extra={
+            "username": current_user.username,
+            "request_id": request_id,
+            "upload_filename": out_path.name,
+            "rows": len(preview_data.get("rows", [])),
+            "source": "generated",
+        },
+    )
+    log_event(None, current_user.username, "upload_preview", f"Created preview for {out_path.name} (generated)", request_id=request_id)
 
     return {**preview_data, "preview_token": token}
 

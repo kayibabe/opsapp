@@ -180,8 +180,69 @@
     <!-- Body -->
     <div class="um-body">
 
-      <!-- Stage 1: Drop zone + mode selector -->
-      <div id="um-stage-pick">
+      <!-- Step indicator -->
+      <div class="um-steps" id="um-steps" style="display:flex;align-items:center;gap:8px;margin-bottom:14px;font-size:11.5px;font-weight:700">
+        <div class="um-step active" id="um-step-1" style="display:flex;align-items:center;gap:6px;color:#1A8FD1">
+          <span class="um-step-num" style="display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;background:#1A8FD1;color:#fff;font-size:10px">1</span>
+          <span>Build RawData</span>
+        </div>
+        <div style="flex:1;height:2px;background:var(--ds-border,#e2e8f0);border-radius:2px" id="um-step-line"></div>
+        <div class="um-step" id="um-step-2" style="display:flex;align-items:center;gap:6px;color:var(--ds-text-muted,#94a3b8)">
+          <span class="um-step-num" style="display:inline-flex;align-items:center;justify-content:center;width:18px;height:18px;border-radius:50%;background:var(--ds-border,#e2e8f0);color:var(--ds-text-muted,#64748b);font-size:10px">2</span>
+          <span>Import to database</span>
+        </div>
+      </div>
+
+      <!-- Step 1: Build RawData from the 5 zone workbooks (dataupdater) -->
+      <div id="um-stage-build">
+        <div style="font-size:12px;color:var(--ds-text-muted);line-height:1.5;margin-bottom:12px">
+          Builds <strong>RawData_updated.xlsx</strong> from the five zone workbooks
+          (Liwonde, Mangochi, Mulanje, Ngabu, Zomba) in the <code>dataupdater</code> folder.
+          Only missing/zero records are filled — existing data is never overwritten unless you choose a full refresh.
+        </div>
+
+        <!-- Zone source files status -->
+        <div class="um-zone-status" id="um-zone-status" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px"></div>
+
+        <!-- Build mode -->
+        <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:6px">
+          <div class="um-mode-label">Build mode:</div>
+          <div class="um-mode-grid">
+            <label class="um-mode-opt selected" id="um-bmode-fill">
+              <input type="radio" name="um-bmode" value="fill" checked onchange="umBuildModeChange(this)">
+              <span>Fill missing only</span>
+            </label>
+            <label class="um-mode-opt" id="um-bmode-force">
+              <input type="radio" name="um-bmode" value="force" onchange="umBuildModeChange(this)">
+              <span>Force full refresh</span>
+            </label>
+          </div>
+        </div>
+
+        <!-- Build result summary (shown after building) -->
+        <div id="um-build-result" style="display:none;margin-top:14px">
+          <div class="um-preview-hdr">
+            <svg width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M3 8l3.5 3.5L13 5" stroke="#16a34a" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <span class="um-preview-hdr-title">Build Summary</span>
+          </div>
+          <div class="um-stat-row">
+            <div class="um-stat"><div class="um-stat-val" id="um-bstat-files">—</div><div class="um-stat-lbl">Zone Files</div></div>
+            <div class="um-stat"><div class="um-stat-val green" id="um-bstat-filled">—</div><div class="um-stat-lbl">Filled</div></div>
+            <div class="um-stat"><div class="um-stat-val green" id="um-bstat-added">—</div><div class="um-stat-lbl">Added</div></div>
+            <div class="um-stat"><div class="um-stat-val" id="um-bstat-skipped">—</div><div class="um-stat-lbl">Already Done</div></div>
+            <div class="um-stat"><div class="um-stat-val red" id="um-bstat-err">—</div><div class="um-stat-lbl">Errors</div></div>
+          </div>
+          <div class="um-issues" id="um-build-issues"></div>
+        </div>
+      </div><!-- /#um-stage-build -->
+
+      <!-- Stage 2: Drop zone + mode selector -->
+      <div id="um-stage-pick" style="display:none">
+
+        <div style="font-size:12px;color:var(--ds-text-muted);line-height:1.5;margin-bottom:12px" id="um-step2-note">
+          The file built in Step 1 has been validated and is ready to import below.
+          To import a different workbook instead, drop it on the zone below.
+        </div>
 
         <!-- Drop zone -->
         <div class="um-drop" id="um-drop-zone"
@@ -274,6 +335,15 @@
     <!-- Footer -->
     <div class="um-footer">
       <button class="um-btn um-btn-cancel" id="um-btn-cancel" onclick="closeUploadModal()">Cancel</button>
+      <button class="um-btn um-btn-cancel" id="um-btn-back" style="display:none" onclick="umBackToBuild()">← Back</button>
+      <button class="um-btn um-btn-primary" id="um-btn-build" onclick="umBuildRawData()">
+        <div class="um-spinner" id="um-spinner-build"></div>
+        <span id="um-build-label">Build RawData</span>
+      </button>
+      <button class="um-btn um-btn-primary" id="um-btn-continue" style="display:none" onclick="umContinueToImport()">
+        <div class="um-spinner" id="um-spinner-continue"></div>
+        <span id="um-continue-label">Continue to Import →</span>
+      </button>
       <button class="um-btn um-btn-primary" id="um-btn-upload" onclick="umUploadAndPreview()" disabled>
         <div class="um-spinner" id="um-spinner"></div>
         <span id="um-btn-label">Upload &amp; Validate</span>
@@ -401,6 +471,9 @@
       <svg width="10" height="10" viewBox="0 0 16 16" fill="none" style="flex-shrink:0"><path d="M8 1L2 4v4c0 3.5 2.5 6.8 6 7.5C11.5 14.8 14 11.5 14 8V4L8 1z" stroke="currentColor" stroke-width="1.8" fill="currentColor" opacity=".25"/><path d="M5.5 8l2 2 3-3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
       IWA · IBNET Aligned
     </div>
+    <!-- ══ OVERVIEW ══════════════════════════════════════════════════════ -->
+    <div class="nav-grp"><span class="nav-grp-label">Overview</span></div>
+
     <!-- Executive Dashboard -->
     <div class="nav-item nav-item-standalone nav-item-top active" data-page="overview" data-section="Executive Dashboard" data-title="Executive Dashboard" onclick="navigate('overview')">
       <span class="nav-item-main">
@@ -408,6 +481,9 @@
         <span class="nav-item-label">Executive Dashboard</span>
       </span>
     </div>
+
+    <!-- ══ ANALYTICS ═════════════════════════════════════════════════════ -->
+    <div class="nav-grp"><span class="nav-grp-label">Analytics</span></div>
 
     <!-- Operations workspace -->
     <div class="nav-item nav-item-grouphead nav-item-top collapsible" id="grp-operations" data-page="operations" data-section="Operations" data-title="Operations Hub" data-default-page="production" onclick="handleSidebarHubClick('operations', event)">
@@ -491,6 +567,31 @@
       </div>
     </div>
 
+    <!-- Reports workspace -->
+    <div class="nav-item nav-item-grouphead nav-item-top collapsible" id="grp-reporting" data-page="reporting" data-section="Reports" data-title="Reports Hub" data-default-page="report-centre" onclick="handleSidebarHubClick('reporting', event)">
+      <span class="nav-item-main">
+        <svg class="nav-item-icon nav-item-icon-svg" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5 6.5A2.5 2.5 0 017.5 4H18a2 2 0 012 2v10a2 2 0 01-2 2H7.5A2.5 2.5 0 015 15.5v-9z" stroke="currentColor" stroke-width="1.8"/><path d="M8 8.5h8M8 12h8M8 15.5h5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+        <span class="nav-item-label">Reports Hub</span>
+      </span>
+      <button type="button" class="nav-grp-toggle" aria-label="Open Reports" onclick="handleSidebarHubClick('reporting', event)">
+        <svg class="nav-grp-chevron" viewBox="0 0 10 10" fill="none"><path d="M2 3.5l3 3 3-3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+    </div>
+    <div class="nav-section" id="sec-reporting">
+      <div class="nav-item nav-item-child" data-page="reports" data-section="Reports" data-title="Report Library" data-admin-only="reports" onclick="navigate('reports')">
+        <span class="nav-item-label">Report Library</span>
+      </div>
+      <div class="nav-item nav-item-child" data-page="benchmarking" data-section="Reports" data-title="Benchmarking Tool" onclick="navigate('benchmarking')">
+        <span class="nav-item-label">Benchmarking Tool</span>
+      </div>
+      <div class="nav-item nav-item-child" data-page="report-centre" data-section="Report Centre" data-title="Report Centre" onclick="navigate('report-centre')">
+        <span class="nav-item-label">Report Centre</span>
+      </div>
+    </div>
+
+    <!-- ══ PLANNING & GOVERNANCE ═════════════════════════════════════════ -->
+    <div class="nav-grp"><span class="nav-grp-label">Planning &amp; Governance</span></div>
+
     <!-- Planning -->
     <div class="nav-item nav-item-standalone nav-item-top" data-page="budget" data-section="Planning" data-title="Budget &amp; Forecast" onclick="navigate('budget')">
       <span class="nav-item-main">
@@ -507,24 +608,9 @@
       </span>
     </div>
 
-    <!-- Reports -->
-    <div class="nav-item nav-item-standalone nav-item-top" data-page="reports" data-section="Reports" data-title="Report Library" data-admin-only="reports" onclick="navigate('reports')">
-      <span class="nav-item-main">
-        <svg class="nav-item-icon nav-item-icon-svg" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5 6.5A2.5 2.5 0 017.5 4H18a2 2 0 012 2v10a2 2 0 01-2 2H7.5A2.5 2.5 0 015 15.5v-9z" stroke="currentColor" stroke-width="1.8"/><path d="M8 8.5h8M8 12h8M8 15.5h5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
-        <span class="nav-item-label">Report Library</span>
-      </span>
-    </div>
-
-    <!-- Report Centre -->
-    <div class="nav-item nav-item-standalone nav-item-top" data-page="report-centre" data-section="Report Centre" data-title="Report Centre" onclick="navigate('report-centre')">
-      <span class="nav-item-main">
-        <svg class="nav-item-icon nav-item-icon-svg" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M6 4a2 2 0 012-2h5.586a2 2 0 011.414.586l3.414 3.414A2 2 0 0119 7.414V20a2 2 0 01-2 2H8a2 2 0 01-2-2V4z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M13 2v4a1 1 0 001 1h4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M9 12h6M9 16h4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
-        <span class="nav-item-label">Report Centre</span>
-      </span>
-    </div>
-
-    <!-- Administration (admin only) -->
+    <!-- ══ ADMINISTRATION (admin only) ═══════════════════════════════════ -->
     <div id="nav-admin-group">
+      <div class="nav-grp"><span class="nav-grp-label">Administration</span></div>
       <div class="nav-item nav-item-standalone nav-item-top" data-page="admin" data-section="Administration" data-title="Administration" onclick="navigate('admin')">
         <span class="nav-item-main">
           <svg class="nav-item-icon nav-item-icon-svg" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 8.5A3.5 3.5 0 1112 15.5 3.5 3.5 0 0112 8.5z" stroke="currentColor" stroke-width="1.8"/><path d="M19 12a7 7 0 00-.1-1.2l1.7-1.3-1.6-2.8-2 .6a7.2 7.2 0 00-2.1-1.2l-.3-2.1h-3.2l-.3 2.1a7.2 7.2 0 00-2.1 1.2l-2-.6-1.6 2.8 1.7 1.3A7 7 0 005 12c0 .4 0 .8.1 1.2l-1.7 1.3 1.6 2.8 2-.6c.6.5 1.3.9 2.1 1.2l.3 2.1h3.2l.3-2.1c.8-.3 1.5-.7 2.1-1.2l2 .6 1.6-2.8-1.7-1.3c.1-.4.1-.8.1-1.2z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>
@@ -1183,6 +1269,24 @@
     </div>
 
     
+    <!-- Benchmarking Tool -->
+    <div id="page-benchmarking" class="db-page report-page-standard">
+      <div class="pg-hdr"><div class="pg-hdr-left"><div class="pg-title">Benchmarking Tool</div><div class="pg-meta" id="pg-meta-benchmarking">FY — · All Zones · All Months</div><div class="pg-sub">WUP001–WUP107 utility performance indicators · sourced live from validated monthly returns</div></div></div>
+
+      <div class="ex-section">
+        <div class="ex-hdr"><span class="ex-dot" style="background:#0D9488"></span><span class="ex-title">Indicator Coverage</span><span class="ex-sub">— Which indicators are measured from the database vs. require manual entry</span></div>
+        <div id="bm-kpis" class="kpi-row kpi-g4"></div>
+        <div id="bm-coverage-note" class="rpt-note" style="margin-top:10px;font-size:12px;line-height:1.5;color:var(--muted,#64748b)">
+          Indicators marked <strong>“manual”</strong> (water quality, sewerage/sanitation, balance-sheet, tariff/FX and HR-gender breakdowns) have no source column in the current database and render blank — they need a separate data source before they can be reported. All other indicators are derived from the same validated monthly returns that drive the rest of the dashboard. Quarter and annual columns are auto-calculated; ratio-type indicators are not summed.
+        </div>
+      </div>
+
+      <div class="ex-section">
+        <div class="ex-hdr"><span class="ex-dot" style="background:#64748B"></span><span class="ex-title">Benchmarking Report</span><span class="ex-sub">— WUP indicators by month, quarter and annual for the selected scope</span></div>
+        <div class="tbl-section"><div id="tbl-benchmarking"></div></div>
+      </div>
+    </div>
+
     <!-- WT & EI -->
     <div id="page-wt-ei" class="db-page report-page-standard report-density-page">
       <div class="pg-hdr"><div class="pg-hdr-left"><div class="pg-title">Water Treatment &amp; Energy</div><div class="pg-meta" id="pg-meta-wt-ei">FY — · All Zones · All Months</div><div class="pg-sub">Chemical usage · power consumption · supply hours</div></div></div>

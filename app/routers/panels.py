@@ -14,6 +14,7 @@ from __future__ import annotations
 from collections import defaultdict
 from typing import Optional
 from fastapi import APIRouter, Depends, Query
+from sqlalchemy import Float, Integer, Numeric
 from sqlalchemy.orm import Session
 from app.database import Record, get_db
 from app.utils import MONTHS_ORDER as FY_MONTHS, apply_fy_filter, csv_list
@@ -471,12 +472,40 @@ def _dedupe_rows(rows):
     return list(best.values())
 
 
+_NUMERIC_COLS: list[str] | None = None
+
+
+def _numeric_columns():
+    """Names of all numeric Record columns (cached) — id excluded."""
+    global _NUMERIC_COLS
+    if _NUMERIC_COLS is None:
+        _NUMERIC_COLS = [
+            c.name for c in Record.__table__.columns
+            if c.name != "id" and isinstance(c.type, (Integer, Float, Numeric))
+        ]
+    return _NUMERIC_COLS
+
+
+def _coerce_numeric_nulls(rows):
+    """Treat NULL numeric metrics as 0 so the many raw sum() aggregations below
+    never hit `int + None`. Rows are expunged first so these in-memory fixes are
+    never written back to the database (panels are read-only)."""
+    cols = _numeric_columns()
+    for r in rows:
+        for name in cols:
+            if getattr(r, name, None) is None:
+                setattr(r, name, 0)
+
+
 def _base(zones, schemes, months, year, db):
     rows = _filter(
         db.query(Record),
         csv_list(zones), csv_list(schemes), csv_list(months), year,
     ).all()
     rows = _dedupe_rows(rows)
+    for r in rows:
+        db.expunge(r)
+    _coerce_numeric_nulls(rows)
     return rows, _by_zone(rows), _monthly(rows)
 
 

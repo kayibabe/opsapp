@@ -165,7 +165,15 @@ class Summary:
     filled_records: List[Tuple] = field(default_factory=list)
 
 
+# When _CAPTURE is True, every log() line is also appended to _LOG_LINES so a
+# caller (e.g. the web Upload tool) can return the run transcript to the UI.
+_LOG_LINES: List[str] = []
+_CAPTURE: bool = False
+
+
 def log(msg):
+    if _CAPTURE:
+        _LOG_LINES.append(str(msg))
     print(msg, flush=True)
 
 def norm_text(v):
@@ -252,7 +260,18 @@ def build_new_row(zone, scheme, month_name, source_df, master_columns):
 # MAIN
 # =============================================================================
 
-def main(test_mode=TEST_MODE, force_overwrite=False):
+def run_update(test_mode=TEST_MODE, force_overwrite=False):
+    """Programmatic entry point.
+
+    Runs the smart-diff update and returns a tuple:
+        (exit_code: int, summary: Summary, log_lines: List[str])
+
+    Behaves identically to the CLI but never calls sys.exit, so it is safe
+    to import and call from the web Upload tool.
+    """
+    global _CAPTURE, _LOG_LINES
+    _CAPTURE = True
+    _LOG_LINES = []
     s = Summary()
 
     try:
@@ -426,13 +445,21 @@ def main(test_mode=TEST_MODE, force_overwrite=False):
             log("No records needed updating.")
 
         log("\nDone.")
-        return 0 if s.errors == 0 else 1
+        return (0 if s.errors == 0 else 1, s, list(_LOG_LINES))
 
-    except FileNotFoundError as e: log(f"FATAL – File not found: {e}"); return 2
-    except KeyError as e:          log(f"FATAL – Missing column: {e}"); return 3
-    except ValueError as e:        log(f"FATAL – Data/sheet issue: {e}"); return 4
+    except FileNotFoundError as e: log(f"FATAL – File not found: {e}"); return (2, s, list(_LOG_LINES))
+    except KeyError as e:          log(f"FATAL – Missing column: {e}"); return (3, s, list(_LOG_LINES))
+    except ValueError as e:        log(f"FATAL – Data/sheet issue: {e}"); return (4, s, list(_LOG_LINES))
     except Exception as e:
-        log("FATAL – Unexpected failure"); log(str(e)); log(traceback.format_exc()); return 99
+        log("FATAL – Unexpected failure"); log(str(e)); log(traceback.format_exc()); return (99, s, list(_LOG_LINES))
+    finally:
+        _CAPTURE = False
+
+
+def main(test_mode=TEST_MODE, force_overwrite=False):
+    """CLI wrapper – returns just the integer exit code."""
+    code, _summary, _log = run_update(test_mode=test_mode, force_overwrite=force_overwrite)
+    return code
 
 
 if __name__ == "__main__":
