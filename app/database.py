@@ -1,12 +1,14 @@
 """
 database.py — Full schema matching RawData.xlsx DataEntry sheet (222 cols),
-              plus the User model for role-based authentication.
+              plus the User model for role-based authentication,
+              and multi-FY support tables (FiscalYear, BudgetLine,
+              BudgetZoneShare, SpcLimit).
 """
 import os
 from datetime import datetime
 from sqlalchemy import (
-    create_engine, Column, Integer, Float, String,
-    Boolean, DateTime, Index, UniqueConstraint,
+    create_engine, Column, Integer, Float, Numeric, String,
+    Boolean, DateTime, Index, UniqueConstraint, inspect, text, ForeignKey,
 )
 from sqlalchemy.orm import declarative_base, sessionmaker
 
@@ -34,7 +36,7 @@ class Record(Base):
     month_no                 = Column(Integer,    nullable=False)
     month                    = Column(String(20), nullable=False, index=True)
     quarter                  = Column(String(4),  nullable=False)
-    # Water production & NRW
+    # Water production & NRW  (volumes in m³ — Float is appropriate)
     vol_produced             = Column(Float, default=0.0)
     vol_billed_indiv_pp      = Column(Float, default=0.0)
     vol_billed_cwp_pp        = Column(Float, default=0.0)
@@ -46,42 +48,74 @@ class Record(Base):
     vol_billed_inst_prepaid  = Column(Float, default=0.0)
     vol_billed_comm_prepaid  = Column(Float, default=0.0)
     total_vol_billed_prepaid = Column(Float, default=0.0)
-    revenue_water            = Column(Float, default=0.0)
+    revenue_water            = Column(Numeric(15, 2, asdecimal=False), default=0.0)  # MWK
     nrw                      = Column(Float, default=0.0)
     pct_nrw                  = Column(Float, default=0.0)
-    # Chemicals
+    # Chemicals  (physical units — Float)
     chlorine_kg              = Column(Float, default=0.0)
     alum_kg                  = Column(Float, default=0.0)
     soda_ash_kg              = Column(Float, default=0.0)
     algae_floc_litres        = Column(Float, default=0.0)
     sud_floc_litres          = Column(Float, default=0.0)
     kmno4_kg                 = Column(Float, default=0.0)
-    chem_cost                = Column(Float, default=0.0)
-    chem_cost_per_m3         = Column(Float, default=0.0)
+    chem_cost                = Column(Numeric(15, 2, asdecimal=False), default=0.0)  # MWK
+    chem_cost_per_m3         = Column(Float, default=0.0)   # MWK/m³ rate — Float ok
+    chlorine_kg_per_m3       = Column(Float, default=0.0)
+    alum_kg_per_m3           = Column(Float, default=0.0)
+    soda_ash_kg_per_m3       = Column(Float, default=0.0)
+    algae_floc_per_m3        = Column(Float, default=0.0)
+    sud_floc_per_m3          = Column(Float, default=0.0)
+    kmno4_per_m3             = Column(Float, default=0.0)
     # Power
     power_kwh                = Column(Float, default=0.0)
-    power_cost               = Column(Float, default=0.0)
-    power_cost_per_m3        = Column(Float, default=0.0)
+    power_cost               = Column(Numeric(15, 2, asdecimal=False), default=0.0)  # MWK
+    power_cost_per_m3        = Column(Float, default=0.0)   # MWK/m³ rate — Float ok
+    power_kwh_per_m3         = Column(Float, default=0.0)
     # Transport & ops
     distances_km             = Column(Float, default=0.0)
     fuel_used_litres         = Column(Float, default=0.0)
-    fuel_cost                = Column(Float, default=0.0)
-    maintenance              = Column(Float, default=0.0)
-    staff_costs              = Column(Float, default=0.0)
-    wages                    = Column(Float, default=0.0)
-    other_overhead           = Column(Float, default=0.0)
-    op_cost                  = Column(Float, default=0.0)
-    op_cost_per_m3_produced  = Column(Float, default=0.0)
-    op_cost_per_m3_billed    = Column(Float, default=0.0)
+    fuel_cost                = Column(Numeric(15, 2, asdecimal=False), default=0.0)  # MWK
+    maintenance              = Column(Numeric(15, 2, asdecimal=False), default=0.0)  # MWK
+    staff_costs              = Column(Numeric(15, 2, asdecimal=False), default=0.0)  # MWK
+    wages                    = Column(Numeric(15, 2, asdecimal=False), default=0.0)  # MWK
+    other_overhead           = Column(Numeric(15, 2, asdecimal=False), default=0.0)  # MWK
+    op_cost                  = Column(Numeric(15, 2, asdecimal=False), default=0.0)  # MWK
+    op_cost_per_m3_produced  = Column(Float, default=0.0)   # MWK/m³ rate — Float ok
+    op_cost_per_m3_billed    = Column(Float, default=0.0)   # MWK/m³ rate — Float ok
     # Staffing
     perm_staff               = Column(Float, default=0.0)
     temp_staff               = Column(Float, default=0.0)
+    staff_per_1000m3_12h     = Column(Float, default=0.0)
     # Connections aggregated
     all_conn_bfwd            = Column(Float, default=0.0)
     all_conn_applied         = Column(Float, default=0.0)
     new_connections          = Column(Float, default=0.0)
     all_conn_cfwd            = Column(Float, default=0.0)
     prepaid_meters_installed = Column(Float, default=0.0)
+    conn_indiv_bfwd          = Column(Float, default=0.0)
+    conn_indiv_applied_pp    = Column(Float, default=0.0)
+    conn_indiv_done_pp       = Column(Float, default=0.0)
+    conn_indiv_done_prepaid  = Column(Float, default=0.0)
+    conn_indiv_total_done    = Column(Float, default=0.0)
+    conn_indiv_cfwd          = Column(Float, default=0.0)
+    conn_inst_bfwd           = Column(Float, default=0.0)
+    conn_inst_applied_pp     = Column(Float, default=0.0)
+    conn_inst_done_pp        = Column(Float, default=0.0)
+    conn_inst_done_prepaid   = Column(Float, default=0.0)
+    conn_inst_total_done     = Column(Float, default=0.0)
+    conn_inst_cfwd           = Column(Float, default=0.0)
+    conn_comm_bfwd           = Column(Float, default=0.0)
+    conn_comm_applied_pp     = Column(Float, default=0.0)
+    conn_comm_done_pp        = Column(Float, default=0.0)
+    conn_comm_done_prepaid   = Column(Float, default=0.0)
+    conn_comm_total_done     = Column(Float, default=0.0)
+    conn_comm_cfwd           = Column(Float, default=0.0)
+    conn_cwp_bfwd            = Column(Float, default=0.0)
+    conn_cwp_applied_pp      = Column(Float, default=0.0)
+    conn_cwp_done_pp         = Column(Float, default=0.0)
+    conn_cwp_done_prepaid    = Column(Float, default=0.0)
+    conn_cwp_total_done      = Column(Float, default=0.0)
+    conn_cwp_cfwd            = Column(Float, default=0.0)
     # Disconnections
     disconnected_individual  = Column(Float, default=0.0)
     disconnected_inst        = Column(Float, default=0.0)
@@ -112,6 +146,27 @@ class Record(Base):
     stuck_new                = Column(Float, default=0.0)
     stuck_repaired           = Column(Float, default=0.0)
     stuck_replaced           = Column(Float, default=0.0)
+    all_stuck_cfwd           = Column(Float, default=0.0)
+    stuck_indiv_bfwd         = Column(Float, default=0.0)
+    stuck_indiv_new          = Column(Float, default=0.0)
+    stuck_indiv_repaired     = Column(Float, default=0.0)
+    stuck_indiv_replaced     = Column(Float, default=0.0)
+    stuck_indiv_cfwd         = Column(Float, default=0.0)
+    stuck_inst_bfwd          = Column(Float, default=0.0)
+    stuck_inst_new           = Column(Float, default=0.0)
+    stuck_inst_repaired      = Column(Float, default=0.0)
+    stuck_inst_replaced      = Column(Float, default=0.0)
+    stuck_inst_cfwd          = Column(Float, default=0.0)
+    stuck_comm_bfwd          = Column(Float, default=0.0)
+    stuck_comm_new           = Column(Float, default=0.0)
+    stuck_comm_repaired      = Column(Float, default=0.0)
+    stuck_comm_replaced      = Column(Float, default=0.0)
+    stuck_comm_cfwd          = Column(Float, default=0.0)
+    stuck_cwp_bfwd           = Column(Float, default=0.0)
+    stuck_cwp_new            = Column(Float, default=0.0)
+    stuck_cwp_repaired       = Column(Float, default=0.0)
+    stuck_cwp_replaced       = Column(Float, default=0.0)
+    stuck_cwp_cfwd           = Column(Float, default=0.0)
     # Pipe breakdowns — material totals
     pipe_pvc                 = Column(Float, default=0.0)
     pipe_gi                  = Column(Float, default=0.0)
@@ -132,6 +187,29 @@ class Record(Base):
     pvc_200mm                = Column(Float, default=0.0)
     pvc_250mm                = Column(Float, default=0.0)
     pvc_315mm                = Column(Float, default=0.0)
+    gi_15mm                  = Column(Float, default=0.0)
+    gi_20mm                  = Column(Float, default=0.0)
+    gi_25mm                  = Column(Float, default=0.0)
+    gi_40mm                  = Column(Float, default=0.0)
+    gi_50mm                  = Column(Float, default=0.0)
+    gi_75mm                  = Column(Float, default=0.0)
+    gi_100mm                 = Column(Float, default=0.0)
+    gi_150mm                 = Column(Float, default=0.0)
+    gi_200mm                 = Column(Float, default=0.0)
+    di_150mm                 = Column(Float, default=0.0)
+    di_200mm                 = Column(Float, default=0.0)
+    di_250mm                 = Column(Float, default=0.0)
+    di_300mm                 = Column(Float, default=0.0)
+    di_350mm                 = Column(Float, default=0.0)
+    di_525mm                 = Column(Float, default=0.0)
+    hdpe_20mm                = Column(Float, default=0.0)
+    hdpe_25mm                = Column(Float, default=0.0)
+    hdpe_32mm                = Column(Float, default=0.0)
+    hdpe_50mm                = Column(Float, default=0.0)
+    ac_50mm                  = Column(Float, default=0.0)
+    ac_75mm                  = Column(Float, default=0.0)
+    ac_100mm                 = Column(Float, default=0.0)
+    ac_150mm                 = Column(Float, default=0.0)
     # Pumps & supply hours
     pump_breakdowns          = Column(Float, default=0.0)
     pump_hours_lost          = Column(Float, default=0.0)
@@ -144,23 +222,47 @@ class Record(Base):
     dev_lines_90mm           = Column(Float, default=0.0)
     dev_lines_110mm          = Column(Float, default=0.0)
     dev_lines_total          = Column(Float, default=0.0)
-    # Cash collected
-    cash_coll_pp             = Column(Float, default=0.0)
-    cash_coll_prepaid        = Column(Float, default=0.0)
-    cash_collected           = Column(Float, default=0.0)
-    # Amounts billed
-    amt_billed_pp            = Column(Float, default=0.0)
-    amt_billed_prepaid       = Column(Float, default=0.0)
-    amt_billed               = Column(Float, default=0.0)
-    # Charges
-    service_charge           = Column(Float, default=0.0)
-    meter_rental             = Column(Float, default=0.0)
-    total_sales              = Column(Float, default=0.0)
-    # Debtors
-    private_debtors          = Column(Float, default=0.0)
-    public_debtors           = Column(Float, default=0.0)
-    total_debtors            = Column(Float, default=0.0)
-    # Financial KPIs
+    # Cash collected  (MWK — Numeric)
+    cash_coll_pp             = Column(Numeric(15, 2, asdecimal=False), default=0.0)
+    cash_coll_prepaid        = Column(Numeric(15, 2, asdecimal=False), default=0.0)
+    cash_collected           = Column(Numeric(15, 2, asdecimal=False), default=0.0)
+    cash_coll_indiv_pp       = Column(Numeric(15, 2, asdecimal=False), default=0.0)
+    cash_coll_cwp_pp         = Column(Numeric(15, 2, asdecimal=False), default=0.0)
+    cash_coll_comm_pp        = Column(Numeric(15, 2, asdecimal=False), default=0.0)
+    cash_coll_inst_pp        = Column(Numeric(15, 2, asdecimal=False), default=0.0)
+    cash_coll_indiv_prepaid  = Column(Numeric(15, 2, asdecimal=False), default=0.0)
+    cash_coll_cwp_prepaid    = Column(Numeric(15, 2, asdecimal=False), default=0.0)
+    cash_coll_comm_prepaid   = Column(Numeric(15, 2, asdecimal=False), default=0.0)
+    cash_coll_inst_prepaid   = Column(Numeric(15, 2, asdecimal=False), default=0.0)
+    # Amounts billed  (MWK — Numeric)
+    amt_billed_pp            = Column(Numeric(15, 2, asdecimal=False), default=0.0)
+    amt_billed_prepaid       = Column(Numeric(15, 2, asdecimal=False), default=0.0)
+    amt_billed               = Column(Numeric(15, 2, asdecimal=False), default=0.0)
+    amt_billed_indiv_pp      = Column(Numeric(15, 2, asdecimal=False), default=0.0)
+    amt_billed_cwp_pp        = Column(Numeric(15, 2, asdecimal=False), default=0.0)
+    amt_billed_inst_pp       = Column(Numeric(15, 2, asdecimal=False), default=0.0)
+    amt_billed_comm_pp       = Column(Numeric(15, 2, asdecimal=False), default=0.0)
+    amt_billed_indiv_prepaid = Column(Numeric(15, 2, asdecimal=False), default=0.0)
+    amt_billed_cwp_prepaid   = Column(Numeric(15, 2, asdecimal=False), default=0.0)
+    amt_billed_inst_prepaid  = Column(Numeric(15, 2, asdecimal=False), default=0.0)
+    amt_billed_comm_prepaid  = Column(Numeric(15, 2, asdecimal=False), default=0.0)
+    # Charges  (MWK — Numeric)
+    service_charge              = Column(Numeric(15, 2, asdecimal=False), default=0.0)
+    meter_rental                = Column(Numeric(15, 2, asdecimal=False), default=0.0)
+    total_sales                 = Column(Numeric(15, 2, asdecimal=False), default=0.0)
+    service_charge_individual   = Column(Numeric(15, 2, asdecimal=False), default=0.0)
+    service_charge_cwp          = Column(Numeric(15, 2, asdecimal=False), default=0.0)
+    service_charge_institutions = Column(Numeric(15, 2, asdecimal=False), default=0.0)
+    service_charge_commercial   = Column(Numeric(15, 2, asdecimal=False), default=0.0)
+    meter_rental_individual     = Column(Numeric(15, 2, asdecimal=False), default=0.0)
+    meter_rental_cwp            = Column(Numeric(15, 2, asdecimal=False), default=0.0)
+    meter_rental_institutions   = Column(Numeric(15, 2, asdecimal=False), default=0.0)
+    meter_rental_commercial     = Column(Numeric(15, 2, asdecimal=False), default=0.0)
+    # Debtors  (MWK — Numeric)
+    private_debtors          = Column(Numeric(15, 2, asdecimal=False), default=0.0)
+    public_debtors           = Column(Numeric(15, 2, asdecimal=False), default=0.0)
+    total_debtors            = Column(Numeric(15, 2, asdecimal=False), default=0.0)
+    # Financial KPIs  (ratios/rates — Float ok)
     op_cost_per_sales        = Column(Float, default=0.0)
     collection_rate          = Column(Float, default=0.0)
     collection_per_sales     = Column(Float, default=0.0)
@@ -168,7 +270,9 @@ class Record(Base):
     conn_applied             = Column(Float, default=0.0)
     days_to_quotation        = Column(Float, default=0.0)
     conn_fully_paid          = Column(Float, default=0.0)
+    paid_up_applicants       = Column(Float, default=0.0)
     days_to_connect          = Column(Float, default=0.0)
+    connection_days          = Column(Float, default=0.0)
     connectivity_rate        = Column(Float, default=0.0)
     # Query performance
     queries_received         = Column(Float, default=0.0)
@@ -183,11 +287,115 @@ class Record(Base):
             "zone", "scheme", "year", "month_no",
             name="uq_zone_scheme_year_monthno",
         ),
+        # Full business-key covering index — used when zone+scheme are filtered.
         Index(
             "ix_zone_scheme_year_monthno",
             "zone", "scheme", "year", "month_no",
         ),
+        # Dedicated FY-span index — used by the OR(year==FY-1 AND month_no>=4,
+        # year==FY AND month_no<=3) filter when zone/scheme are NOT constrained
+        # (e.g. dashboard overview, budget variance, analytics aggregations).
+        Index(
+            "ix_record_year_month",
+            "year", "month_no",
+        ),
     )
+
+# ── Multi-FY support tables ────────────────────────────────────────────────
+
+class FiscalYear(Base):
+    """
+    Registry of all fiscal years the system knows about.
+    Populated at startup with historical (FY2005/06–FY2024/25),
+    current (FY2025/26), and future (FY2026/27–FY2029/30) years.
+
+    `year`  = FY end year  (e.g. 2026 = FY2025/26, Apr-2025 → Mar-2026)
+    `status` = "historical" | "current" | "future"
+    """
+    __tablename__ = "fiscal_years"
+
+    year           = Column(Integer, primary_key=True)      # e.g. 2026
+    label          = Column(String(12), nullable=False)     # "FY2025/26"
+    start_date     = Column(String(10), nullable=False)     # "2025-04-01"
+    end_date       = Column(String(10), nullable=False)     # "2026-03-31"
+    status         = Column(String(12), nullable=False, default="historical")
+    tariff_per_m3  = Column(Float, nullable=True)           # MK/m³ (None = TBD)
+    notes          = Column(String(500), nullable=True)
+    created_at     = Column(DateTime, default=datetime.utcnow)
+    updated_at     = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class BudgetLine(Base):
+    """
+    One row per approved budget line item per fiscal year.
+    Replaces the 87 hardcoded constants that previously lived in budget.py.
+
+    `category` keys (snake_case) match the old Python constant names minus
+    the BUD_ prefix, e.g. "water_sales", "electricity", "vol_produced".
+    """
+    __tablename__ = "budget_lines"
+
+    id         = Column(Integer, primary_key=True, autoincrement=True)
+    year       = Column(Integer, ForeignKey("fiscal_years.year"), nullable=False, index=True)
+    category   = Column(String(60), nullable=False)
+    value      = Column(Numeric(15, 2, asdecimal=False), nullable=False, default=0.0)
+    unit       = Column(String(20), nullable=True)   # "MWK", "m3", "pct", "count", "hrs", "km"
+    notes      = Column(String(300), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    __table_args__ = (
+        UniqueConstraint("year", "category", name="uq_budget_year_category"),
+    )
+
+
+class BudgetZoneShare(Base):
+    """
+    IPSAS 18 proportional allocation shares per zone per fiscal year.
+    Derived from each FY's actual revenue/volume/connection data and
+    stored here once calculated, so the budget engine uses the correct
+    vintage of shares for each year.
+    """
+    __tablename__ = "budget_zone_shares"
+
+    id          = Column(Integer, primary_key=True, autoincrement=True)
+    year        = Column(Integer, ForeignKey("fiscal_years.year"), nullable=False, index=True)
+    zone        = Column(String(60), nullable=False)
+    rev_share   = Column(Float, nullable=False, default=0.0)
+    vol_share   = Column(Float, nullable=False, default=0.0)
+    conn_share  = Column(Float, nullable=False, default=0.0)
+    created_at  = Column(DateTime, default=datetime.utcnow)
+    updated_at  = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    __table_args__ = (
+        UniqueConstraint("year", "zone", name="uq_zone_share_year_zone"),
+    )
+
+
+class SpcLimit(Base):
+    """
+    ISO 7870-2 Shewhart SPC control limits per metric per fiscal year.
+    Computed from that year's actuals and stored here so the budget
+    variance page can display historically accurate control charts.
+    """
+    __tablename__ = "spc_limits"
+
+    id     = Column(Integer, primary_key=True, autoincrement=True)
+    year   = Column(Integer, ForeignKey("fiscal_years.year"), nullable=False, index=True)
+    metric = Column(String(40), nullable=False)   # e.g. "nrw_pct", "vol_prod"
+    mean   = Column(Float, nullable=True)
+    std    = Column(Float, nullable=True)
+    ucl2   = Column(Float, nullable=True)
+    lcl2   = Column(Float, nullable=True)
+    ucl3   = Column(Float, nullable=True)
+    lcl3   = Column(Float, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    __table_args__ = (
+        UniqueConstraint("year", "metric", name="uq_spc_year_metric"),
+    )
+
 
 # ── User model (authentication & RBAC) ───────────────────────
 class User(Base):
@@ -209,6 +417,7 @@ class User(Base):
     is_active     = Column(Boolean, nullable=False, default=True)
     created_at    = Column(DateTime, default=datetime.utcnow)
     created_by    = Column(String(60), nullable=True)
+    last_login    = Column(DateTime, nullable=True)
 
 
 def get_db():
@@ -220,7 +429,38 @@ def get_db():
 
 def create_tables():
     Base.metadata.create_all(bind=engine)
+    _ensure_record_columns()
 
 def recreate_tables():
     Base.metadata.drop_all(bind=engine)
     Base.metadata.create_all(bind=engine)
+
+
+def _default_sql(column):
+    default = getattr(column.default, "arg", None)
+    if default is None:
+        return ""
+    if isinstance(default, str):
+        return f" DEFAULT '{default}'"
+    if isinstance(default, bool):
+        return f" DEFAULT {1 if default else 0}"
+    return f" DEFAULT {default}"
+
+
+def _ensure_record_columns():
+    inspector = inspect(engine)
+    if "records" not in inspector.get_table_names():
+        return
+    existing = {col["name"] for col in inspector.get_columns("records")}
+    with engine.begin() as conn:
+        for column in Record.__table__.columns:
+            if column.name in existing or column.primary_key:
+                continue
+            col_type = column.type.compile(dialect=engine.dialect)
+            nullable = "" if column.nullable else " NOT NULL"
+            default_sql = _default_sql(column)
+            conn.execute(text(
+                f"ALTER TABLE records ADD COLUMN {column.name} {col_type}{nullable}{default_sql}"
+            ))
+
+# ── Multi-FY support tables ────────────────────────────────────────────────

@@ -23,3 +23,11 @@ dist/
 *.db
 data/*.secret
 data/*.key
+
+# --- Added: local tooling, logs, copies, reports ---
+.claude/
+.codex/
+logs/
+*.log
+*- Copy.*
+*.docx

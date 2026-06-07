@@ -29,8 +29,9 @@ from app.auth import ensure_default_admin, get_current_user, require_admin
 from app.core.config import settings
 from app.core.logging import REQUEST_ID_CTX, logger as app_logger
 from app.database import SessionLocal, create_tables
-from app.routers import analytics, budget, catalogue, panels, records, reports, upload, insights
-from app.routers.users import _limiter, admin_router, auth_router
+from app.routers import analytics, budget, catalogue, fiscal_years, panels, records, report_generator, reports, upload, insights
+from app.routers.users import admin_router, auth_router
+from app.core.limiter import limiter as _limiter
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
@@ -74,6 +75,7 @@ def _auto_import(db):
     try:
         import openpyxl
         from app.database import Record
+        from app.services.excel_parser import COLUMN_MAP, ExcelParser
 
         wb = openpyxl.load_workbook(xlsx_path, data_only=True)
         ws = wb["DataEntry"] if "DataEntry" in wb.sheetnames else wb.active
@@ -175,7 +177,10 @@ def _auto_import(db):
 
         col_map = {}
         for i, h in enumerate(headers):
-            if h in HMAP and HMAP[h] in rec_cols:
+            parser_col = COLUMN_MAP.get(ExcelParser._normalize_header(h))
+            if parser_col in rec_cols:
+                col_map[i] = parser_col
+            elif h in HMAP and HMAP[h] in rec_cols:
                 col_map[i] = HMAP[h]
 
         inserted = 0
@@ -248,13 +253,15 @@ app.include_router(admin_router, dependencies=[Depends(require_admin)])
 
 # ── Data read endpoints (any authenticated user) ──────────────
 # require_export on /export/csv is enforced inside records.py
-app.include_router(records.router,   dependencies=[Depends(get_current_user)])
-app.include_router(analytics.router, dependencies=[Depends(get_current_user)])
-app.include_router(budget.router,    dependencies=[Depends(get_current_user)])
-app.include_router(catalogue.router, dependencies=[Depends(get_current_user)])
-app.include_router(panels.router,    dependencies=[Depends(get_current_user)])
-app.include_router(reports.router,   dependencies=[Depends(get_current_user)])
-app.include_router(insights.router,  dependencies=[Depends(get_current_user)])
+app.include_router(records.router,       dependencies=[Depends(get_current_user)])
+app.include_router(analytics.router,    dependencies=[Depends(get_current_user)])
+app.include_router(budget.router,       dependencies=[Depends(get_current_user)])
+app.include_router(catalogue.router,    dependencies=[Depends(get_current_user)])
+app.include_router(fiscal_years.router, dependencies=[Depends(get_current_user)])
+app.include_router(panels.router,       dependencies=[Depends(get_current_user)])
+app.include_router(reports.router,          dependencies=[Depends(get_current_user)])
+app.include_router(report_generator.router, dependencies=[Depends(get_current_user)])
+app.include_router(insights.router,     dependencies=[Depends(get_current_user)])
 
 # ── Upload (admin only) ───────────────────────────────────────
 app.include_router(upload.router, dependencies=[Depends(require_admin)])

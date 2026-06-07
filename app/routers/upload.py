@@ -5,9 +5,9 @@ import json
 import logging
 import os
 import re
-import tempfile
 import time
 import uuid
+from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
@@ -15,7 +15,8 @@ from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
 from app.auth import get_current_user
-from app.core.config import settings
+from app.core.config import DATA_DIR, settings
+from app.core.limiter import limiter
 from app.core.logging import REQUEST_ID_CTX
 from app.database import engine, get_db
 from app.services.audit_log import log_event
@@ -25,7 +26,8 @@ log = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/upload", tags=["Upload"])
 
-_PREVIEW_DIR: str = tempfile.mkdtemp(prefix="srwb_preview_")
+_PREVIEW_DIR = DATA_DIR / "upload_previews"
+_PREVIEW_DIR.mkdir(parents=True, exist_ok=True)
 PREVIEW_TTL: int = 1800
 
 ALLOWED_UPLOAD_EXTENSIONS = {".xlsx", ".xlsm"}
@@ -70,7 +72,7 @@ def _save_preview(data: dict) -> str:
     token = str(uuid.uuid4())
     payload = dict(data)
     payload["_created_at"] = time.time()
-    with open(os.path.join(_PREVIEW_DIR, f"{token}.json"), "w", encoding="utf-8") as fh:
+    with open(_PREVIEW_DIR / f"{token}.json", "w", encoding="utf-8") as fh:
         json.dump(payload, fh)
     return token
 
@@ -79,8 +81,8 @@ def _load_preview(token: str) -> dict | None:
     if not re.fullmatch(r"[0-9a-f\-]{36}", token):
         return None
 
-    path = os.path.join(_PREVIEW_DIR, f"{token}.json")
-    if not os.path.exists(path):
+    path = _PREVIEW_DIR / f"{token}.json"
+    if not path.exists():
         return None
 
     with open(path, encoding="utf-8") as fh:
@@ -89,7 +91,7 @@ def _load_preview(token: str) -> dict | None:
     created_at = data.get("_created_at", 0)
     if time.time() - created_at > PREVIEW_TTL:
         try:
-            os.remove(path)
+            path.unlink()
         except FileNotFoundError:
             pass
         return None
@@ -99,7 +101,7 @@ def _load_preview(token: str) -> dict | None:
 
 def _delete_preview(token: str) -> None:
     try:
-        os.remove(os.path.join(_PREVIEW_DIR, f"{token}.json"))
+        (_PREVIEW_DIR / f"{token}.json").unlink()
     except FileNotFoundError:
         pass
 
@@ -140,6 +142,7 @@ def _row_resolution_key(row: dict[str, Any]) -> str:
 
 
 @router.post("/preview")
+@limiter.limit("20/hour")
 async def preview(request: Request, file: UploadFile = File(...), current_user=Depends(get_current_user)):
     contents = await file.read()
     _validate_upload(file, contents)
@@ -160,7 +163,7 @@ async def preview(request: Request, file: UploadFile = File(...), current_user=D
         extra={
             "username": current_user.username,
             "request_id": request_id,
-            "filename": file.filename,
+            "upload_filename": file.filename,
             "rows": len(preview_data.get("rows", [])),
         },
     )
@@ -170,6 +173,7 @@ async def preview(request: Request, file: UploadFile = File(...), current_user=D
 
 
 @router.post("/commit")
+@limiter.limit("10/hour")
 def commit(
     request: Request,
     body: CommitRequest,
@@ -206,7 +210,7 @@ def commit(
         extra={
             "username": current_user.username,
             "request_id": request_id,
-            "filename": preview_data.get("filename"),
+            "upload_filename": preview_data.get("filename"),
             "rows_inserted": stats.get("rows_inserted", 0),
             "rows_replaced": stats.get("rows_replaced", 0),
             "rows_skipped": stats.get("rows_skipped", 0),

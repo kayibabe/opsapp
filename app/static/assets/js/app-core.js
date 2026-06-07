@@ -33,7 +33,7 @@ let exportGovernanceBundlePromise=null;
 const LAST_PAGE_KEY='srwb_last_page';
 const ROLE_HOME_PAGE={viewer:'overview',user:'operations',admin:'admin'};
 const REPORT_DENSITY_STORAGE_KEY='srwb_report_density_mode';
-const REPORT_DENSITY_PAGES=new Set(['production','wt-ei','customers','connections','stuck','connectivity','breakdowns','pipelines','billed','collections','charges','expenses','debtors']);
+const REPORT_DENSITY_PAGES=new Set(['production','wt-ei','customers','connections','stuck','connectivity','breakdowns','pipelines','billed','collections','charges','expenses','debtors','segment-revenue','workforce','class-connections','stuck-classes','pipe-materials']);
 const REPORT_DENSITY_META={
   summary:{label:'Summary mode',description:'Show the KPI row and the primary chart first. Keep detailed tables hidden until requested.'},
   analysis:{label:'Analysis mode',description:'Add the supporting comparison charts while still keeping the detailed table on demand.'},
@@ -60,11 +60,12 @@ function getLastPage(){
   try{return localStorage.getItem(LAST_PAGE_KEY)||'';}catch{return '';}
 }
 function getInitialPageForUser(user,opts={}){
-  const roleHome=getRoleHomePage(user?.role);
+  const role=normalizeRole(user?.role);
+  const roleHome=getRoleHomePage(role);
   if(opts.forceRoleHome)return roleHome;
   const lastPage=getLastPage();
   if(!lastPage)return roleHome;
-  if(lastPage==='admin' && normalizeRole(user?.role)!=='admin')return roleHome;
+  if(['admin','reports','compliance'].includes(lastPage) && role!=='admin')return roleHome;
   return lastPage;
 }
 function goToRoleHome(){
@@ -259,7 +260,7 @@ function renderQuickFilterControls(){
   const periodSel=document.getElementById('tb-period-select');
   if(zoneSel){
     const prev=zoneSel.value;
-    zoneSel.innerHTML='<option value="">All Zones</option>' + Object.keys(allZoneSchemes).sort().map(z=>`<option value="${z}">${z}</option>`).join('');
+    zoneSel.innerHTML= DOMPurify.sanitize('<option value="">All Zones</option>' + Object.keys(allZoneSchemes).sort().map(z=>`<option value="${z}">${z}</option>`).join(''));
     const zoneValue=deriveQuickZoneValue();
     if(zoneValue==='__custom__'){
       zoneSel.insertAdjacentHTML('beforeend','<option value="__custom__">Custom selection</option>');
@@ -268,7 +269,7 @@ function renderQuickFilterControls(){
     if(prev && zoneSel.value!==zoneValue && zoneSel.querySelector(`option[value="${prev.replace(/"/g,'&quot;')}"]`))zoneSel.value=prev;
   }
   if(periodSel){
-    periodSel.innerHTML = QUICK_PERIOD_OPTIONS.map(opt=>`<option value="${opt.value}">${opt.label}</option>`).join('');
+    periodSel.innerHTML = DOMPurify.sanitize(QUICK_PERIOD_OPTIONS.map(opt=>`<option value="${opt.value}">${opt.label}</option>`).join(''));
     const periodValue=deriveQuickPeriodValue();
     if(periodValue==='__custom__'){
       periodSel.insertAdjacentHTML('beforeend','<option value="__custom__">Custom period</option>');
@@ -398,19 +399,22 @@ function renderFilterContext(){
 }
 function updateFilterDots(){
   const tbBtn=document.getElementById('tb-filter-btn');
+  const clearBtn=document.getElementById('tb-clear-filters-btn');
   const active=hasAdvancedFilters();
   if(tbBtn){tbBtn.classList.toggle('has-filters',!!active);const dot=tbBtn.querySelector('.tb-filter-dot');if(dot)dot.style.display=active?'inline-block':'none';}
+  if(clearBtn)clearBtn.hidden=!hasActiveFilters();
   renderQuickFilterControls();
   renderFilterContext();
 }
 
 async function loadZoneSchemes(){
-  try{const token=getToken();const d=await fetch(`${API}/api/catalogue/zone-schemes`,{headers:{Authorization:'Bearer '+token}}).then(r=>r.ok?r.json():{});allZoneSchemes=d;renderZoneButtons();renderSchemeButtons();}
+  try{const d=await fetchJsonSafe(`${API}/api/catalogue/zone-schemes`,{fallback:{},label:'/api/catalogue/zone-schemes'});allZoneSchemes=d||{};renderZoneButtons();renderSchemeButtons();}
   catch{}
 }
 function renderZoneButtons(){
   const c=document.getElementById('fp-zones');if(!c)return;
-  c.innerHTML=Object.keys(allZoneSchemes).sort().map(z=>`<button class="fbtn${filterState.zones.includes(z)?' active-zone':''}" onclick="toggleZone(this,'${z}')">${z}</button>`).join('');
+  c.innerHTML= DOMPurify.sanitize(Object.keys(allZoneSchemes).sort().map(z=>`<button class="fbtn${filterState.zones.includes(z)?' active-zone':''}" data-zone="${z}">${z}</button>`).join(''));
+  c.querySelectorAll('.fbtn[data-zone]').forEach(btn=>btn.addEventListener('click',function(){toggleZone(this,this.dataset.zone);}));
   renderQuickFilterControls();
 }
 function renderSchemeButtons(){
@@ -426,7 +430,7 @@ function renderSchemeButtons(){
     if(multiZone)html+=`<span class="fp-zone-grp-hdr" data-zone="${zone}"><span class="fp-zone-dot"></span>${zone}</span>`;
     filtered.forEach(s=>{html+=`<button class="fbtn${filterState.schemes.includes(s)?' active-scheme':''}" onclick="toggleScheme(this,'${s}')">${s}</button>`;});
   });
-  c.innerHTML=html;
+  c.innerHTML= DOMPurify.sanitize(html);
 }
 function toggleZone(btn,zone){
   const idx=filterState.zones.indexOf(zone);
@@ -485,6 +489,11 @@ const EXPORT_CFG = {
   charges:      {tableId:'tbl-charges',     title:'Service Charges & Meter Rental',    orientation:'portrait',  landscape:false},
   expenses:     {tableId:'tbl-expenses',    title:'Operating Expenses',                orientation:'portrait',  landscape:false},
   debtors:      {tableId:'tbl-debtors',     title:'Outstanding Debtors',               orientation:'portrait',  landscape:false},
+  'segment-revenue': {tableId:'tbl-segment-revenue', title:'Customer Segment Revenue', orientation:'landscape', landscape:true},
+  workforce:    {tableId:'tbl-workforce',   title:'Workforce & Fleet Efficiency',      orientation:'landscape', landscape:true},
+  'class-connections': {tableId:'tbl-class-connections', title:'Connection Pipeline by Customer Class', orientation:'landscape', landscape:true},
+  'stuck-classes': {tableId:'tbl-stuck-classes', title:'Meter Exceptions by Customer Class', orientation:'landscape', landscape:true},
+  'pipe-materials': {tableId:'tbl-pipe-materials', title:'Pipe Failure by Material and Size', orientation:'landscape', landscape:true},
 };
 
 function expOverlay(show, msg='Preparing export…'){
@@ -504,9 +513,9 @@ function buildCompactFilterSummary(){
 
 function updatePageMeta(){
   const stamp=new Date().toLocaleString('en-GB',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'});
-  ['overview','operations','commercial','reports','production','wt-ei','customers','connections','stuck','connectivity','breakdowns','pipelines','billed','collections','charges','expenses','debtors','budget','compliance'].forEach(page=>{
+  ['overview','operations','commercial','reports','production','wt-ei','customers','connections','stuck','connectivity','breakdowns','pipelines','billed','collections','charges','expenses','debtors','segment-revenue','workforce','class-connections','stuck-classes','pipe-materials','budget','compliance'].forEach(page=>{
     const el=document.getElementById(`pg-meta-${page}`);
-    if(el)el.innerHTML=`${buildCompactFilterSummary()} <span class="meta-sep">·</span> Updated ${stamp}`;
+    if(el)el.innerHTML= DOMPurify.sanitize(`${buildCompactFilterSummary()} <span class="meta-sep">·</span> Updated ${stamp}`);
   });
 }
 
@@ -606,33 +615,35 @@ function mountExportBar(page){
   if(hdr.querySelector('.exp-bar'))return; // already mounted
   const bar=document.createElement('div');
   bar.className='pg-hdr-right exp-bar';
-  bar.innerHTML=`
-    <button class="exp-btn exp-xl"  onclick="exportExcel('${page}')" title="Export to Excel">
-      <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><rect x="1" y="2" width="14" height="12" rx="2" stroke="currentColor" stroke-width="1.4"/><path d="M5 6l2.5 4L10 6" stroke="#16a34a" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M6 2v12M1 8h14" stroke="currentColor" stroke-width="1.2" opacity=".25"/></svg>
-      Excel
-    </button>
-    <button class="exp-btn exp-print" onclick="printReport('${page}')" title="Print / Save as PDF">
+  bar.innerHTML= DOMPurify.sanitize(`
+    <button class="exp-btn exp-print" title="Print summary / Save as PDF">
       <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><rect x="3" y="5" width="10" height="7" rx="1" stroke="currentColor" stroke-width="1.4"/><path d="M5 5V3h6v2" stroke="currentColor" stroke-width="1.4"/><rect x="5" y="9" width="6" height="3" rx=".5" fill="currentColor" opacity=".2" stroke="currentColor" stroke-width="1.2"/></svg>
-      Print
-    </button>`;
+      Print Summary
+    </button>
+    <button class="exp-btn exp-xl" title="Export summary to Excel">
+      <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><rect x="1" y="2" width="14" height="12" rx="2" stroke="currentColor" stroke-width="1.4"/><path d="M5 6l2.5 4L10 6" stroke="#16a34a" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M6 2v12M1 8h14" stroke="currentColor" stroke-width="1.2" opacity=".25"/></svg>
+      Excel Summary
+    </button>`);
+  bar.querySelector('.exp-print').addEventListener('click', ()=>printReport(page));
+  bar.querySelector('.exp-xl').addEventListener('click', ()=>exportExcel(page));
   hdr.appendChild(bar);
 
   // Inject print header block (hidden on screen, shown in @media print)
   if(!document.querySelector(`#page-${page} .print-report-header`)){
     const ph=document.createElement('div');
     ph.className='print-report-header';
-    ph.innerHTML=`
+    ph.innerHTML= DOMPurify.sanitize(`
       <div class="prh-org">Southern Region Water Board · Operations &amp; Performance Dashboard</div>
       <div class="prh-title">${cfg.title}</div>
       <div class="prh-meta" id="prh-meta-${page}"></div>
       <div class="prh-meta prh-meta-secondary" id="prh-meta-secondary-${page}"></div>
-      <div class="prh-gov" id="prh-gov-${page}"></div>`;
+      <div class="prh-gov" id="prh-gov-${page}"></div>`);
     hdr.closest('.db-page').prepend(ph);
   }
   if(!document.querySelector(`#page-${page} .print-report-footer`)){
     const pf=document.createElement('div');
     pf.className='print-report-footer';
-    pf.innerHTML=`<div class="prf-left" id="prf-left-${page}"></div><div class="prf-right" id="prf-right-${page}"></div>`;
+    pf.innerHTML= DOMPurify.sanitize(`<div class="prf-left" id="prf-left-${page}"></div><div class="prf-right" id="prf-right-${page}"></div>`);
     hdr.closest('.db-page').appendChild(pf);
   }
 }
@@ -716,13 +727,13 @@ function printReport(page){
   if(!document.querySelector(`#page-${page} .print-report-header`) && pageEl){
       const ph=document.createElement('div');
       ph.className='print-report-header';
-      ph.innerHTML=`<div class="prh-org">Southern Region Water Board · Operations &amp; Performance Dashboard</div><div class="prh-title">${cfg.title}</div><div class="prh-meta" id="prh-meta-${page}"></div><div class="prh-meta prh-meta-secondary" id="prh-meta-secondary-${page}"></div><div class="prh-gov" id="prh-gov-${page}"></div>`;
+      ph.innerHTML= DOMPurify.sanitize(`<div class="prh-org">Southern Region Water Board · Operations &amp; Performance Dashboard</div><div class="prh-title">${cfg.title}</div><div class="prh-meta" id="prh-meta-${page}"></div><div class="prh-meta prh-meta-secondary" id="prh-meta-secondary-${page}"></div><div class="prh-gov" id="prh-gov-${page}"></div>`);
       pageEl.prepend(ph);
   }
   if(!document.querySelector(`#page-${page} .print-report-footer`) && pageEl){
       const pf=document.createElement('div');
       pf.className='print-report-footer';
-      pf.innerHTML=`<div class="prf-left" id="prf-left-${page}"></div><div class="prf-right" id="prf-right-${page}"></div>`;
+      pf.innerHTML= DOMPurify.sanitize(`<div class="prf-left" id="prf-left-${page}"></div><div class="prf-right" id="prf-right-${page}"></div>`);
       pageEl.appendChild(pf);
   }
 
@@ -734,7 +745,7 @@ function printReport(page){
   if(meta2)meta2.textContent=`Generated ${metaPack.generated} · ${metaPack.orientation} layout · Source: ${metaPack.source}`;
   const prhGov=document.getElementById(`prh-gov-${page}`);
   if(prhGov){
-    prhGov.innerHTML=governanceChipHtml(metaPack.governanceChips||[], 'prh-chip');
+    prhGov.innerHTML= DOMPurify.sanitize(governanceChipHtml(metaPack.governanceChips||[], 'prh-chip'));
     prhGov.title=[metaPack.dataQualityDetail, metaPack.evidenceDetail, metaPack.printRule].filter(Boolean).join(' | ');
   }
   const prfLeft=document.getElementById(`prf-left-${page}`);
@@ -742,10 +753,15 @@ function printReport(page){
   const prfRight=document.getElementById(`prf-right-${page}`);
   if(prfRight)prfRight.textContent=`Export ref: ${metaPack.fileStem}`;
 
-  // Inject @page size dynamically — the ONLY reliable way to set portrait/landscape
+  // Inject @page size dynamically using explicit mm — more reliable than keywords
+  // Landscape A4: 297×210mm  |  Portrait A4: 210×297mm
   let styleTag=document.getElementById('print-page-size');
   if(!styleTag){styleTag=document.createElement('style');styleTag.id='print-page-size';document.head.appendChild(styleTag);}
-  styleTag.textContent=`@page{size:A4 ${cfg.landscape?'landscape':'portrait'};margin:8mm 10mm}`;
+  if(cfg.landscape){
+    styleTag.textContent=`@page{size:297mm 210mm;margin:5mm 6mm}`;
+  }else{
+    styleTag.textContent=`@page{size:210mm 297mm;margin:8mm 10mm}`;
+  }
 
   // Mark the target page — CSS hides everything else in @media print
   document.querySelectorAll('.db-page').forEach(p=>p.classList.remove('print-target','portrait-pack','landscape-pack'));
@@ -789,7 +805,7 @@ function updateFooter(){
   if(ftSr)ftSr.textContent=footerState.src||'RawData.xlsx';
   // Status
   const ftSt=document.getElementById('ft-status');
-  if(ftSt)ftSt.innerHTML=footerState.dataOk?'<span class="ft-ok">✓ Data OK</span>':'<span class="ft-warn">⚠ Check Data</span>';
+  if(ftSt)ftSt.innerHTML= DOMPurify.sanitize(footerState.dataOk?'<span class="ft-ok">✓ Data OK</span>':'<span class="ft-warn">⚠ Check Data</span>');
 }
 
 function onFilterChange(){
@@ -810,13 +826,49 @@ function buildParams(extra={}){
 }
 async function api(path){
   const token=getToken();const base=path.includes('?')?path+'&':path+'?';
-  const res=await fetch(API+base+buildParams(),{headers:{Authorization:'Bearer '+token}});
-  if(!res.ok)throw new Error('API '+res.status);return res.json();
+  const url=API+base+buildParams();
+  const res=await fetch(url,{headers:{Authorization:'Bearer '+token}});
+  const text=await res.text();
+  let data=null;
+  try{data=text?JSON.parse(text):null;}catch{}
+  if(!res.ok){
+    const detail=(data&&data.detail)||text||('API '+res.status);
+    throw new Error(`API ${res.status} on ${path}: ${String(detail).slice(0,180)}`);
+  }
+  if(text&&!data)throw new Error(`Invalid JSON from ${path}: ${text.slice(0,180)}`);
+  return data;
+}
+async function fetchJsonSafe(url,{token=getToken(),fallback=null,label=url,method='GET',headers={},body}={}){
+  const hdrs={...headers};
+  if(token)hdrs.Authorization='Bearer '+token;
+  const res=await fetch(url,{method,headers:hdrs,body});
+  const text=await res.text();
+  let data=null;
+  try{data=text?JSON.parse(text):null;}catch{}
+  if(!res.ok){
+    const detail=(data&&data.detail)||text||(`Server error (${res.status})`);
+    throw new Error(`${label}: ${String(detail).slice(0,180)}`);
+  }
+  if(text&&!data){
+    if(fallback!==null)return fallback;
+    throw new Error(`Invalid JSON from ${label}: ${text.slice(0,180)}`);
+  }
+  return data ?? fallback;
 }
 async function apiPanel(panel){
   const token=getToken();
-  const res=await fetch(`${API}/api/panels/${panel}?${buildParams()}`,{headers:{Authorization:'Bearer '+token}});
-  if(!res.ok)throw new Error('API '+res.status);return res.json();
+  const path=`/api/panels/${panel}`;
+  const url=`${API}${path}?${buildParams()}`;
+  const res=await fetch(url,{headers:{Authorization:'Bearer '+token}});
+  const text=await res.text();
+  let data=null;
+  try{data=text?JSON.parse(text):null;}catch{}
+  if(!res.ok){
+    const detail=(data&&data.detail)||text||('API '+res.status);
+    throw new Error(`API ${res.status} on ${path}: ${String(detail).slice(0,180)}`);
+  }
+  if(text&&!data)throw new Error(`Invalid JSON from ${path}: ${text.slice(0,180)}`);
+  return data;
 }
 
 /* ══════════════════════ REPORT TABLE ENGINE ═══════════════════════════ */
@@ -905,7 +957,7 @@ function renderTable(containerId,title,rows,moData,reportKey=null){
     h+=`<td class="ann-cell">${annV!=null?fv(annV,row.fmt,row.dec,row.zeroOk):'<span class="rpt-dash">—</span>'}</td></tr>`;
   }
   h+=`</tbody></table></div></div>`;
-  el.innerHTML=h;
+  el.innerHTML= DOMPurify.sanitize(h);
 }
 
 // Pipelines variant: shows separate QTR columns
@@ -940,7 +992,7 @@ function renderPipelinesTable(containerId,moData){
     h+=`<td class="ann-cell">${annSum?Math.round(annSum).toLocaleString():'<span class="rpt-dash">—</span>'}</td></tr>`;
   }
   h+=`</tbody></table></div></div>`;
-  el.innerHTML=h;
+  el.innerHTML= DOMPurify.sanitize(h);
 }
 
 /* Row definitions for each report */
@@ -970,10 +1022,24 @@ const ROWS={
     {label:'Cost/Vol. Produced — Chemicals (MWK/m³)',
      field:'chem_cost_per_m3', fmt:'dec2',
      annType:'ratio', numF:'chem_cost', denF:'vol_produced', ratioMul:1},
+    {type:'spacer'},
+    {type:'section',label:'Chemical and Energy Intensity'},
+    {label:'Chlorine Intensity (kg/m3)',      field:'chlorine_kg_per_m3', fmt:'dec3', annType:'avg'},
+    {label:'Alum Intensity (kg/m3)',          field:'alum_kg_per_m3', fmt:'dec3', annType:'avg'},
+    {label:'Soda Ash Intensity (kg/m3)',      field:'soda_ash_kg_per_m3', fmt:'dec3', annType:'avg'},
+    {label:'Algae Floc Intensity (L/m3)',     field:'algae_floc_per_m3', fmt:'dec3', annType:'avg'},
+    {label:'Sud Floc Intensity (L/m3)',       field:'sud_floc_per_m3', fmt:'dec3', annType:'avg'},
+    {label:'KMnO4 Intensity (kg/m3)',         field:'kmno4_per_m3', fmt:'dec3', annType:'avg'},
+    {label:'Power Intensity (kWh/m3)',        field:'power_kwh_per_m3', fmt:'dec3', annType:'avg'},
+    {label:'Power Cost (MWK/m3)',             field:'power_cost_per_m3', fmt:'dec2', annType:'avg'},
   ],
   customers:[
     {label:'Metered Customers',               field:'total_metered',         fmt:'num', annType:'last'},
     {label:'Disconnected Customers',          field:'total_disconnected',    fmt:'num', annType:'last'},
+    {label:'Disconnected Individual',         field:'disconnected_individual',fmt:'num', annType:'last'},
+    {label:'Disconnected Institutional',      field:'disconnected_inst',      fmt:'num', annType:'last'},
+    {label:'Disconnected Commercial',         field:'disconnected_commercial',fmt:'num', annType:'last'},
+    {label:'Disconnected CWP',                field:'disconnected_cwp',       fmt:'num', annType:'last'},
     {label:'Active Customers',                field:'active_customers',      fmt:'num', annType:'last', bold:true, color:'red'},
     {label:'Active Postpaid Customers',       field:'active_postpaid',       fmt:'num', annType:'last'},
     {label:'Active Prepaid Customers',        field:'active_prepaid',        fmt:'num', annType:'last'},
@@ -984,10 +1050,26 @@ const ROWS={
     {label:'Active Prep. Inst. Consumers',    field:'active_prep_inst',      fmt:'num', annType:'last'},
     {label:'Active Post. Com. Consumers',     field:'active_post_commercial',fmt:'num', annType:'last'},
     {label:'Active Prep. Com. Consumers',     field:'active_prep_commercial',fmt:'num', annType:'last'},
+    {label:'Active Post. CWP',               field:'active_post_cwp',       fmt:'num', annType:'last'},
     {label:'Active Prep. CWP',               field:'active_prep_cwp',       fmt:'num', annType:'last'},
+    {type:'spacer'},
+    {label:'Population in Supply Area',      field:'pop_supply_area',       fmt:'num', annType:'last'},
+    {label:'Population Served',              field:'pop_supplied',          fmt:'num', annType:'last'},
+    {label:'Coverage Rate (%)',              field:'pct_pop_supplied',      fmt:'pct', annType:'last'},
+    {type:'spacer'},
+    {type:'section',label:'Billed Water Volume by Customer Segment'},
+    {label:'Indiv. Postpaid Volume (m³)',    field:'vol_billed_indiv_pp', fmt:'num', annType:'sum'},
+    {label:'Inst. Postpaid Volume (m³)',     field:'vol_billed_inst_pp', fmt:'num', annType:'sum'},
+    {label:'Comm. Postpaid Volume (m³)',     field:'vol_billed_comm_pp', fmt:'num', annType:'sum'},
+    {label:'CWP Postpaid Volume (m³)',       field:'vol_billed_cwp_pp', fmt:'num', annType:'sum'},
+    {label:'Indiv. Prepaid Volume (m³)',     field:'vol_billed_indiv_prepaid', fmt:'num', annType:'sum'},
+    {label:'Inst. Prepaid Volume (m³)',      field:'vol_billed_inst_prepaid', fmt:'num', annType:'sum'},
+    {label:'Comm. Prepaid Volume (m³)',      field:'vol_billed_comm_prepaid', fmt:'num', annType:'sum'},
+    {label:'CWP Prepaid Volume (m³)',        field:'vol_billed_cwp_prepaid', fmt:'num', annType:'sum'},
   ],
   connections:[
     {label:'NWCs B/F',                        field:'all_conn_bfwd',              fmt:'num', annType:'last', color:'blue'},
+    {label:'All Applications Logged',         field:'all_conn_applied',           fmt:'num', annType:'sum', zeroOk:true},
     {label:'NWCs Applied (Postpaid)',          field:'conn_applied',               fmt:'num', annType:'sum',  zeroOk:true},
     {label:'NWCs Done (Postpaid)',
      computed:m=>Math.max(0,(m.new_connections||0)-(m.prepaid_meters_installed||0)),
@@ -1008,10 +1090,13 @@ const ROWS={
     {label:'Customers Applied for New Connection', field:'conn_applied',       fmt:'num',  annType:'sum'},
     {label:'Days Taken to Give a Quotation',       field:'days_to_quotation',  fmt:'dec1', annType:'avg'},
     {label:'Customers Fully Paid',                 field:'conn_fully_paid',    fmt:'num',  annType:'sum'},
+    {label:'Paid-up Applicants',                  field:'paid_up_applicants', fmt:'num', annType:'sum'},
     {label:'Days Taken to Connect Paid-up Custs',  field:'days_to_connect',    fmt:'dec1', annType:'avg'},
+    {label:'Connection Lead Time (days)',         field:'connection_days',    fmt:'dec1', annType:'avg'},
     {label:'Connectivity Rate (%)',                field:'connectivity_rate',  fmt:'dec1', annType:'avg'},
     {label:'Queries Received',                     field:'queries_received',   fmt:'num',  annType:'sum', zeroOk:true},
     {label:'Time Taken to Resolve Queries (days)', field:'time_to_resolve',    fmt:'dec1', annType:'avg'},
+    {label:'Average Response Time (days)',         field:'response_time_avg',  fmt:'dec1', annType:'avg'},
   ],
   breakdowns:[
     {label:'Total Pipe + Pump Breakdowns',
@@ -1046,6 +1131,7 @@ const ROWS={
     {label:'Total Billed',        field:'amt_billed',         fmt:'mwk', annType:'sum', bold:true},
     {label:'Total Collections',   field:'cash_collected',     fmt:'mwk', annType:'sum', bold:true, color:'green'},
     {label:'Collection Rate (%)', field:'collection_rate',    fmt:'pct', annType:'ratio', numF:'cash_collected', denF:'amt_billed', ratioMul:100},
+    {label:'Collection per Sales',field:'collection_per_sales',fmt:'dec3',annType:'avg'},
   ],
   charges:[
     {label:'Service Charge',     field:'service_charge', fmt:'mwk', annType:'sum', color:'green'},
@@ -1062,6 +1148,14 @@ const ROWS={
     {label:'Wages',              field:'wages',        fmt:'mwk', annType:'sum', color:'green'},
     {label:'Other Overhead',     field:'other_overhead',fmt:'mwk',annType:'sum'},
     {label:'Total Operating Costs',field:'op_cost',   fmt:'mwk', annType:'sum', bold:true},
+    {type:'spacer'},
+    {type:'section',label:'Efficiency and Utilisation'},
+    {label:'Fuel Used (litres)', field:'fuel_used_litres', fmt:'num', annType:'sum'},
+    {label:'Distance Covered (km)', field:'distances_km', fmt:'num', annType:'sum'},
+    {label:'Staff / 1000m³ (12h)', field:'staff_per_1000m3_12h', fmt:'dec3', annType:'avg'},
+    {label:'OpEx / m³ Produced', field:'op_cost_per_m3_produced', fmt:'dec2', annType:'avg'},
+    {label:'OpEx / m³ Billed', field:'op_cost_per_m3_billed', fmt:'dec2', annType:'avg'},
+    {label:'OpEx / Sales', field:'op_cost_per_sales', fmt:'dec3', annType:'avg'},
   ],
   pvc_breakdowns:[
     {type:'section',label:'PVC Pipe Breakdowns by Size (Breakages)'},
@@ -1086,6 +1180,133 @@ const ROWS={
     {label:'Private Debtors',    field:'private_debtors', fmt:'mwk', annType:'last', color:'orange'},
     {label:'Public Debtors',     field:'public_debtors',  fmt:'mwk', annType:'last', color:'blue'},
     {label:'Total Debtors',      field:'total_debtors',   fmt:'mwk', annType:'last', bold:true, color:'red'},
+  ],
+  segment_revenue:[
+    {type:'section',label:'Amounts Billed by Customer Segment'},
+    {label:'Individual Postpaid', field:'amt_billed_indiv_pp', fmt:'mwk', annType:'sum'},
+    {label:'Institutional Postpaid', field:'amt_billed_inst_pp', fmt:'mwk', annType:'sum'},
+    {label:'Commercial Postpaid', field:'amt_billed_comm_pp', fmt:'mwk', annType:'sum'},
+    {label:'CWP Postpaid', field:'amt_billed_cwp_pp', fmt:'mwk', annType:'sum'},
+    {label:'Individual Prepaid', field:'amt_billed_indiv_prepaid', fmt:'mwk', annType:'sum'},
+    {label:'Institutional Prepaid', field:'amt_billed_inst_prepaid', fmt:'mwk', annType:'sum'},
+    {label:'Commercial Prepaid', field:'amt_billed_comm_prepaid', fmt:'mwk', annType:'sum'},
+    {label:'CWP Prepaid', field:'amt_billed_cwp_prepaid', fmt:'mwk', annType:'sum'},
+    {type:'spacer'},
+    {type:'section',label:'Cash Collected by Customer Segment'},
+    {label:'Individual Postpaid', field:'cash_coll_indiv_pp', fmt:'mwk', annType:'sum'},
+    {label:'Institutional Postpaid', field:'cash_coll_inst_pp', fmt:'mwk', annType:'sum'},
+    {label:'Commercial Postpaid', field:'cash_coll_comm_pp', fmt:'mwk', annType:'sum'},
+    {label:'CWP Postpaid', field:'cash_coll_cwp_pp', fmt:'mwk', annType:'sum'},
+    {label:'Individual Prepaid', field:'cash_coll_indiv_prepaid', fmt:'mwk', annType:'sum'},
+    {label:'Institutional Prepaid', field:'cash_coll_inst_prepaid', fmt:'mwk', annType:'sum'},
+    {label:'Commercial Prepaid', field:'cash_coll_comm_prepaid', fmt:'mwk', annType:'sum'},
+    {label:'CWP Prepaid', field:'cash_coll_cwp_prepaid', fmt:'mwk', annType:'sum'},
+    {type:'spacer'},
+    {type:'section',label:'Service Charge and Meter Rental'},
+    {label:'Service Charge — Individual', field:'service_charge_individual', fmt:'mwk', annType:'sum'},
+    {label:'Service Charge — Institutions', field:'service_charge_institutions', fmt:'mwk', annType:'sum'},
+    {label:'Service Charge — Commercial', field:'service_charge_commercial', fmt:'mwk', annType:'sum'},
+    {label:'Service Charge — CWP', field:'service_charge_cwp', fmt:'mwk', annType:'sum'},
+    {label:'Meter Rental — Individual', field:'meter_rental_individual', fmt:'mwk', annType:'sum'},
+    {label:'Meter Rental — Institutions', field:'meter_rental_institutions', fmt:'mwk', annType:'sum'},
+    {label:'Meter Rental — Commercial', field:'meter_rental_commercial', fmt:'mwk', annType:'sum'},
+    {label:'Meter Rental — CWP', field:'meter_rental_cwp', fmt:'mwk', annType:'sum'},
+  ],
+  workforce:[
+    {label:'Permanent Staff', field:'perm_staff', fmt:'num', annType:'last'},
+    {label:'Temporary Staff', field:'temp_staff', fmt:'num', annType:'last'},
+    {label:'Fuel Used (litres)', field:'fuel_used_litres', fmt:'num', annType:'sum'},
+    {label:'Fuel Cost (MWK)', field:'fuel_cost', fmt:'mwk', annType:'sum'},
+    {label:'Distance Covered (km)', field:'distances_km', fmt:'num', annType:'sum'},
+    {label:'Maintenance (MWK)', field:'maintenance', fmt:'mwk', annType:'sum'},
+    {label:'Staff / 1000m³ (12h)', field:'staff_per_1000m3_12h', fmt:'dec3', annType:'avg'},
+    {label:'OpEx / m³ Produced', field:'op_cost_per_m3_produced', fmt:'dec2', annType:'avg'},
+    {label:'OpEx / m³ Billed', field:'op_cost_per_m3_billed', fmt:'dec2', annType:'avg'},
+    {label:'OpEx / Sales', field:'op_cost_per_sales', fmt:'dec3', annType:'avg'},
+  ],
+  class_connections:[
+    {type:'section',label:'Individual'},
+    {label:'B/F', field:'conn_indiv_bfwd', fmt:'num', annType:'last'},
+    {label:'Applied', field:'conn_indiv_applied_pp', fmt:'num', annType:'sum'},
+    {label:'Done Postpaid', field:'conn_indiv_done_pp', fmt:'num', annType:'sum'},
+    {label:'Done Prepaid', field:'conn_indiv_done_prepaid', fmt:'num', annType:'sum'},
+    {label:'Total Done', field:'conn_indiv_total_done', fmt:'num', annType:'sum'},
+    {label:'C/F', field:'conn_indiv_cfwd', fmt:'num', annType:'last'},
+    {type:'section',label:'Institutional'},
+    {label:'B/F', field:'conn_inst_bfwd', fmt:'num', annType:'last'},
+    {label:'Applied', field:'conn_inst_applied_pp', fmt:'num', annType:'sum'},
+    {label:'Done Postpaid', field:'conn_inst_done_pp', fmt:'num', annType:'sum'},
+    {label:'Done Prepaid', field:'conn_inst_done_prepaid', fmt:'num', annType:'sum'},
+    {label:'Total Done', field:'conn_inst_total_done', fmt:'num', annType:'sum'},
+    {label:'C/F', field:'conn_inst_cfwd', fmt:'num', annType:'last'},
+    {type:'section',label:'Commercial'},
+    {label:'B/F', field:'conn_comm_bfwd', fmt:'num', annType:'last'},
+    {label:'Applied', field:'conn_comm_applied_pp', fmt:'num', annType:'sum'},
+    {label:'Done Postpaid', field:'conn_comm_done_pp', fmt:'num', annType:'sum'},
+    {label:'Done Prepaid', field:'conn_comm_done_prepaid', fmt:'num', annType:'sum'},
+    {label:'Total Done', field:'conn_comm_total_done', fmt:'num', annType:'sum'},
+    {label:'C/F', field:'conn_comm_cfwd', fmt:'num', annType:'last'},
+    {type:'section',label:'CWP'},
+    {label:'B/F', field:'conn_cwp_bfwd', fmt:'num', annType:'last'},
+    {label:'Applied', field:'conn_cwp_applied_pp', fmt:'num', annType:'sum'},
+    {label:'Done Postpaid', field:'conn_cwp_done_pp', fmt:'num', annType:'sum'},
+    {label:'Done Prepaid', field:'conn_cwp_done_prepaid', fmt:'num', annType:'sum'},
+    {label:'Total Done', field:'conn_cwp_total_done', fmt:'num', annType:'sum'},
+    {label:'C/F', field:'conn_cwp_cfwd', fmt:'num', annType:'last'},
+  ],
+  stuck_classes:[
+    {type:'section',label:'Individual'},
+    {label:'B/F', field:'stuck_indiv_bfwd', fmt:'num', annType:'last'},
+    {label:'New', field:'stuck_indiv_new', fmt:'num', annType:'sum'},
+    {label:'Repaired', field:'stuck_indiv_repaired', fmt:'num', annType:'sum'},
+    {label:'Replaced', field:'stuck_indiv_replaced', fmt:'num', annType:'sum'},
+    {label:'C/F', field:'stuck_indiv_cfwd', fmt:'num', annType:'last'},
+    {type:'section',label:'Institutional'},
+    {label:'B/F', field:'stuck_inst_bfwd', fmt:'num', annType:'last'},
+    {label:'New', field:'stuck_inst_new', fmt:'num', annType:'sum'},
+    {label:'Repaired', field:'stuck_inst_repaired', fmt:'num', annType:'sum'},
+    {label:'Replaced', field:'stuck_inst_replaced', fmt:'num', annType:'sum'},
+    {label:'C/F', field:'stuck_inst_cfwd', fmt:'num', annType:'last'},
+    {type:'section',label:'Commercial'},
+    {label:'B/F', field:'stuck_comm_bfwd', fmt:'num', annType:'last'},
+    {label:'New', field:'stuck_comm_new', fmt:'num', annType:'sum'},
+    {label:'Repaired', field:'stuck_comm_repaired', fmt:'num', annType:'sum'},
+    {label:'Replaced', field:'stuck_comm_replaced', fmt:'num', annType:'sum'},
+    {label:'C/F', field:'stuck_comm_cfwd', fmt:'num', annType:'last'},
+    {type:'section',label:'CWP'},
+    {label:'B/F', field:'stuck_cwp_bfwd', fmt:'num', annType:'last'},
+    {label:'New', field:'stuck_cwp_new', fmt:'num', annType:'sum'},
+    {label:'Repaired', field:'stuck_cwp_repaired', fmt:'num', annType:'sum'},
+    {label:'Replaced', field:'stuck_cwp_replaced', fmt:'num', annType:'sum'},
+    {label:'C/F', field:'stuck_cwp_cfwd', fmt:'num', annType:'last'},
+  ],
+  pipe_materials:[
+    {type:'section',label:'GI Pipe Failures'},
+    {label:'15mm', field:'gi_15mm', fmt:'num', annType:'sum'},
+    {label:'20mm', field:'gi_20mm', fmt:'num', annType:'sum'},
+    {label:'25mm', field:'gi_25mm', fmt:'num', annType:'sum'},
+    {label:'40mm', field:'gi_40mm', fmt:'num', annType:'sum'},
+    {label:'50mm', field:'gi_50mm', fmt:'num', annType:'sum'},
+    {label:'75mm', field:'gi_75mm', fmt:'num', annType:'sum'},
+    {label:'100mm', field:'gi_100mm', fmt:'num', annType:'sum'},
+    {label:'150mm', field:'gi_150mm', fmt:'num', annType:'sum'},
+    {label:'200mm', field:'gi_200mm', fmt:'num', annType:'sum'},
+    {type:'section',label:'DI Pipe Failures'},
+    {label:'150mm', field:'di_150mm', fmt:'num', annType:'sum'},
+    {label:'200mm', field:'di_200mm', fmt:'num', annType:'sum'},
+    {label:'250mm', field:'di_250mm', fmt:'num', annType:'sum'},
+    {label:'300mm', field:'di_300mm', fmt:'num', annType:'sum'},
+    {label:'350mm', field:'di_350mm', fmt:'num', annType:'sum'},
+    {label:'525mm', field:'di_525mm', fmt:'num', annType:'sum'},
+    {type:'section',label:'HDPE and AC Pipe Failures'},
+    {label:'HDPE 20mm', field:'hdpe_20mm', fmt:'num', annType:'sum'},
+    {label:'HDPE 25mm', field:'hdpe_25mm', fmt:'num', annType:'sum'},
+    {label:'HDPE 32mm', field:'hdpe_32mm', fmt:'num', annType:'sum'},
+    {label:'HDPE 50mm', field:'hdpe_50mm', fmt:'num', annType:'sum'},
+    {label:'AC 50mm', field:'ac_50mm', fmt:'num', annType:'sum'},
+    {label:'AC 75mm', field:'ac_75mm', fmt:'num', annType:'sum'},
+    {label:'AC 100mm', field:'ac_100mm', fmt:'num', annType:'sum'},
+    {label:'AC 150mm', field:'ac_150mm', fmt:'num', annType:'sum'},
   ],
 };
 
@@ -1132,8 +1353,10 @@ function setReportDensity(mode){
 }
 
 function toggleDetailTable(page=currentPage){
-  reportTableDisclosure[page]=!reportTableDisclosure[page];
-  applyReportDensityState(page);
+const explicit=reportTableDisclosure[page];
+const expanded=!!explicit;
+reportTableDisclosure[page]=!expanded;
+applyReportDensityState(page);
 }
 
 function ensureReportDensityBanner(pageEl,page){
@@ -1147,7 +1370,7 @@ function ensureReportDensityBanner(pageEl,page){
     hdrLeft.appendChild(note);
   }
   const meta=REPORT_DENSITY_META[reportDensityMode]||REPORT_DENSITY_META.summary;
-  note.innerHTML=`<span class="pg-density-chip">${meta.label}</span><span class="pg-density-copy">${meta.description}</span>`;
+  note.innerHTML= DOMPurify.sanitize(`<span class="pg-density-chip">${meta.label}</span><span class="pg-density-copy">${meta.description}</span>`);
 }
 
 function ensureReportTableDisclosure(pageEl,page){
@@ -1162,11 +1385,17 @@ function ensureReportTableDisclosure(pageEl,page){
       bar.className='tbl-disclosure-bar';
       tbl.parentNode.insertBefore(bar,tbl);
     }
-    const expanded=reportDensityMode==='detail' || !!reportTableDisclosure[page];
+    const explicit=reportTableDisclosure[page];
+    const expanded=!!explicit;
     const modeLabel=(REPORT_DENSITY_META[reportDensityMode]||REPORT_DENSITY_META.summary).label;
-    bar.innerHTML=`<div class="tbl-disclosure-copy"><span class="tbl-disclosure-title">Detailed table</span><span class="tbl-disclosure-note">Hidden by default in ${modeLabel.toLowerCase()} to reduce information overload.</span></div><button type="button" class="tbl-disclosure-btn" onclick="toggleDetailTable('${page}')">${expanded?'Hide detailed table':'Show detailed table'}</button>`;
-    section.classList.toggle('table-section-collapsed',!expanded && reportDensityMode!=='detail');
-    tbl.classList.toggle('is-collapsed',!expanded && reportDensityMode!=='detail');
+    const stateNote=expanded
+      ? 'Detailed scheme-level rows are currently visible for this page.'
+      : `Hidden by default in ${modeLabel.toLowerCase()} to reduce information overload. Enable it when you need scheme-level detail.`;
+    bar.innerHTML= DOMPurify.sanitize(`<div class="tbl-disclosure-copy"><span class="tbl-disclosure-title">Detailed table</span><span class="tbl-disclosure-note">${stateNote}</span></div><button type="button" class="tbl-disclosure-btn">${expanded?'Hide detailed table':'Enable detailed table'}</button>`);
+    const disclosureBtn=bar.querySelector('.tbl-disclosure-btn');
+    if(disclosureBtn) disclosureBtn.addEventListener('click',()=>toggleDetailTable(page));
+    section.classList.toggle('table-section-collapsed',!expanded);
+    tbl.classList.toggle('is-collapsed',!expanded);
   });
 }
 
@@ -1271,21 +1500,24 @@ const tooltipPlugin={
   }
 };
 const chartAnim = window.innerWidth <= 768 ? false : { duration: 250 };
+const chartDpr = Math.max(1, Math.min(window.devicePixelRatio || 1, 2));
 const baseOpts=(yFmt)=>({responsive:true,maintainAspectRatio:false,animation:chartAnim,scales:baseScales(yFmt),...tooltipPlugin});
 // Horizontal bar helper: value format on x-axis; y shows category labels (zone names) correctly
 const baseOptsH=(xFmt)=>({responsive:true,maintainAspectRatio:false,animation:chartAnim,indexAxis:'y',scales:{x:{min:0,ticks:{color:LC,font:{size:10,family:'Inter,system-ui,sans-serif'},callback:xFmt||(v=>Number.isInteger(v)?v.toLocaleString():null)},grid:{color:GC},border:{display:false}},y:{ticks:{color:LC,font:{size:10,family:'Inter,system-ui,sans-serif'}},grid:{color:GC,drawBorder:false}}},...tooltipPlugin});
 /* Chart legend preset (shared) */
 const legendOpts=(pos='top')=>({...tooltipPlugin.plugins,legend:{display:true,position:pos,labels:{boxWidth:10,boxHeight:10,font:{size:11,family:'Inter,system-ui,sans-serif'},color:LC,usePointStyle:true,pointStyle:'circle',padding:14}}});
+const legendOptsCompact=(pos='top')=>({...tooltipPlugin.plugins,legend:{display:true,position:pos,labels:{boxWidth:16,boxHeight:8,font:{size:10,family:'Inter,system-ui,sans-serif'},color:LC,usePointStyle:false,padding:12}}});
+const legendOptsSharp=(pos='top')=>({...tooltipPlugin.plugins,legend:{display:true,position:pos,labels:{boxWidth:14,boxHeight:10,font:{size:11,family:'Inter,system-ui,sans-serif',weight:'600'},color:'#334155',usePointStyle:true,pointStyle:'rectRounded',padding:16}}});
 function mkChart(id,cfg){
   try{
     if(chartReg[id])chartReg[id].destroy();
     const el=document.getElementById(id);if(!el)return;
     const governedCfg=applyChartGovernance(id,cfg);
-    chartReg[id]=new Chart(el,governedCfg);
+    chartReg[id]=new Chart(el,{...governedCfg,devicePixelRatio:chartDpr});
   }catch(e){
     console.warn('Chart error ['+id+']:',e.message);
     const el=document.getElementById(id);
-    if(el)el.parentElement.innerHTML='<div style="display:flex;align-items:center;justify-content:center;height:100%;color:#94A3B8;font-size:11px">Chart unavailable</div>';
+    if(el)el.parentElement.innerHTML= DOMPurify.sanitize('<div style="display:flex;align-items:center;justify-content:center;height:100%;color:#94A3B8;font-size:11px">Chart unavailable</div>');
   }
 }
 /* ── Badge map: status string → CSS class ── */
@@ -1372,6 +1604,7 @@ function governanceChipHtml(chips=[], base='pg-governance-chip'){
 function inferBenchmarkMode(title=''){
   const t=String(title||'').trim();
   if(!t) return 'none';
+  if(t==='Billed vs Collected — Monthly (MWK)') return 'line';
   const lineTitles=new Set([
     'NRW Rate — Monthly Trend','NRW Rate by Zone — Current Period (%)','NRW Rate by Zone (%)',
     'Collection Rate by Zone (%)','Volume Produced (m³) & NRW Rate — Monthly',
@@ -1457,7 +1690,7 @@ function injectPageGovernanceStandards(root=document){
     meta.insertAdjacentElement('afterend', strip);
   }
   const evidenceChip=pageKey==='compliance' ? '<span class="pg-governance-chip pg-governance-chip-danger">Evidence caveats visible</span>' : '';
-  strip.innerHTML=`<span class="pg-governance-chip pg-governance-chip-amber">Benchmark rules governed</span><span class="pg-governance-chip pg-governance-chip-neutral">Legends standardized</span><span class="pg-governance-chip pg-governance-chip-neutral">Board-pack print rule active</span>${evidenceChip}`;
+  strip.innerHTML= DOMPurify.sanitize(`<span class="pg-governance-chip pg-governance-chip-amber">Benchmark rules governed</span><span class="pg-governance-chip pg-governance-chip-neutral">Legends standardized</span><span class="pg-governance-chip pg-governance-chip-neutral">Board-pack print rule active</span>${evidenceChip}`);
   strip.title=`${pageStd.benchmark_rule} | ${pageStd.legend_rule} | ${pageStd.print_rule}`;
 }
 async function injectPageGovernanceStatus(root=document){
@@ -1477,7 +1710,7 @@ async function injectPageGovernanceStatus(root=document){
     strip.className='pg-quality-strip';
     anchor.insertAdjacentElement('afterend', strip);
   }
-  strip.innerHTML=governanceChipHtml(summary.chips||[], 'pg-quality-chip');
+  strip.innerHTML= DOMPurify.sanitize(governanceChipHtml(summary.chips||[], 'pg-quality-chip'));
   strip.title=[summary.data_quality_detail, summary.evidence_detail, summary.print_rule].filter(Boolean).join(' | ');
 }
 
@@ -1534,7 +1767,12 @@ const REPORT_META={
   collections:{title:'IBNET Billing and Collections Performance Report',note:'Cash-conversion indicators presented against collection-efficiency expectations used in utility benchmarking and financial sustainability review.'},
   charges:{title:'Utility Service Charges and Meter Rental Report',note:'Secondary commercial income streams presented in a formal reporting format for revenue-mix and billing-quality review.'},
   expenses:{title:'World Bank Utility Operating Expenditure Report',note:'Operating expenditure indicators presented for cost-control, financing readiness, and utility efficiency review.'},
-  debtors:{title:'IBNET Outstanding Debtors and Receivables Report',note:'Receivables indicators presented for debtor-ageing awareness, collection discipline, and financial sustainability oversight.'}
+  debtors:{title:'IBNET Outstanding Debtors and Receivables Report',note:'Receivables indicators presented for debtor-ageing awareness, collection discipline, and financial sustainability oversight.'},
+  'segment-revenue':{title:'Customer Segment Revenue and Cash Conversion Report',note:'Revenue, cash collection, service charge, and meter-rental streams presented by customer class and payment mode for commercial oversight.'},
+  workforce:{title:'Workforce and Fleet Efficiency Report',note:'Staffing, fuel, fleet movement, and operating-efficiency indicators presented for operational productivity and cost-control review.'},
+  'class-connections':{title:'Connection Pipeline by Customer Class Report',note:'Backlog, applications, completions, and carried-forward pipeline indicators presented by customer class for service-expansion management.'},
+  'stuck-classes':{title:'Meter Exceptions by Customer Class Report',note:'Stuck-meter backlog and resolution indicators presented by customer class to support billing-integrity and exception-management control.'},
+  'pipe-materials':{title:'Pipe Failure by Material and Size Report',note:'Pipe-failure counts presented by material and size class to support engineering diagnostics, renewal prioritisation, and network-risk review.'}
 };
 const CHART_BENCHMARK_NOTES={
   'NRW Rate — Monthly Trend':'Benchmark context: SRWB target 27%; IWA good-practice benchmark 20%. Dashed benchmark lines should remain visible in trend interpretation.',
@@ -1568,11 +1806,16 @@ function getKpiHint(label=''){
   const key=String(label||'').trim().toLowerCase();
   return Object.entries(KPI_DEF_HINTS).find(([k])=>key.includes(k))?.[1]||'Definition note: this KPI is calculated from validated operational returns for the selected filter scope.';
 }
+function sanitizeRows(rowsHtml){
+  const d=document.createElement('div');
+  d.innerHTML=DOMPurify.sanitize(`<table><tbody>${rowsHtml}</tbody></table>`);
+  return d.querySelector('tbody')?.innerHTML||'';
+}
 function chartBenchmarkNote(title=''){
   return governanceChart(title)?.note || CHART_BENCHMARK_NOTES[title]||'Benchmark context: descriptive operational chart for the selected scope; interpret alongside the page KPI targets and notes.';
 }
 function kpis(cid,cards){
-  document.getElementById(cid).innerHTML=cards.map(c=>{
+  document.getElementById(cid).innerHTML= DOMPurify.sanitize(cards.map(c=>{
     /* Resolve emoji icon from ICON key or direct emoji */
     const emojiChar=c.icon?EMOJI[Object.entries(EMOJI).find(([k,v])=>ICON[k]===c.icon)?.[0]]||'📌':'';
 
@@ -1614,15 +1857,15 @@ function kpis(cid,cards){
       ${c.s?`<div class="kc-sub ${c.cls&&!['kc-up','kc-dn','kc-nt'].includes(c.cls)?c.cls:''}">${c.s}</div>`:''}
       ${bmHtml}
     </div>`;
-  }).join('');
+  }).join(''));
 }
 function errMsg(pid,msg){
-  document.getElementById(pid).innerHTML=`
+  document.getElementById(pid).innerHTML= DOMPurify.sanitize(`
     <div class="err-shell">
       <svg width="28" height="28" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.8"/><path d="M12 8v5M12 15.5v.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
       <div><strong>Unable to load data</strong></div>
       <div style="font-size:11px;opacity:.7">${msg||'Check the server is running.'}</div>
-    </div>`;
+    </div>`);
 }
 function renderFilterChips(containerId){
   const el=document.getElementById(containerId);if(!el)return;
@@ -1630,7 +1873,7 @@ function renderFilterChips(containerId){
   filterState.zones.forEach(z=>chips.push(`<span class="chip chip-zone">${z}</span>`));
   filterState.schemes.forEach(s=>chips.push(`<span class="chip chip-scheme">${s}</span>`));
   filterState.months.forEach(m=>chips.push(`<span class="chip chip-month">${m.slice(0,3)}</span>`));
-  el.innerHTML=chips.length?`<div class="filter-chips">${chips.join('')}</div>`:'';
+  el.innerHTML= DOMPurify.sanitize(chips.length?`<div class="filter-chips">${chips.join('')}</div>`:'');
 }
 const PAGE_META={
   overview:{section:'Executive Dashboard',title:'Executive Dashboard'},
@@ -1650,6 +1893,11 @@ const PAGE_META={
   charges:{section:'Commercial',title:'Service Charges & Meter Rental'},
   expenses:{section:'Commercial',title:'Operating Cost Performance'},
   debtors:{section:'Commercial',title:'Outstanding Debtors'},
+  'segment-revenue':{section:'Commercial',title:'Customer Segment Revenue'},
+  workforce:{section:'Operations',title:'Workforce & Fleet Efficiency'},
+  'class-connections':{section:'Commercial',title:'Connection Pipeline by Class'},
+  'stuck-classes':{section:'Commercial',title:'Meter Exceptions by Class'},
+  'pipe-materials':{section:'Operations',title:'Pipe Failure by Material and Size'},
   budget:{section:'Planning',title:'Budget & Forecast'},
   compliance:{section:'Governance',title:'Compliance & Data Quality'},
   admin:{section:'Administration',title:'Administration'},
@@ -1672,6 +1920,11 @@ const NAV_PARENT_MAP={
   charges:'commercial',
   expenses:'commercial',
   debtors:'commercial',
+  'segment-revenue':'commercial',
+  workforce:'operations',
+  'class-connections':'commercial',
+  'stuck-classes':'commercial',
+  'pipe-materials':'operations',
   budget:'budget',
   compliance:'compliance',
   admin:'admin',
@@ -1687,7 +1940,7 @@ function updateBreadcrumb(page){
   const sec=item?.dataset?.section||meta.section||'';
   const title=item?.dataset?.title||meta.title||page;
   const s=document.getElementById('tb-section');const t=document.getElementById('tb-title');
-  if(s)s.textContent=sec;if(t)t.innerHTML=title;
+  if(s)s.textContent=sec;if(t)t.innerHTML= DOMPurify.sanitize(title);
 }
 function pageKeyFromRoot(root=document){
   const pageEl = root?.classList?.contains?.('db-page') ? root : root?.closest?.('.db-page') || root?.querySelector?.('.db-page.active') || document.querySelector('.db-page.active');
@@ -1784,13 +2037,13 @@ function overviewToneLabel(tone='neutral'){
 }
 function renderOverviewExceptionStrip(items=[]){
   const host=document.getElementById('ov-exceptions'); if(!host) return;
-  host.innerHTML = items.map(item=>`<div class="ov-ex-item" data-tone="${item.tone||'neutral'}"><div class="ov-ex-kicker">${item.kicker||'Exception'}</div><div class="ov-ex-main">${item.main||'—'}</div><div class="ov-ex-sub">${item.sub||''}</div></div>`).join('');
+  host.innerHTML = DOMPurify.sanitize(items.map(item=>`<div class="ov-ex-item" data-tone="${item.tone||'neutral'}"><div class="ov-ex-kicker">${item.kicker||'Exception'}</div><div class="ov-ex-main">${item.main||'—'}</div><div class="ov-ex-sub">${item.sub||''}</div></div>`).join(''));
 }
 function renderOverviewZoneRanking(zones=[]){
   const host=document.getElementById('ov-zone-rank'); if(!host) return;
   if(!zones.length){ host.innerHTML='<div class="ov-empty">No ranked zones available.</div>'; return; }
   const ranked=[...zones].sort((a,b)=>overviewRiskScore(b)-overviewRiskScore(a)).slice(0,5);
-  host.innerHTML = ranked.map((z,idx)=>{
+  host.innerHTML = DOMPurify.sanitize(ranked.map((z,idx)=>{
     const tone = overviewStateTone(overviewRiskScore(z), {good:2.2, watch:3.2}, true);
     return `<div class="ov-rank-row" data-tone="${tone}">
       <div class="ov-rank-pos">${idx+1}</div>
@@ -1800,7 +2053,7 @@ function renderOverviewZoneRanking(zones=[]){
       </div>
       <div class="ov-rank-badge">${overviewToneLabel(tone)}</div>
     </div>`;
-  }).join('');
+  }).join(''));
 }
 function renderOverviewDataSummary(summary={}){
   const host=document.getElementById('ov-data-summary'); if(!host) return;
@@ -1810,12 +2063,12 @@ function renderOverviewDataSummary(summary={}){
     ['Zones covered', F.num(summary.zones_covered||0)],
     ['Schemes covered', F.num(summary.schemes_covered||0)]
   ];
-  host.innerHTML = `<div class="ov-data-grid">${items.map(([l,v])=>`<div class="ov-data-item"><div class="ov-data-val">${v}</div><div class="ov-data-lbl">${l}</div></div>`).join('')}</div>`;
+  host.innerHTML = DOMPurify.sanitize(`<div class="ov-data-grid">${items.map(([l,v])=>`<div class="ov-data-item"><div class="ov-data-val">${v}</div><div class="ov-data-lbl">${l}</div></div>`).join('')}</div>`);
 }
 function renderOverviewActions(actions=[]){
   const host=document.getElementById('ov-action-list'); if(!host) return;
   if(!actions.length){ host.innerHTML='<div class="ov-empty">No immediate prompts for the current scope.</div>'; return; }
-  host.innerHTML = `<div class="ov-action-stack">${actions.map(a=>`<div class="ov-action-item"><span class="ov-action-dot"></span><div><strong>${a.title}</strong><div>${a.text}</div></div></div>`).join('')}</div>`;
+  host.innerHTML = DOMPurify.sanitize(`<div class="ov-action-stack">${actions.map(a=>`<div class="ov-action-item"><span class="ov-action-dot"></span><div><strong>${a.title}</strong><div>${a.text}</div></div></div>`).join('')}</div>`);
 }
 function applyOverviewFocus(){
   const opsBtn=document.getElementById('ov-focus-operations');
@@ -1843,8 +2096,9 @@ function setOverviewFocus(mode='operations'){
 function navigate(page,options={}){
   const user=getUser()||{};
   const isAdmin=String(user.role||'').toLowerCase()==='admin';
-  if(page==='admin' && !isAdmin){
-    alert('Administration is visible in the menu, but access is restricted to admin users.');
+  if((page==='admin' || page==='reports' || page==='compliance') && !isAdmin){
+    const label = page==='reports' ? 'Report Library' : page==='compliance' ? 'Compliance & Data Quality' : 'Administration';
+    alert(`${label} is restricted to admin users.`);
     return;
   }
 
@@ -1876,16 +2130,39 @@ function navigate(page,options={}){
   updateBreadcrumb(page);
   syncReportDensityToolbar(page);
   syncRoleLandingNotes();
+  // Upload Data button is only relevant on the Administration tab
+  const _uploadBtn=document.getElementById('tb-upload-btn');
+  if(_uploadBtn) _uploadBtn.style.display=(page==='admin')?'':'none';
   if(!pageCache[page])loadPage(page);else applyReportDensityState(page);
 }
 
 function reloadPage(page){delete pageCache[page];loadPage(page);}
-function onFyChange(val){dbState.year=parseInt(val);Object.keys(pageCache).forEach(k=>delete pageCache[k]);updatePageMeta();loadPage(currentPage);}
+function onFyChange(val){
+  dbState.year=parseInt(val);
+  Object.keys(pageCache).forEach(k=>delete pageCache[k]);
+  updatePageMeta();
+  loadPage(currentPage);
+  // Reset alert drawer and narrative so they reload for the new FY
+  if(typeof updateFooter==='function') updateFooter();
+  if(typeof alertsLoaded!=='undefined') alertsLoaded=false;
+  if(typeof narrativeLoaded!=='undefined') narrativeLoaded=false;
+  const narBody=document.getElementById('ov-nar-body');
+  if(narBody){
+    narBody.className='ai-nar-body loading';
+    narBody.innerHTML= DOMPurify.sanitize('<div class="spin-sm" style="border-top-color:#7c3aed"></div>Generating AI summary…');
+    setTimeout(()=>{if(typeof loadNarrative==='function')loadNarrative();},600);
+  }
+  const badge=document.getElementById('alert-badge');
+  const alertBtn=document.getElementById('tb-alert-btn');
+  if(badge) badge.className='alert-badge';
+  if(alertBtn) alertBtn.className='';
+  if(typeof alertDrawerOpen!=='undefined' && alertDrawerOpen && typeof loadAlerts==='function') loadAlerts();
+}
 async function loadPage(page){
   try{
     await ensureGovernanceBundle();
     await ensureExportGovernanceBundle();
-    const map={overview:loadOverview,operations:loadOperationsHub,commercial:loadCommercialHub,reports:loadReportsHub,admin:loadAdmin,production:loadProduction,'wt-ei':loadWtEi,customers:loadCustomers,connections:loadConnections,stuck:loadStuck,connectivity:loadConnectivity,breakdowns:loadBreakdowns,pipelines:loadPipelines,billed:loadBilled,collections:loadCollections,charges:loadCharges,expenses:loadExpenses,debtors:loadDebtors,compliance:loadCompliance,budget:loadBudget};
+const map={overview:loadOverview,operations:loadOperationsHub,commercial:loadCommercialHub,reports:loadReportsHub,admin:loadAdmin,production:loadProduction,'wt-ei':loadWtEi,customers:loadCustomersUnified,connections:loadConnections,stuck:loadStuck,connectivity:loadConnectivity,breakdowns:loadBreakdowns,pipelines:loadPipelines,billed:loadBilled,collections:loadCollections,charges:loadCharges,expenses:loadExpenses,debtors:loadDebtors,'segment-revenue':loadSegmentRevenue,workforce:loadWorkforce,'class-connections':loadClassConnections,'stuck-classes':loadStuckClasses,'pipe-materials':loadPipeMaterials,compliance:loadCompliance,budget:loadBudget,'report-centre':loadReportCentre};
     if(map[page])await map[page]();
     await injectChartCredibilityNotes(document.getElementById('page-'+page)||document);
     await injectPageGovernanceStatus(document.getElementById('page-'+page)||document);
@@ -1919,44 +2196,44 @@ function renderComplianceGovernanceViews(bundle){
   const pageHost=document.getElementById('co-page-standards');
   if(pageHost){
     const focusPages=['overview','production','wt-ei','connectivity','collections','budget','compliance'];
-    pageHost.innerHTML=pages
+    pageHost.innerHTML= DOMPurify.sanitize(pages
       .filter(item=>focusPages.includes(item.page_key))
       .map(item=>`<div class="gov-card"><div class="gov-card-title">${item.title}</div><div class="gov-card-rule">${item.benchmark_rule}</div><div class="gov-card-meta"><strong>Legend:</strong> ${item.legend_rule}<br><strong>Print:</strong> ${item.print_rule}</div></div>`)
-      .join('');
+      .join(''));
   }
   const summaryHost=document.getElementById('co-chart-governance-summary');
   if(summaryHost){
     const s=bundle?.charts?.summary||{};
-    summaryHost.innerHTML=`<strong>Registry summary:</strong><div class="gov-summary-metrics"><span class="gov-summary-chip">${s.total||0} governed charts</span><span class="gov-summary-chip">${s.line||0} literal target-line charts</span><span class="gov-summary-chip">${s.band||0} threshold/control-band charts</span><span class="gov-summary-chip">${s.context||0} context-note charts</span><span class="gov-summary-chip">${s.none||0} evidence-only charts</span></div>`;
+    summaryHost.innerHTML= DOMPurify.sanitize(`<strong>Registry summary:</strong><div class="gov-summary-metrics"><span class="gov-summary-chip">${s.total||0} governed charts</span><span class="gov-summary-chip">${s.line||0} literal target-line charts</span><span class="gov-summary-chip">${s.band||0} threshold/control-band charts</span><span class="gov-summary-chip">${s.context||0} context-note charts</span><span class="gov-summary-chip">${s.none||0} evidence-only charts</span></div>`);
   }
   const tableHost=document.getElementById('co-chart-standards');
   if(tableHost){
     const rows=charts
       .filter(item=>['overview','production','wt-ei','connectivity','collections','budget','compliance'].includes(item.page_key))
       .sort((a,b)=>`${a.page_key}|${a.title}`.localeCompare(`${b.page_key}|${b.title}`));
-    tableHost.innerHTML=`<table class="gov-table"><thead><tr><th>Page</th><th>Chart</th><th>Allowed treatment</th><th>Governance rule</th><th>Legend / print standard</th></tr></thead><tbody>${rows.map(item=>`<tr><td class="gov-title-cell">${(governancePage(item.page_key)?.title)||item.page_key}</td><td class="gov-title-cell">${item.title}<span class="gov-subcell">${item.note}</span></td><td><span class="${governancePillClass(item.benchmark_mode)}">${item.benchmark_label||'No literal line'}</span></td><td>${item.rationale}</td><td>${item.legend_style.replace(/-/g,' ')}<span class="gov-subcell">Print priority: ${item.print_priority}</span></td></tr>`).join('')}</tbody></table>`;
+    tableHost.innerHTML= DOMPurify.sanitize(`<table class="gov-table"><thead><tr><th>Page</th><th>Chart</th><th>Allowed treatment</th><th>Governance rule</th><th>Legend / print standard</th></tr></thead><tbody>${rows.map(item=>`<tr><td class="gov-title-cell">${(governancePage(item.page_key)?.title)||item.page_key}</td><td class="gov-title-cell">${item.title}<span class="gov-subcell">${item.note}</span></td><td><span class="${governancePillClass(item.benchmark_mode)}">${item.benchmark_label||'No literal line'}</span></td><td>${item.rationale}</td><td>${item.legend_style.replace(/-/g,' ')}<span class="gov-subcell">Print priority: ${item.print_priority}</span></td></tr>`).join('')}</tbody></table>`);
   }
   const kpiHost=document.getElementById('co-kpi-definitions');
   if(kpiHost){
     const kpiRows=(bundle?.kpis?.items||[])
       .slice()
       .sort((a,b)=>String(a.title||'').localeCompare(String(b.title||'')));
-    kpiHost.innerHTML=`<table class="gov-table gov-kpi-table"><thead><tr><th>KPI</th><th>Formula</th><th>Evidence status</th><th>Allowed visual treatment</th><th>Support</th></tr></thead><tbody>${kpiRows.map(item=>`<tr><td class="gov-title-cell">${item.title}<span class="gov-subcell">Owner: ${item.owner}</span></td><td>${item.formula}<span class="gov-subcell">Fields: ${(item.required_fields||[]).join(', ')}</span></td><td><span class="gov-status-chip gov-status-chip-${item.evidence_class||'context'}">${item.evidence_status||'Context only'}</span><span class="gov-subcell">${item.benchmark_type||''}</span></td><td>${item.visual_treatment||item.chart_guidance||''}<span class="gov-subcell">${item.chart_guidance||''}</span></td><td><span class="gov-status-chip ${item.currently_supported?'gov-status-chip-live':'gov-status-chip-gap'}">${item.support_status||''}</span><span class="gov-subcell">${item.benchmark_value||'No comparator registered'}</span></td></tr>`).join('')}</tbody></table>`;
+    kpiHost.innerHTML= DOMPurify.sanitize(`<table class="gov-table gov-kpi-table"><thead><tr><th>KPI</th><th>Formula</th><th>Evidence status</th><th>Allowed visual treatment</th><th>Support</th></tr></thead><tbody>${kpiRows.map(item=>`<tr><td class="gov-title-cell">${item.title}<span class="gov-subcell">Owner: ${item.owner}</span></td><td>${item.formula}<span class="gov-subcell">Fields: ${(item.required_fields||[]).join(', ')}</span></td><td><span class="gov-status-chip gov-status-chip-${item.evidence_class||'context'}">${item.evidence_status||'Context only'}</span><span class="gov-subcell">${item.benchmark_type||''}</span></td><td>${item.visual_treatment||item.chart_guidance||''}<span class="gov-subcell">${item.chart_guidance||''}</span></td><td><span class="gov-status-chip ${item.currently_supported?'gov-status-chip-live':'gov-status-chip-gap'}">${item.support_status||''}</span><span class="gov-subcell">${item.benchmark_value||'No comparator registered'}</span></td></tr>`).join('')}</tbody></table>`);
   }
   const ladderHost=document.getElementById('co-evidence-ladder');
   if(ladderHost){
-    ladderHost.innerHTML=(governanceEvidenceLadder()||[]).map((item,idx)=>`<div class="gov-step-card"><div class="gov-step-index">${idx+1}</div><div class="gov-step-body"><div class="gov-step-title">${item.title}</div><div class="gov-step-desc">${item.description}</div><div class="gov-step-meta"><strong>Treatment:</strong> ${item.allowed_visual_treatment}<br><strong>Governance position:</strong> ${item.governance_position}</div></div></div>`).join('');
+    ladderHost.innerHTML= DOMPurify.sanitize((governanceEvidenceLadder()||[]).map((item,idx)=>`<div class="gov-step-card"><div class="gov-step-index">${idx+1}</div><div class="gov-step-body"><div class="gov-step-title">${item.title}</div><div class="gov-step-desc">${item.description}</div><div class="gov-step-meta"><strong>Treatment:</strong> ${item.allowed_visual_treatment}<br><strong>Governance position:</strong> ${item.governance_position}</div></div></div>`).join(''));
   }
   const helpHost=document.getElementById('co-kpi-help-standard');
   if(helpHost){
     const ks=bundle?.kpis?.summary||{};
-    helpHost.innerHTML=`<strong>KPI help standard:</strong> Executive KPI cards now read governed definitions from the compliance registry where a matching indicator exists. This means the help cue on each card can distinguish target-line KPIs from context-only or proxy indicators without adding visual clutter. Coverage: ${ks.approved||0} target-line KPIs, ${ks.context||0} context-led KPIs, ${ks.proxy||0} proxy KPIs, and ${ks.missing||0} governed data gaps.`;
+    helpHost.innerHTML= DOMPurify.sanitize(`<strong>KPI help standard:</strong> Executive KPI cards now read governed definitions from the compliance registry where a matching indicator exists. This means the help cue on each card can distinguish target-line KPIs from context-only or proxy indicators without adding visual clutter. Coverage: ${ks.approved||0} target-line KPIs, ${ks.context||0} context-led KPIs, ${ks.proxy||0} proxy KPIs, and ${ks.missing||0} governed data gaps.`);
   }
 }
 
 async function loadCompliance(){
   const host=document.getElementById('co-kpis');
-  if(host)host.innerHTML='<div class="kc"><div class="kc-lbl">Loading…</div><div class="kc-val">—</div></div>';
+  if(host)host.innerHTML= DOMPurify.sanitize('<div class="kc"><div class="kc-lbl">Loading…</div><div class="kc-val">—</div></div>');
   try{
     const [overview, water, quality, governance, governanceBundle]=await Promise.all([
       api('/api/compliance/overview'),
@@ -1986,11 +2263,11 @@ async function loadCompliance(){
     const missing=(cp.missing_regulated_datasets||water.not_yet_available||[]);
     const missingText=missing.length?missing.join(', '):'No missing regulated datasets registered.';
     const currentEl=document.getElementById('co-stat-current');
-    if(currentEl)currentEl.innerHTML=`<strong>Current position:</strong> Formal statutory compliance reporting remains incomplete because the current upload schema does not contain laboratory compliance result fields required for full regulatory assessment.`;
+    if(currentEl)currentEl.innerHTML= DOMPurify.sanitize(`<strong>Current position:</strong> Formal statutory compliance reporting remains incomplete because the current upload schema does not contain laboratory compliance result fields required for full regulatory assessment.`);
     const evidenceEl=document.getElementById('co-stat-evidence');
-    if(evidenceEl)evidenceEl.innerHTML=`<strong>Available evidence:</strong> Operational proxy indicators are available from the current dataset, including chlorine usage, NRW, supply hours, power failure context, and treatment-cost proxies.`;
+    if(evidenceEl)evidenceEl.innerHTML= DOMPurify.sanitize(`<strong>Available evidence:</strong> Operational proxy indicators are available from the current dataset, including chlorine usage, NRW, supply hours, power failure context, and treatment-cost proxies.`);
     const missingEl=document.getElementById('co-stat-missing');
-    if(missingEl)missingEl.innerHTML=`<strong>Missing regulated datasets:</strong> ${missingText}.`;
+    if(missingEl)missingEl.innerHTML= DOMPurify.sanitize(`<strong>Missing regulated datasets:</strong> ${missingText}.`);
 
     const proxyItems=[
       `Supply continuity context: average supply hours ${op.avg_supply_hours!=null?Number(op.avg_supply_hours).toFixed(2):'—'}; average power-failure hours ${op.avg_power_failure_hours!=null?Number(op.avg_power_failure_hours).toFixed(2):'—'}.`,
@@ -1998,19 +2275,19 @@ async function loadCompliance(){
       `Operational efficiency context: average NRW ${op.avg_nrw_pct!=null?Number(op.avg_nrw_pct).toFixed(2):'—'}%; contextual for monitoring, not statutory sign-off.`
     ];
     const proxyList=document.getElementById('co-proxy-list');
-    if(proxyList)proxyList.innerHTML=proxyItems.map(item=>`<li>${item}</li>`).join('');
+    if(proxyList)proxyList.innerHTML= DOMPurify.sanitize(proxyItems.map(item=>`<li>${item}</li>`).join(''));
 
     const govNote=document.getElementById('co-gov-note');
     if(govNote)govNote.textContent=(water.governance_note||'Target lines should only appear where they represent a legitimate benchmark rule. Where a literal line would mislead interpretation, the system should use a threshold note or contextual narrative instead.');
 
     const qSummary=quality.summary||{};
     const dq=document.getElementById('co-data-quality');
-    if(dq)dq.innerHTML=`<strong>Data quality note:</strong> Latest assessed compliance-supporting dataset contains ${(quality.records||0).toLocaleString()} records. Completeness scan: ${qSummary.good||0} fields good, ${qSummary.watch||0} watch, ${qSummary.poor||0} poor.`;
+    if(dq)dq.innerHTML= DOMPurify.sanitize(`<strong>Data quality note:</strong> Latest assessed compliance-supporting dataset contains ${(quality.records||0).toLocaleString()} records. Completeness scan: ${qSummary.good||0} fields good, ${qSummary.watch||0} watch, ${qSummary.poor||0} poor.`);
 
     renderComplianceGovernanceViews(governanceBundle);
 
     const action=document.getElementById('co-action');
-    if(action)action.innerHTML='<strong>Management action:</strong> Prioritize onboarding of regulated laboratory result fields into the governed upload schema so this module can move from operational proxy monitoring to full statutory compliance reporting.';
+    if(action)action.innerHTML= DOMPurify.sanitize('<strong>Management action:</strong> Prioritize onboarding of regulated laboratory result fields into the governed upload schema so this module can move from operational proxy monitoring to full statutory compliance reporting.');
   }catch(e){
     console.error('compliance',e);
     errMsg('co-kpis',e.message||'Unable to load compliance data.');
@@ -2036,7 +2313,7 @@ async function loadOverview(){
       if(reverse){ if(value<=good) return 'iwa-good'; if(watch!=null&&value<=watch) return 'iwa-warn'; return 'iwa-bad'; }
       if(value>=good) return 'iwa-good'; if(watch!=null&&value>=watch) return 'iwa-warn'; return 'iwa-bad';
     };
-    document.getElementById('ov-scorecard').innerHTML=`
+    document.getElementById('ov-scorecard').innerHTML= DOMPurify.sanitize(`
       <div class="iwa-tile ${tileCls(sc_nrw,{good:IWA.nrw,watch:IWA.nrw_warn,reverse:true})}">
         <div class="iwa-tile-icon">💧</div>
         <div class="iwa-tile-lbl">NRW Rate</div>
@@ -2066,7 +2343,7 @@ async function loadOverview(){
         <div class="iwa-tile-lbl">Energy Intensity</div>
         <div class="iwa-tile-val">${sc_ei?sc_ei.toFixed(2):'—'}</div>
         <div class="iwa-tile-bm">IWA &lt;${IWA.energy} kWh/m³</div>
-      </div>`;
+      </div>`);
 
     kpis('ov-essentials',[
       {l:'Production (m³)', v:F.m3(n.vol_produced||0), s:'Selected-scope production volume', icon:ICON.drop, badgeLabel:'INFO'},
@@ -2146,7 +2423,7 @@ async function loadOverview(){
           <td><canvas class="spark" id="${sid}" width="80" height="24"></canvas></td>
         </tr>`;
       }).join('');
-      document.getElementById('ov-zone-tbl').innerHTML=`<div class="zs-wrap"><table class="zs"><thead>${th}</thead><tbody>${tb}</tbody></table></div>`;
+      document.getElementById('ov-zone-tbl').innerHTML= DOMPurify.sanitize(`<div class="zs-wrap"><table class="zs"><thead>${th}</thead><tbody>${tb}</tbody></table></div>`);
       z.forEach(zz=>{
         const sid='spark-'+zz.zone.toLowerCase().replace(/\s/g,'');
         const el=document.getElementById(sid);if(!el||!(zz.nrw_trend||[]).length)return;
@@ -2180,7 +2457,7 @@ async function loadProduction(){
     ]);
     document.getElementById('pr-kpis').className='kpi-row kpi-g4';
     const dm=d.monthly.filter(m=>m.has_data),lb=dm.map(m=>MONTHS_SHORT[m.month]||m.month);
-    document.getElementById('pr-leg').innerHTML='<span class="legend-item"><span class="legend-sq" style="background:#1A8FD1"></span>Vol. Produced (M m³)</span><span class="legend-item"><span class="legend-sq" style="background:#d97706"></span>NRW %</span><span class="legend-item"><span class="legend-sq" style="background:#d97706;height:2px;border-top:2px dashed #d97706"></span>SRWB Target (27%)</span><span class="legend-item"><span class="legend-sq" style="background:#1A8FD1;height:2px;border-top:2px dotted #1A8FD1"></span>IWA Benchmark (20%)</span>';
+    document.getElementById('pr-leg').innerHTML= DOMPurify.sanitize('<span class="legend-item"><span class="legend-sq" style="background:#1A8FD1"></span>Vol. Produced (M m³)</span><span class="legend-item"><span class="legend-sq" style="background:#d97706"></span>NRW %</span><span class="legend-item"><span class="legend-sq" style="background:#d97706;height:2px;border-top:2px dashed #d97706"></span>SRWB Target (27%)</span><span class="legend-item"><span class="legend-sq" style="background:#1A8FD1;height:2px;border-top:2px dotted #1A8FD1"></span>IWA Benchmark (20%)</span>');
     mkChart('ch-pr-main',{type:'bar',data:{labels:lb,datasets:[
       {label:'Vol. Produced',data:dm.map(m=>+(m.vol_produced/1e6).toFixed(2)),backgroundColor:'rgba(26,143,209,.65)',borderRadius:3,yAxisID:'y'},
       {type:'line',label:'NRW %',data:dm.map(m=>m.pct_nrw||0),borderColor:'#d97706',tension:.3,pointRadius:3,yAxisID:'y1',borderWidth:2},
@@ -2204,33 +2481,35 @@ mountExportBar('production');
 }
 
 async function loadWtEi(){
-  kpis('wt-kpis',[{l:'Loading…',v:'—'}]);
+  kpis('wt-kpis',[{l:'Loading...',v:'-'}]);
   try{
     const d=await apiPanel('wt-ei'),k=d.kpi;
-    const eiOk=(k.power_kwh&&k.vol_produced)?(k.power_kwh/k.vol_produced)<IWA.energy:null;
+    const eiValue=k.power_kwh_per_m3||k.power_per_m3||0;
+    const eiOk=eiValue>0 ? eiValue<IWA.energy : null;
     kpis('wt-kpis',[
       {l:'Chemical Cost',v:F.mwk(k.chem_cost),s:'Total treatment chemicals',icon:ICON.chem},
-      {l:'Chemical Cost / m³',v:'MWK '+F.dec(k.chem_per_m3),s:'Unit chemical cost',icon:ICON.chem},
+      {l:'Chemical Cost / m3',v:'MWK '+F.dec(k.chem_per_m3),s:'Unit chemical cost',icon:ICON.chem},
       {l:'Power Consumed',v:F.num(k.power_kwh)+' kWh',s:'Total electricity consumed',icon:ICON.bolt},
-      {l:'Power Cost',v:F.mwk(k.power_cost),s:'Electricity expenditure',icon:ICON.bolt},
-      {l:'Energy Intensity',v:F.dec(k.power_per_m3)+' kWh/m³',
-       s:eiOk===true?'Within IWA 0.5 kWh/m³':eiOk===false?'Above IWA threshold':'—',
-       cls:eiOk?'kc-up':eiOk===false?'kc-nt':'',
-       icon:ICON.gauge,badgeLabel:eiOk===true?'GOOD':eiOk===false?'WATCH':null,
-       bm:'IWA target <'+IWA.energy+' kWh/m³',bmPct:k.power_per_m3?bmPct(k.power_per_m3,IWA.energy,false):null,bmOk:eiOk},
-      {l:'Avg Supply Hours / Day',v:F.dec(k.supply_hours_avg)+' h',s:'Average daily supply across schemes',icon:ICON.clock},
+      {l:'Energy Intensity',v:F.dec(eiValue)+' kWh/m3',s:eiOk===true?'Within target':'Above target',cls:eiOk===true?'kc-up':eiOk===false?'kc-nt':'',icon:ICON.gauge,badgeLabel:eiOk===true?'GOOD':eiOk===false?'WATCH':null,bm:'IWA target <'+IWA.energy+' kWh/m3',bmPct:eiValue?bmPct(eiValue,IWA.energy,false):null,bmOk:eiOk},
+      {l:'Chlorine Intensity',v:F.dec(k.chlorine_kg_per_m3)+' kg/m3',s:'Dose per cubic metre produced',icon:ICON.chem},
+      {l:'Alum Intensity',v:F.dec(k.alum_kg_per_m3)+' kg/m3',s:'Coagulant dose per cubic metre',icon:ICON.chem},
+      {l:'KMnO4 Intensity',v:F.dec(k.kmno4_per_m3)+' kg/m3',s:'Permanganate dose per cubic metre',icon:ICON.chem},
+      {l:'Power Cost / m3',v:'MWK '+F.dec(k.power_per_m3||k.power_cost_per_m3),s:'Unit electricity cost',icon:ICON.bolt},
+      {l:'Supply Hours / Day',v:F.dec(k.supply_hours_avg)+' h',s:'Average daily supply across schemes',icon:ICON.clock},
       {l:'Power Failure Hours',v:F.num(k.power_fail_hours)+' h',s:'Outage impact YTD',icon:ICON.clock,cls:k.power_fail_hours>100?'kc-dn':''},
-      {l:'Chlorine Consumed',v:F.num(k.chlorine_kg)+' kg',s:'Disinfection chemical',icon:ICON.chem},
     ]);
     document.getElementById('wt-kpis').className='kpi-row kpi-g4';
     const dm=d.monthly.filter(m=>m.has_data),lb=dm.map(m=>MONTHS_SHORT[m.month]||m.month);
     mkChart('ch-wt-chem',{type:'bar',data:{labels:lb,datasets:[{label:'Chemical Cost (MWK M)',data:dm.map(m=>+(m.chem_cost/1e6).toFixed(2)),backgroundColor:'rgba(124,58,237,.65)',borderRadius:3}]},options:{...baseOpts(v=>v+'M'),plugins:{...legendOpts()}}});
-    mkChart('ch-wt-power',{type:'bar',data:{labels:lb,datasets:[{label:'Power (K kWh)',data:dm.map(m=>+(m.power_kwh/1000).toFixed(1)),backgroundColor:'rgba(217,119,6,.65)',borderRadius:3}]},options:{...baseOpts(v=>v+'K'),plugins:{...legendOpts()}}});
-    const chemAll=[{l:'Chlorine',v:k.chlorine_kg,c:'#0077b6'},{l:'Alum Sulphate',v:k.alum_kg,c:'#0d9488'},{l:'Soda Ash',v:k.soda_ash_kg,c:'#16a34a'},{l:'Algae Floc (L)',v:k.algae_floc_litres,c:'#d97706'},{l:'Sud Floc (L)',v:k.sud_floc_litres,c:'#7c3aed'},{l:'KMnO₄',v:k.kmno4_kg,c:'#dc2626'}].filter(x=>x.v>0);
+    mkChart('ch-wt-power',{type:'bar',data:{labels:lb,datasets:[
+      {label:'Power (K kWh)',data:dm.map(m=>+(m.power_kwh/1000).toFixed(1)),backgroundColor:'rgba(217,119,6,.65)',borderRadius:3,yAxisID:'y'},
+      {type:'line',label:'kWh / m3',data:dm.map(m=>+(m.power_kwh_per_m3||0).toFixed(3)),borderColor:'#0f766e',tension:.3,pointRadius:3,borderWidth:2,yAxisID:'y1'}
+    ]},options:{responsive:true,maintainAspectRatio:false,animation:chartAnim,scales:{x:{ticks:{color:LC,font:{size:10},maxRotation:0},grid:{color:GC,drawBorder:false}},y:{ticks:{color:LC,font:{size:10},callback:v=>v+'K'},grid:{color:GC},border:{display:false}},y1:{position:'right',ticks:{color:'#0f766e',font:{size:10}},grid:{display:false},border:{display:false}}},...tooltipPlugin,plugins:{...legendOpts()}}});
+    const chemAll=[{l:'Chlorine',v:k.chlorine_kg,c:'#0077b6'},{l:'Alum Sulphate',v:k.alum_kg,c:'#0d9488'},{l:'Soda Ash',v:k.soda_ash_kg,c:'#16a34a'},{l:'Algae Floc (L)',v:k.algae_floc_litres,c:'#d97706'},{l:'Sud Floc (L)',v:k.sud_floc_litres,c:'#7c3aed'},{l:'KMnO4',v:k.kmno4_kg,c:'#dc2626'}].filter(x=>x.v>0);
     mkChart('ch-wt-split',{type:'doughnut',data:{labels:chemAll.map(x=>x.l),datasets:[{data:chemAll.map(x=>x.v),backgroundColor:chemAll.map(x=>x.c),borderWidth:2}]},options:{responsive:true,maintainAspectRatio:false,cutout:'55%',...tooltipPlugin,plugins:{...tooltipPlugin.plugins,legend:{display:true,position:'right',labels:{font:{size:11},color:LC,padding:10}}}}});
     mkChart('ch-wt-hours',{type:'bar',data:{labels:lb,datasets:[{label:'Supply Hrs/Day',data:dm.map(m=>m.supply_hours||0),backgroundColor:'rgba(22,163,74,.6)',borderRadius:3,stack:'s'},{label:'Failure Hours',data:dm.map(m=>m.power_fail_hours||0),backgroundColor:'rgba(220,38,38,.6)',borderRadius:3,stack:'s'}]},options:{...baseOpts(v=>v+' h'),plugins:{...legendOpts()}}});
     renderTable('tbl-wt-ei','WATER TREATMENT & ENERGY REPORT',ROWS.wt_ei,d.monthly,'wt-ei');
-mountExportBar('wt-ei');
+    mountExportBar('wt-ei');
   }catch(e){errMsg('wt-kpis','WT & EI failed');}
 }
 
@@ -2238,51 +2517,113 @@ async function loadCustomers(){
   kpis('cu-kpis',[{l:'Loading…',v:'—'}]);
   try{
     const d=await apiPanel('customers'),k=d.kpi;
-    const ppPct=k.active_customers?+(k.active_postpaid/k.active_customers*100).toFixed(1):0;
-    const prePct=k.active_customers?+(k.active_prepaid/k.active_customers*100).toFixed(1):0;
+    const totalCustomers=k.total_metered||0;
+    const activeCustomers=k.active_customers||0;
+    const disconnectedCustomers=k.total_disconnected||0;
+    const ppPct=activeCustomers?+(k.active_postpaid/activeCustomers*100).toFixed(1):0;
+    const prePct=activeCustomers?+(k.active_prepaid/activeCustomers*100).toFixed(1):0;
+    const disconnectedPct=totalCustomers?+(disconnectedCustomers/totalCustomers*100).toFixed(1):0;
+    const page=document.getElementById('page-customers');
+    if(page){
+      const sub=page.querySelector('.pg-sub');
+      if(sub) sub.textContent='Total customers, disconnected accounts, and active customer mix by zone';
+      const exHdrs=page.querySelectorAll('.ex-hdr .ex-sub');
+      if(exHdrs[0]) exHdrs[0].textContent='Customer totals, service status, and active account mix across the reporting scope';
+      if(exHdrs[1]) exHdrs[1].textContent='Monthly customer movement and zone-level service status';
+      const chartTitles=page.querySelectorAll('.chart-card .chart-title');
+      const chartSubtitles=page.querySelectorAll('.chart-card .chart-subtitle');
+      if(chartTitles[0]) chartTitles[0].textContent='Customer Base — Monthly Trend';
+      if(chartSubtitles[0]) chartSubtitles[0].textContent='Monthly movement in total, active, and disconnected customer accounts across the selected scope.';
+      if(chartTitles[1]) chartTitles[1].textContent='Customer Status by Zone';
+      if(chartSubtitles[1]) chartSubtitles[1].textContent='Zone comparison of total customers, active accounts, and disconnected accounts.';
+    }
     kpis('cu-kpis',[
-      {l:'Active Customers',v:F.num(k.active_customers),s:'IBNET: registered metered accounts',icon:ICON.people,badgeLabel:'KPI'},
+      {l:'Total Customers',v:F.num(totalCustomers),s:'Latest metered customer base in scope',icon:ICON.people,badgeLabel:'KPI'},
+      {l:'Disconnected Customers',v:F.num(disconnectedCustomers),s:disconnectedPct+'% of total customer base',icon:ICON.nrw,cls:disconnectedCustomers>0?'kc-nt':''},
+      {l:'Active Customers',v:F.num(activeCustomers),s:totalCustomers?((activeCustomers/totalCustomers*100).toFixed(1)+'% of total base'):'Accounts actively receiving service',icon:ICON.people},
       {l:'Postpaid Customers',v:F.num(k.active_postpaid),s:ppPct+'% of active base',icon:ICON.people},
       {l:'Prepaid Customers',v:F.num(k.active_prepaid),s:prePct+'% of active base',icon:ICON.meter},
       {l:'Population Served',v:F.num(k.pop_supplied),s:'IBNET coverage indicator',icon:ICON.conn,badgeLabel:'INFO'},
-      {l:'Permanent Staff',v:F.num(k.perm_staff),s:'Full-time headcount',icon:ICON.staff},
-      {l:'Temporary Staff',v:F.num(k.temp_staff),s:'Contract / casual workers',icon:ICON.staff},
     ]);
     document.getElementById('cu-kpis').className='kpi-row kpi-g3';
     const dm=d.monthly.filter(m=>m.has_data),lb=dm.map(m=>MONTHS_SHORT[m.month]||m.month);
     mkChart('ch-cu-main',{type:'line',data:{labels:lb,datasets:[
-      {label:'Active Total',data:dm.map(m=>m.active_customers||0),borderColor:'#1A8FD1',backgroundColor:'rgba(26,143,209,.06)',tension:.3,pointRadius:3,fill:true,borderWidth:2},
-      {label:'Postpaid',data:dm.map(m=>m.active_postpaid||0),borderColor:'#0d9488',tension:.3,borderDash:[4,2],pointRadius:3,borderWidth:2},
-      {label:'Prepaid',data:dm.map(m=>m.active_prepaid||0),borderColor:'#7c3aed',tension:.3,borderDash:[4,2],pointRadius:3,borderWidth:2},
+      {label:'Total Customers',data:dm.map(m=>m.total_metered||0),borderColor:'#1A8FD1',backgroundColor:'rgba(26,143,209,.06)',tension:.3,pointRadius:3,fill:true,borderWidth:2},
+      {label:'Active Customers',data:dm.map(m=>m.active_customers||0),borderColor:'#0d9488',tension:.3,borderDash:[4,2],pointRadius:3,borderWidth:2},
+      {label:'Disconnected Customers',data:dm.map(m=>m.total_disconnected||0),borderColor:'#d97706',tension:.3,borderDash:[6,3],pointRadius:3,borderWidth:2},
     ]},options:{...baseOpts(v=>(v/1000).toFixed(0)+'K'),plugins:{...legendOpts()}}});
     mkChart('ch-cu-zone',{type:'bar',data:{labels:d.by_zone.map(z=>z.zone),datasets:[
-      {label:'Postpaid',data:d.by_zone.map(z=>z.active_postpaid),backgroundColor:'#1A8FD1',borderRadius:3,stack:'s'},
-      {label:'Prepaid',data:d.by_zone.map(z=>z.active_prepaid),backgroundColor:'#7c3aed',borderRadius:3,stack:'s'},
+      {label:'Total Customers',data:d.by_zone.map(z=>z.total_metered||0),backgroundColor:'#1A8FD1',borderRadius:3},
+      {label:'Active Customers',data:d.by_zone.map(z=>z.active_customers||0),backgroundColor:'#0d9488',borderRadius:3},
+      {label:'Disconnected Customers',data:d.by_zone.map(z=>z.total_disconnected||0),backgroundColor:'#d97706',borderRadius:3},
     ]},options:{...baseOptsH(),plugins:{...legendOpts()}}});
     renderTable('tbl-customers','CUSTOMER ACCOUNTS REPORT',ROWS.customers,d.monthly,'customers');
 mountExportBar('customers');
   }catch(e){errMsg('cu-kpis','Customers failed');}
 }
 
+async function loadCustomersUnified(){
+  kpis('cu-kpis',[{l:'Loading...',v:'-'}]);
+  try{
+    const d=await apiPanel('customers'),k=d.kpi;
+    const totalCustomers=k.total_metered||0;
+    const activeCustomers=k.active_customers||0;
+    const disconnectedCustomers=k.total_disconnected||0;
+    const populationSupplyArea=k.pop_supply_area||0;
+    const coveragePct=k.pct_pop_supplied||0;
+    const disconnectedPct=totalCustomers?+(disconnectedCustomers/totalCustomers*100).toFixed(1):0;
+    const cwpPct=activeCustomers?+((k.active_post_cwp||0)/activeCustomers*100).toFixed(1):0;
+    const postpaidVol=(k.vol_billed_indiv_pp||0)+(k.vol_billed_inst_pp||0)+(k.vol_billed_comm_pp||0)+(k.vol_billed_cwp_pp||0);
+    const prepaidVol=(k.vol_billed_indiv_prepaid||0)+(k.vol_billed_inst_prepaid||0)+(k.vol_billed_comm_prepaid||0)+(k.vol_billed_cwp_prepaid||0);
+    kpis('cu-kpis',[
+      {l:'Total Customers',v:F.num(totalCustomers),s:'Latest metered customer base in scope',icon:ICON.people,badgeLabel:'KPI'},
+      {l:'Disconnected Customers',v:F.num(disconnectedCustomers),s:disconnectedPct+'% of total customer base',icon:ICON.nrw,cls:disconnectedCustomers>0?'kc-nt':''},
+      {l:'Active Customers',v:F.num(activeCustomers),s:totalCustomers?((activeCustomers/totalCustomers*100).toFixed(1)+'% of total base'):'Accounts actively receiving service',icon:ICON.people},
+      {l:'Active Postpaid CWP',v:F.num(k.active_post_cwp),s:cwpPct+'% of active base',icon:ICON.conn},
+      {l:'Postpaid Billed Volume',v:F.num(postpaidVol)+' m3',s:'All postpaid billed water volume',icon:ICON.chart},
+      {l:'Prepaid Billed Volume',v:F.num(prepaidVol)+' m3',s:'All prepaid billed water volume',icon:ICON.chart},
+      {l:'Population in Supply Area',v:F.num(populationSupplyArea),s:'Resident population within the service footprint',icon:ICON.people},
+      {l:'Coverage Rate',v:F.pct(coveragePct),s:F.num(k.pop_supplied)+' people currently served',icon:ICON.conn,badgeLabel:'INFO'},
+    ]);
+    document.getElementById('cu-kpis').className='kpi-row kpi-g4';
+    const dm=d.monthly.filter(m=>m.has_data),lb=dm.map(m=>MONTHS_SHORT[m.month]||m.month);
+    mkChart('ch-cu-main',{type:'line',data:{labels:lb,datasets:[
+      {label:'Total Customers',data:dm.map(m=>m.total_metered||0),borderColor:'#1A8FD1',backgroundColor:'rgba(26,143,209,.06)',tension:.3,pointRadius:3,fill:true,borderWidth:2},
+      {label:'Active Customers',data:dm.map(m=>m.active_customers||0),borderColor:'#0d9488',tension:.3,borderDash:[4,2],pointRadius:3,borderWidth:2},
+      {label:'Disconnected Customers',data:dm.map(m=>m.total_disconnected||0),borderColor:'#d97706',tension:.3,borderDash:[6,3],pointRadius:3,borderWidth:2},
+    ]},options:{...baseOpts(v=>(v/1000).toFixed(0)+'K'),plugins:{...legendOpts()}}});
+    mkChart('ch-cu-zone',{type:'bar',data:{labels:d.by_zone.map(z=>z.zone),datasets:[
+      {label:'Individual',data:d.by_zone.map(z=>z.disconnected_individual||0),backgroundColor:'#1A8FD1',borderRadius:3,stack:'s'},
+      {label:'Institutional',data:d.by_zone.map(z=>z.disconnected_inst||0),backgroundColor:'#0d9488',borderRadius:3,stack:'s'},
+      {label:'Commercial',data:d.by_zone.map(z=>z.disconnected_commercial||0),backgroundColor:'#7c3aed',borderRadius:3,stack:'s'},
+      {label:'CWP',data:d.by_zone.map(z=>z.disconnected_cwp||0),backgroundColor:'#d97706',borderRadius:3,stack:'s'},
+    ]},options:{...baseOptsH(),plugins:{...legendOpts()}}});
+    renderTable('tbl-customers','CUSTOMER ACCOUNTS REPORT',ROWS.customers,d.monthly,'customers');
+    mountExportBar('customers');
+  }catch(e){errMsg('cu-kpis','Customers failed');}
+}
+
 async function loadConnections(){
-  kpis('cn-kpis',[{l:'Loading…',v:'—'}]);
+  kpis('cn-kpis',[{l:'Loading...',v:'-'}]);
   try{
     const d=await apiPanel('connections'),k=d.kpi;
     kpis('cn-kpis',[
-      {l:'New Connections (YTD)',v:F.num(k.new_connections),s:'Completed & commissioned',icon:ICON.conn,cls:'kc-up'},
-      {l:'Applications Received',v:F.num(k.conn_applied),s:'Demand pipeline',icon:ICON.conn},
-      {l:'Backlog (C/Fwd)',v:F.num(k.all_conn_cfwd),s:'Paid — awaiting connection',icon:ICON.clock,cls:k.all_conn_cfwd>200?'kc-dn':k.all_conn_cfwd>100?'kc-nt':''},
-      {l:'Prepaid Installed',v:F.num(k.prepaid_installed),s:'Smart meter roll-out',icon:ICON.meter},
+      {l:'New Connections (YTD)',v:F.num(k.new_connections),s:'Completed and commissioned',icon:ICON.conn,cls:'kc-up'},
+      {l:'All Applications Logged',v:F.num(k.all_conn_applied),s:'Total applications captured in the source return',icon:ICON.conn},
+      {l:'Postpaid Applications',v:F.num(k.conn_applied),s:'Demand pipeline for quoted connections',icon:ICON.conn},
+      {l:'Backlog (C/Fwd)',v:F.num(k.all_conn_cfwd),s:'Paid and awaiting connection',icon:ICON.clock,cls:k.all_conn_cfwd>200?'kc-dn':k.all_conn_cfwd>100?'kc-nt':''},
+      {l:'Prepaid Installed',v:F.num(k.prepaid_installed ?? k.prepaid_meters_installed),s:'Smart meter roll-out',icon:ICON.meter},
     ]);
     document.getElementById('cn-kpis').className='kpi-row kpi-g3';
     const dm=d.monthly.filter(m=>m.has_data),lb=dm.map(m=>MONTHS_SHORT[m.month]||m.month);
     mkChart('ch-cn-main',{type:'bar',data:{labels:lb,datasets:[
-      {label:'Applications',data:dm.map(m=>m.conn_applied||0),backgroundColor:'rgba(26,143,209,.4)',borderRadius:3},
+      {label:'All Applications',data:dm.map(m=>m.all_conn_applied||0),backgroundColor:'rgba(26,143,209,.25)',borderRadius:3},
+      {label:'Postpaid Applications',data:dm.map(m=>m.conn_applied||0),backgroundColor:'rgba(26,143,209,.55)',borderRadius:3},
       {label:'Completed',data:dm.map(m=>m.new_connections||0),backgroundColor:'rgba(22,163,74,.7)',borderRadius:3},
     ]},options:{...baseOpts(),plugins:{...legendOpts()}}});
     mkChart('ch-cn-zone',{type:'bar',data:{labels:d.by_zone.map(z=>z.zone),datasets:[{label:'New Connections',data:d.by_zone.map(z=>z.new_connections),backgroundColor:d.by_zone.map(z=>z.color||'#64748b'),borderRadius:4}]},options:{...baseOptsH(),plugins:{...legendOpts()}}});
     renderTable('tbl-connections','NEW WATER CONNECTIONS REPORT',ROWS.connections,d.monthly,'connections');
-mountExportBar('connections');
+    mountExportBar('connections');
   }catch(e){errMsg('cn-kpis','NWCs failed');}
 }
 
@@ -2317,7 +2658,7 @@ mountExportBar('stuck');
 }
 
 async function loadConnectivity(){
-  kpis('co-kpis',[{l:'Loading…',v:'—'}]);
+  kpis('co-kpis',[{l:'Loading...',v:'-'}]);
   try{
     const d=await apiPanel('connectivity'),k=d.kpi;
     const dqOk=(k.days_to_quotation||0)>0&&(k.days_to_quotation||0)<=IWA.days_quote;
@@ -2326,38 +2667,31 @@ async function loadConnectivity(){
     kpis('co-kpis',[
       {l:'Applications Received',v:F.num(k.conn_applied),s:'Connection demand',icon:ICON.conn},
       {l:'Customers Fully Paid',v:F.num(k.conn_fully_paid),s:'Ready to connect',icon:ICON.cash,cls:'kc-up'},
-      {l:'Days to Quotation',v:F.dec(k.days_to_quotation)+' d',
-       s:dqOk?'Within WB 7-day standard':'Exceeds 7-day target',
-       cls:dqOk?'kc-up':'kc-dn',icon:ICON.clock,
-       badgeLabel:dqOk?'GOOD':'WATCH',
-       bm:'World Bank standard <'+IWA.days_quote+' days',bmPct:bmPct(k.days_to_quotation,IWA.days_quote,false),bmOk:dqOk},
-      {l:'Days to Connect',v:F.dec(k.days_to_connect)+' d',
-       s:dcOk?'Within WB 30-day standard':'Exceeds 30-day benchmark',
-       cls:dcOk?'kc-up':'kc-dn',icon:ICON.clock,
-       badgeLabel:dcOk?'GOOD':'WATCH',
-       bm:'World Bank benchmark <'+IWA.days_connect+' days',bmPct:bmPct(k.days_to_connect,IWA.days_connect,false),bmOk:dcOk},
-      {l:'Connectivity Rate',v:F.pct(k.connectivity_rate),s:'Connection fulfilment rate',icon:ICON.gauge,cls:k.connectivity_rate>=80?'kc-up':k.connectivity_rate>=60?'kc-nt':'kc-dn'},
-      {l:'Queries Received',v:F.num(k.queries_received),s:'Customer contacts logged',icon:ICON.people},
-      {l:'Query Resolution',v:F.dec(k.time_to_resolve)+' d',
-       s:qrOk?'Within IBNET 5-day target':'Exceeds resolution target',
-       cls:qrOk?'kc-up':'kc-dn',icon:ICON.clock,
-       badgeLabel:qrOk?'GOOD':'WATCH',
-       bm:'IBNET target <'+IWA.query_res+' days',bmPct:bmPct(k.time_to_resolve,IWA.query_res,false),bmOk:qrOk},
-      {l:'Avg Response Time',v:F.dec(k.response_time_avg)+' d',s:'Mean response to queries',icon:ICON.clock},
+      {l:'Paid-up Applicants',v:F.num(k.paid_up_applicants),s:'Applicants cleared for connection processing',icon:ICON.cash},
+      {l:'Days to Quotation',v:F.dec(k.days_to_quotation)+' d',s:dqOk?'Within 7-day standard':'Exceeds 7-day target',cls:dqOk?'kc-up':'kc-dn',icon:ICON.clock,badgeLabel:dqOk?'GOOD':'WATCH',bm:'Standard <'+IWA.days_quote+' days',bmPct:bmPct(k.days_to_quotation,IWA.days_quote,false),bmOk:dqOk},
+      {l:'Days to Connect',v:F.dec(k.days_to_connect)+' d',s:dcOk?'Within 30-day standard':'Exceeds 30-day benchmark',cls:dcOk?'kc-up':'kc-dn',icon:ICON.clock,badgeLabel:dcOk?'GOOD':'WATCH',bm:'Standard <'+IWA.days_connect+' days',bmPct:bmPct(k.days_to_connect,IWA.days_connect,false),bmOk:dcOk},
+      {l:'Connection Lead Time',v:F.dec(k.connection_days)+' d',s:'Average from paid-up to completed service connection',icon:ICON.clock},
+      {l:'Queries Received',v:F.num(k.queries_received),s:'Customer queries logged',icon:ICON.people},
+      {l:'Query Resolution',v:F.dec(k.time_to_resolve)+' d',s:qrOk?'Within resolution expectation':'Slow query handling',cls:qrOk?'kc-up':'kc-nt',icon:ICON.gauge},
+      {l:'Average Response Time',v:F.dec(k.response_time_avg)+' d',s:'Average elapsed response to logged customer queries',icon:ICON.clock},
     ]);
     document.getElementById('co-kpis').className='kpi-row kpi-g4';
     const dm=d.monthly.filter(m=>m.has_data),lb=dm.map(m=>MONTHS_SHORT[m.month]||m.month);
     mkChart('ch-co-days',{type:'line',data:{labels:lb,datasets:[
-      {label:'Days to Quotation',data:dm.map(m=>m.days_to_quotation||0),borderColor:'#d97706',tension:.3,pointRadius:3,borderWidth:2},
-      {label:'Days to Connect',data:dm.map(m=>m.days_to_connect||0),borderColor:'#7c3aed',tension:.3,pointRadius:3,borderWidth:2},
-      {type:'line',label:'WB Connect (30d)',data:dm.map(()=>IWA.days_connect),borderColor:'#dc2626',borderDash:[5,3],borderWidth:1.5,pointRadius:0},
-    ]},options:{...baseOpts(v=>v+' d'),plugins:{...legendOpts()}}});
+      {label:'Days to Quote',data:dm.map(m=>m.days_to_quotation||0),borderColor:'#1A8FD1',tension:.3,pointRadius:3,borderWidth:2},
+      {label:'Days to Connect',data:dm.map(m=>m.days_to_connect||0),borderColor:'#d97706',tension:.3,pointRadius:3,borderWidth:2},
+      {label:'Connection Lead Time',data:dm.map(m=>m.connection_days||0),borderColor:'#7c3aed',tension:.3,pointRadius:3,borderWidth:2},
+      {label:'Response Time',data:dm.map(m=>m.response_time_avg||0),borderColor:'#0f766e',tension:.3,pointRadius:3,borderWidth:2},
+      {type:'line',label:'Quotation Target (7d)',data:dm.map(()=>IWA.days_quote),borderColor:'#1A8FD1',borderDash:[5,3],borderWidth:1.5,pointRadius:0},
+      {type:'line',label:'Connection Target (30d)',data:dm.map(()=>IWA.days_connect),borderColor:'#d97706',borderDash:[5,3],borderWidth:1.5,pointRadius:0},
+    ]},options:{...baseOpts(v=>v+'d'),plugins:{...legendOpts()}}});
     mkChart('ch-co-conn',{type:'bar',data:{labels:lb,datasets:[
-      {label:'Applied',data:dm.map(m=>m.conn_applied||0),backgroundColor:'rgba(26,143,209,.4)',borderRadius:3},
-      {label:'Completed',data:dm.map(m=>m.new_connections||0),backgroundColor:'rgba(22,163,74,.7)',borderRadius:3},
+      {label:'Applications',data:dm.map(m=>m.conn_applied||0),backgroundColor:'rgba(26,143,209,.55)',borderRadius:3},
+      {label:'Fully Paid',data:dm.map(m=>m.conn_fully_paid||0),backgroundColor:'rgba(13,148,136,.65)',borderRadius:3},
+      {label:'Paid-up Applicants',data:dm.map(m=>m.paid_up_applicants||0),backgroundColor:'rgba(124,58,237,.65)',borderRadius:3},
     ]},options:{...baseOpts(),plugins:{...legendOpts()}}});
     renderTable('tbl-connectivity','SERVICE CONNECTIVITY REPORT',ROWS.connectivity,d.monthly,'connectivity');
-mountExportBar('connectivity');
+    mountExportBar('connectivity');
   }catch(e){errMsg('co-kpis','Connectivity failed');}
 }
 
@@ -2410,7 +2744,7 @@ async function loadBreakdowns(){
       ]},options:{...baseOptsH(),plugins:{...legendOpts()}}});
       const pvcSizeCanvas=document.getElementById('ch-bd-pvc-size');
       if(pvcSizeCanvas && pvcSizeCanvas.parentElement){
-        pvcSizeCanvas.parentElement.innerHTML='<div class="chart-empty-state"><div class="chart-empty-title">PVC size-class breakdown data not available</div><div class="chart-empty-note">The current database contains total pipe breakdowns, but not the detailed PVC size split needed for this chart. Import or backfill the PVC size columns to enable the full view.</div></div>';
+        pvcSizeCanvas.parentElement.innerHTML= DOMPurify.sanitize('<div class="chart-empty-state"><div class="chart-empty-title">PVC size-class breakdown data not available</div><div class="chart-empty-note">The current database contains total pipe breakdowns, but not the detailed PVC size split needed for this chart. Import or backfill the PVC size columns to enable the full view.</div></div>');
       }
       renderTable('tbl-bd-pvc','PVC PIPE BREAKDOWNS BY SIZE REPORT',[
         {label:'Total Pipe Breakdowns (size split unavailable)',field:'pipe_breakdowns',fmt:'num',annType:'sum',bold:true,zeroOk:true},
@@ -2531,15 +2865,26 @@ async function loadCollections(){
        badgeLabel:crOk?'GOOD':'HIGH',
        bm:'IBNET benchmark >'+IWA.coll_rate+'%',bmPct:bmPct(k.collection_rate,IWA.coll_rate,true),bmOk:crOk},
       {l:'Billing Gap',v:F.mwk(k.billing_gap),s:'Billed minus collected',icon:ICON.nrw,cls:'kc-dn',badgeLabel:crOk?'WATCH':'HIGH'},
+      {l:'Collection per Sales',v:F.dec(k.collection_per_sales||0),s:'Cash collected for each unit of sales billed',icon:ICON.gauge},
       {l:'Postpaid Collected',v:F.mwk(k.cash_coll_pp),s:'Postpaid receipts',icon:ICON.cash},
       {l:'Prepaid Collected',v:F.mwk(k.cash_coll_prepaid),s:'Smart meter revenue',icon:ICON.meter},
     ]);
     document.getElementById('cl-kpis').className='kpi-row kpi-g3';
     const dm=d.monthly.filter(m=>m.has_data),lb=dm.map(m=>MONTHS_SHORT[m.month]||m.month);
+    const collectionRates=dm.map(m=>m.amt_billed>0?+((m.cash_collected/m.amt_billed)*100).toFixed(1):0);
+    const collectionAxisMax=Math.max(110, Math.ceil((Math.max(...collectionRates, IWA.coll_rate)+5)/5)*5);
     mkChart('ch-cl-main',{type:'bar',data:{labels:lb,datasets:[
-      {label:'Billed (MWK M)',data:dm.map(m=>+(m.amt_billed/1e6).toFixed(1)),backgroundColor:'rgba(26,143,209,.6)',borderRadius:3},
-      {label:'Collected (MWK M)',data:dm.map(m=>+(m.cash_collected/1e6).toFixed(1)),backgroundColor:'rgba(22,163,74,.7)',borderRadius:3},
-    ]},options:{...baseOpts(v=>v+'M'),plugins:{...legendOpts()}}});
+      {label:'Billed (MWK B)',data:dm.map(m=>+(m.amt_billed/1e9).toFixed(2)),backgroundColor:'rgba(26,143,209,.62)',borderRadius:3,yAxisID:'y'},
+      {label:'Collected (MWK B)',data:dm.map(m=>+(m.cash_collected/1e9).toFixed(2)),backgroundColor:'rgba(22,163,74,.72)',borderRadius:3,yAxisID:'y'},
+      {type:'line',label:'Collection Rate %',data:collectionRates,borderColor:'#0f766e',backgroundColor:'transparent',tension:.3,pointRadius:3,pointHoverRadius:5,borderWidth:2,yAxisID:'y1',fill:false,clip:false},
+      {type:'line',label:'IBNET '+IWA.coll_rate+'% benchmark',data:dm.map(()=>IWA.coll_rate),borderColor:'#dc2626',borderDash:[5,3],borderWidth:1.5,pointRadius:0,yAxisID:'y1',fill:false},
+    ]},options:{responsive:true,maintainAspectRatio:false,animation:chartAnim,
+      scales:{
+        x:{ticks:{color:LC,font:{size:10,family:'Inter,system-ui,sans-serif'},maxRotation:0,autoSkip:false},grid:{color:GC,drawBorder:false}},
+        y:{ticks:{color:LC,font:{size:10,family:'Inter,system-ui,sans-serif'},callback:v=>'MK '+Number(v).toFixed(1)+'B'},grid:{color:GC},border:{display:false},grace:'12%'},
+        y1:{position:'right',min:0,max:collectionAxisMax,ticks:{color:'#0f766e',font:{size:10,family:'Inter,system-ui,sans-serif'},callback:v=>v+'%'},grid:{display:false},border:{display:false}},
+      },
+      ...tooltipPlugin,plugins:{...legendOptsCompact()}}});
     mkChart('ch-cl-rate',{type:'bar',data:{labels:d.by_zone.map(z=>z.zone),datasets:[
       {label:'Collection Rate %',data:d.by_zone.map(z=>z.amt_billed>0?+(z.cash_collected/z.amt_billed*100).toFixed(1):0),backgroundColor:d.by_zone.map(z=>{const cr=z.amt_billed>0?z.cash_collected/z.amt_billed*100:0;return cr>=IWA.coll_rate?'rgba(22,163,74,.7)':'rgba(220,38,38,.65)';}),borderRadius:4},
       {type:'line',label:'IBNET '+IWA.coll_rate+'% benchmark',data:d.by_zone.map(()=>IWA.coll_rate),borderColor:'#1A8FD1',borderDash:[5,3],borderWidth:1.5,pointRadius:0},
@@ -2576,26 +2921,29 @@ mountExportBar('charges');
 }
 
 async function loadExpenses(){
-  kpis('ex-kpis',[{l:'Loading…',v:'—'}]);
+  kpis('ex-kpis',[{l:'Loading...',v:'-'}]);
   try{
     const d=await apiPanel('expenses'),k=d.kpi;
     kpis('ex-kpis',[
       {l:'Total Operating Costs',v:F.mwk(k.op_cost),s:'IBNET: total OPEX',icon:ICON.chart,badgeLabel:'INFO'},
-      {l:'Staff Costs',v:F.mwk(k.staff_costs),s:'Salaries & allowances',icon:ICON.staff,badgeLabel:'INFO'},
-      {l:'Wages',v:F.mwk(k.wages),s:'Casual / wage bill',icon:ICON.staff,badgeLabel:'INFO'},
+      {l:'Staff Costs',v:F.mwk(k.staff_costs),s:'Salaries and allowances',icon:ICON.staff,badgeLabel:'INFO'},
+      {l:'Wages',v:F.mwk(k.wages),s:'Casual or wage bill',icon:ICON.staff,badgeLabel:'INFO'},
       {l:'Power Costs',v:F.mwk(k.power_cost),s:'Electricity expenditure',icon:ICON.bolt,badgeLabel:((k.power_cost||0) > (k.chem_cost||0)+(k.fuel_cost||0))?'WATCH':'INFO'},
       {l:'Chemical Costs',v:F.mwk(k.chem_cost),s:'Treatment chemicals',icon:ICON.chem,badgeLabel:'INFO'},
-      {l:'Fuel Costs',v:F.mwk(k.fuel_cost),s:'Vehicle & generator fuel',icon:ICON.bolt,badgeLabel:'INFO'},
+      {l:'Fuel Costs',v:F.mwk(k.fuel_cost),s:'Vehicle and generator fuel',icon:ICON.bolt,badgeLabel:'INFO'},
+      {l:'Fuel Used',v:F.num(k.fuel_used_litres)+' litres',s:'Physical fuel consumption captured in the source return',icon:ICON.bolt},
       {l:'Distance Covered',v:F.num(k.distances_km)+' km',s:'Vehicle kilometres driven (YTD)',icon:ICON.pipe},
-      {l:'Maintenance',v:k.maintenance>0?F.mwk(k.maintenance):'Not recorded',s:'Repairs & upkeep',icon:ICON.wrench,cls:k.maintenance>0?'':'kc-nt'},
+      {l:'Maintenance',v:k.maintenance>0?F.mwk(k.maintenance):'Not recorded',s:'Repairs and upkeep',icon:ICON.wrench,cls:k.maintenance>0?'':'kc-nt'},
       {l:'Power Consumed',v:F.num(k.power_kwh)+' kWh',s:'Total electricity units',icon:ICON.bolt},
+      {l:'OpEx / m3 Produced',v:F.dec(k.op_cost_per_m3_produced),s:'Average operating cost per cubic metre produced',icon:ICON.gauge},
+      {l:'OpEx / Sales',v:F.dec(k.op_cost_per_sales),s:'Operating cost relative to sales revenue',icon:ICON.chart},
     ]);
     document.getElementById('ex-kpis').className='kpi-row kpi-g4';
     const sp=d.cost_split.filter(s=>s.value>0);
     mkChart('ch-ex-split',{type:'doughnut',data:{labels:sp.map(s=>s.label),datasets:[{data:sp.map(s=>+(s.value/1e6).toFixed(1)),backgroundColor:sp.map(s=>s.color),borderWidth:2}]},options:{responsive:true,maintainAspectRatio:false,cutout:'60%',...tooltipPlugin,plugins:{...tooltipPlugin.plugins,legend:{display:true,position:'right',labels:{font:{size:11},color:LC,padding:8}}}}});
     mkChart('ch-ex-zone',{type:'bar',data:{labels:d.by_zone.map(z=>z.zone),datasets:[{label:'Total OPEX (MWK M)',data:d.by_zone.map(z=>+(z.op_cost/1e6).toFixed(1)),backgroundColor:d.by_zone.map(z=>z.color||'#64748b'),borderRadius:4}]},options:{...baseOptsH(v=>v+'M'),plugins:{...legendOpts()}}});
     renderTable('tbl-expenses','OPERATING EXPENSES REPORT',ROWS.expenses,d.monthly,'expenses');
-mountExportBar('expenses');
+    mountExportBar('expenses');
   }catch(e){errMsg('ex-kpis','Expenses failed');}
 }
 
@@ -2635,8 +2983,8 @@ async function loadDebtors(){
     mkChart('ch-de-main',{type:'line',data:{labels:lb,datasets:[
       // Actual data series
       {label:'Total Debtors',data:totV,borderColor:'#dc2626',backgroundColor:'rgba(220,38,38,.07)',tension:.3,pointRadius:4,fill:true,borderWidth:2.5,order:1},
-      {label:'Private Debtors',data:privV,borderColor:'#7c3aed',tension:.3,pointRadius:3,borderWidth:2,borderDash:[5,3],order:2},
-      {label:'Public Debtors',data:pubV,borderColor:'#d97706',tension:.3,pointRadius:3,borderWidth:2,borderDash:[5,3],order:3},
+      {label:'Private Debtors',data:privV,borderColor:'#7c3aed',tension:.3,pointRadius:3,borderWidth:2,order:2},
+      {label:'Public Debtors',data:pubV,borderColor:'#d97706',tension:.3,pointRadius:3,borderWidth:2,order:3},
       // Trend lines (OLS linear regression)
       {label:'Total trend'+trendLabel(linReg(totV)),data:linReg(totV),borderColor:'rgba(220,38,38,.7)',borderWidth:3,borderDash:[4,3],pointRadius:0,tension:0,fill:false,order:4},
       {label:'Private trend'+trendLabel(linReg(privV)),data:linReg(privV),borderColor:'rgba(124,58,237,.7)',borderWidth:3,borderDash:[4,3],pointRadius:0,tension:0,fill:false,order:5},
@@ -2655,6 +3003,143 @@ async function loadDebtors(){
     renderTable('tbl-debtors','OUTSTANDING DEBTORS REPORT',ROWS.debtors,d.monthly,'debtors');
 mountExportBar('debtors');
   }catch(e){errMsg('de-kpis','Debtors failed');}
+}
+
+
+async function loadSegmentRevenue(){
+  kpis('sr-kpis',[{l:'Loading...',v:'-'}]);
+  try{
+    const d=await apiPanel('segment-revenue'),k=d.kpi;
+    const dm=d.monthly.filter(m=>m.has_data),lb=dm.map(m=>MONTHS_SHORT[m.month]||m.month);
+    const billedByClass=(m,cls)=>Number(m['amt_billed_'+cls+'_pp']||0)+Number(m['amt_billed_'+cls+'_prepaid']||0);
+    const cashByClass=(m,cls)=>Number(m['cash_coll_'+cls+'_pp']||0)+Number(m['cash_coll_'+cls+'_prepaid']||0);
+    const classes=[['indiv','Individual','#1A8FD1'],['inst','Institutional','#0d9488'],['comm','Commercial','#7c3aed'],['cwp','CWP','#d97706']];
+    kpis('sr-kpis',[
+      {l:'Total Billed',v:F.mwk(k.amt_billed),s:'All customer segments and payment modes',icon:ICON.revenue,badgeLabel:'KPI'},
+      {l:'Cash Collected',v:F.mwk(k.cash_collected),s:'Cash conversion from billed revenue',icon:ICON.cash,cls:'kc-up'},
+      {l:'Collection Rate',v:F.pct(k.collection_rate),s:'Cash collected divided by billed revenue',icon:ICON.gauge},
+      {l:'Service Charge',v:F.mwk(k.service_charge),s:'Secondary charge revenue',icon:ICON.revenue},
+      {l:'Meter Rental',v:F.mwk(k.meter_rental),s:'Meter rental income',icon:ICON.meter},
+      {l:'Commercial Billed',v:F.mwk((k.amt_billed_comm_pp||0)+(k.amt_billed_comm_prepaid||0)),s:'Commercial customer segment',icon:ICON.chart},
+    ]);
+    document.getElementById('sr-kpis').className='kpi-row kpi-g3';
+    mkChart('ch-sr-main',{type:'bar',data:{labels:lb,datasets:classes.map(([key,label,color])=>({label,data:dm.map(m=>+(billedByClass(m,key)/1e6).toFixed(2)),backgroundColor:color,borderRadius:3,stack:'s'}))},options:{...baseOpts(v=>v+'M'),plugins:{...legendOpts()}}});
+    mkChart('ch-sr-cash',{type:'line',data:{labels:lb,datasets:classes.map(([key,label,color])=>({label,data:dm.map(m=>+(cashByClass(m,key)/1e6).toFixed(2)),borderColor:color,backgroundColor:'transparent',tension:.3,pointRadius:3,borderWidth:2}))},options:{...baseOpts(v=>v+'M'),plugins:{...legendOpts()}}});
+    mkChart('ch-sr-zone',{type:'bar',data:{labels:d.by_zone.map(z=>z.zone),datasets:[{label:'Billed (MWK M)',data:d.by_zone.map(z=>+(z.amt_billed/1e6).toFixed(1)),backgroundColor:d.by_zone.map(z=>z.color||'#64748b'),borderRadius:4},{label:'Collected (MWK M)',data:d.by_zone.map(z=>+(z.cash_collected/1e6).toFixed(1)),backgroundColor:'rgba(22,163,74,.7)',borderRadius:4}]},options:{...baseOptsH(v=>v+'M'),plugins:{...legendOpts()}}});
+    renderTable('tbl-segment-revenue','CUSTOMER SEGMENT REVENUE REPORT',ROWS.segment_revenue,d.monthly,'segment-revenue');
+    mountExportBar('segment-revenue');
+  }catch(e){errMsg('sr-kpis','Customer Segment Revenue failed');}
+}
+
+async function loadWorkforce(){
+  kpis('wf-kpis',[{l:'Loading...',v:'-'}]);
+  try{
+    const d=await apiPanel('workforce'),k=d.kpi;
+    const dm=d.monthly.filter(m=>m.has_data),lb=dm.map(m=>MONTHS_SHORT[m.month]||m.month);
+    kpis('wf-kpis',[
+      {l:'Permanent Staff',v:F.num(k.perm_staff),s:'Latest staff establishment in scope',icon:ICON.staff},
+      {l:'Temporary Staff',v:F.num(k.temp_staff),s:'Temporary and casual personnel',icon:ICON.staff},
+      {l:'Fuel Used',v:F.num(k.fuel_used_litres)+' litres',s:'Physical fuel consumption',icon:ICON.bolt},
+      {l:'Fuel Cost',v:F.mwk(k.fuel_cost),s:'Transport and generator fuel spend',icon:ICON.bolt},
+      {l:'Distance Covered',v:F.num(k.distances_km)+' km',s:'Fleet movement captured in the source return',icon:ICON.pipe},
+      {l:'Staff / 1000m3',v:F.dec(k.staff_per_1000m3_12h),s:'Workforce intensity indicator',icon:ICON.gauge},
+      {l:'OpEx / m3 Produced',v:F.dec(k.op_cost_per_m3_produced),s:'Operating cost efficiency',icon:ICON.chart},
+      {l:'OpEx / Sales',v:F.dec(k.op_cost_per_sales),s:'Operating cost relative to sales revenue',icon:ICON.chart},
+    ]);
+    document.getElementById('wf-kpis').className='kpi-row kpi-g4';
+    mkChart('ch-wf-main',{type:'line',data:{labels:lb,datasets:[{label:'Fuel Used (000 litres)',data:dm.map(m=>+((m.fuel_used_litres||0)/1000).toFixed(2)),borderColor:'#dc2626',tension:.3,pointRadius:3,borderWidth:2,yAxisID:'y'},{label:'Fuel Cost (MWK M)',data:dm.map(m=>+((m.fuel_cost||0)/1e6).toFixed(2)),borderColor:'#1A8FD1',tension:.3,pointRadius:3,borderWidth:2,yAxisID:'y1'}]},options:{responsive:true,maintainAspectRatio:false,animation:chartAnim,scales:{x:{ticks:{color:LC,font:{size:10}},grid:{color:GC,drawBorder:false}},y:{ticks:{color:'#dc2626',font:{size:10},callback:v=>v+'k'},grid:{color:GC},border:{display:false}},y1:{position:'right',ticks:{color:'#1A8FD1',font:{size:10},callback:v=>v+'M'},grid:{display:false},border:{display:false}}},...tooltipPlugin,plugins:{...legendOpts()}}});
+    mkChart('ch-wf-zone',{type:'bar',data:{labels:d.by_zone.map(z=>z.zone),datasets:[{label:'Distance (km)',data:d.by_zone.map(z=>+(z.distances_km||0).toFixed(0)),backgroundColor:d.by_zone.map(z=>z.color||'#64748b'),borderRadius:4},{label:'Fuel Used (litres)',data:d.by_zone.map(z=>+(z.fuel_used_litres||0).toFixed(0)),backgroundColor:'rgba(220,38,38,.55)',borderRadius:4}]},options:{...baseOptsH(),plugins:{...legendOpts()}}});
+    renderTable('tbl-workforce','WORKFORCE & FLEET EFFICIENCY REPORT',ROWS.workforce,d.monthly,'workforce');
+    mountExportBar('workforce');
+  }catch(e){errMsg('wf-kpis','Workforce report failed');}
+}
+
+async function loadClassConnections(){
+  kpis('cc-kpis',[{l:'Loading...',v:'-'}]);
+  try{
+    const d=await apiPanel('class-connections'),k=d.kpi;
+    const dm=d.monthly.filter(m=>m.has_data),lb=dm.map(m=>MONTHS_SHORT[m.month]||m.month);
+    kpis('cc-kpis',[
+      {l:'Individual Done',v:F.num(k.conn_indiv_total_done),s:'Completed individual connections',icon:ICON.conn},
+      {l:'Institutional Done',v:F.num(k.conn_inst_total_done),s:'Completed institutional connections',icon:ICON.conn},
+      {l:'Commercial Done',v:F.num(k.conn_comm_total_done),s:'Completed commercial connections',icon:ICON.conn},
+      {l:'CWP Done',v:F.num(k.conn_cwp_total_done),s:'Completed community water point connections',icon:ICON.conn},
+      {l:'All Applications',v:F.num(k.all_conn_applied),s:'All applications logged in the source return',icon:ICON.chart},
+      {l:'Total Completed',v:F.num(k.new_connections),s:'All customer classes combined',icon:ICON.chart,badgeLabel:'KPI'},
+    ]);
+    document.getElementById('cc-kpis').className='kpi-row kpi-g3';
+    mkChart('ch-cc-main',{type:'line',data:{labels:lb,datasets:[
+      {label:'Individual',data:dm.map(m=>m.conn_indiv_total_done||0),borderColor:'#1A8FD1',tension:.3,pointRadius:3,borderWidth:2},
+      {label:'Institutional',data:dm.map(m=>m.conn_inst_total_done||0),borderColor:'#0d9488',tension:.3,pointRadius:3,borderWidth:2},
+      {label:'Commercial',data:dm.map(m=>m.conn_comm_total_done||0),borderColor:'#7c3aed',tension:.3,pointRadius:3,borderWidth:2},
+      {label:'CWP',data:dm.map(m=>m.conn_cwp_total_done||0),borderColor:'#d97706',tension:.3,pointRadius:3,borderWidth:2},
+    ]},options:{...baseOpts(),plugins:{...legendOpts()}}});
+    mkChart('ch-cc-zone',{type:'bar',data:{labels:d.by_zone.map(z=>z.zone),datasets:[
+      {label:'Individual',data:d.by_zone.map(z=>z.conn_indiv_total_done||0),backgroundColor:'#1A8FD1',borderRadius:3,stack:'s'},
+      {label:'Institutional',data:d.by_zone.map(z=>z.conn_inst_total_done||0),backgroundColor:'#0d9488',borderRadius:3,stack:'s'},
+      {label:'Commercial',data:d.by_zone.map(z=>z.conn_comm_total_done||0),backgroundColor:'#7c3aed',borderRadius:3,stack:'s'},
+      {label:'CWP',data:d.by_zone.map(z=>z.conn_cwp_total_done||0),backgroundColor:'#d97706',borderRadius:3,stack:'s'},
+    ]},options:{...baseOptsH(),plugins:{...legendOpts()}}});
+    renderTable('tbl-class-connections','CONNECTION PIPELINE BY CUSTOMER CLASS REPORT',ROWS.class_connections,d.monthly,'class-connections');
+    mountExportBar('class-connections');
+  }catch(e){errMsg('cc-kpis','Class connections failed');}
+}
+
+async function loadStuckClasses(){
+  kpis('sc-kpis',[{l:'Loading...',v:'-'}]);
+  try{
+    const d=await apiPanel('stuck-classes'),k=d.kpi;
+    const dm=d.monthly.filter(m=>m.has_data),lb=dm.map(m=>MONTHS_SHORT[m.month]||m.month);
+    kpis('sc-kpis',[
+      {l:'Individual C/F',v:F.num(k.stuck_indiv_cfwd),s:'Current individual stuck-meter backlog',icon:ICON.meter},
+      {l:'Institutional C/F',v:F.num(k.stuck_inst_cfwd),s:'Current institutional backlog',icon:ICON.meter},
+      {l:'Commercial C/F',v:F.num(k.stuck_comm_cfwd),s:'Current commercial backlog',icon:ICON.meter},
+      {l:'CWP C/F',v:F.num(k.stuck_cwp_cfwd),s:'Current CWP backlog',icon:ICON.meter},
+      {l:'Total C/F',v:F.num(k.all_stuck_cfwd),s:'All customer classes combined',icon:ICON.chart,badgeLabel:'KPI'},
+    ]);
+    document.getElementById('sc-kpis').className='kpi-row kpi-g3';
+    mkChart('ch-sc-main',{type:'line',data:{labels:lb,datasets:[
+      {label:'Individual',data:dm.map(m=>m.stuck_indiv_cfwd||0),borderColor:'#1A8FD1',tension:.3,pointRadius:3,borderWidth:2},
+      {label:'Institutional',data:dm.map(m=>m.stuck_inst_cfwd||0),borderColor:'#0d9488',tension:.3,pointRadius:3,borderWidth:2},
+      {label:'Commercial',data:dm.map(m=>m.stuck_comm_cfwd||0),borderColor:'#7c3aed',tension:.3,pointRadius:3,borderWidth:2},
+      {label:'CWP',data:dm.map(m=>m.stuck_cwp_cfwd||0),borderColor:'#d97706',tension:.3,pointRadius:3,borderWidth:2},
+    ]},options:{...baseOpts(),plugins:{...legendOpts()}}});
+    mkChart('ch-sc-zone',{type:'bar',data:{labels:d.by_zone.map(z=>z.zone),datasets:[
+      {label:'Individual',data:d.by_zone.map(z=>z.stuck_indiv_cfwd||0),backgroundColor:'#1A8FD1',borderRadius:3,stack:'s'},
+      {label:'Institutional',data:d.by_zone.map(z=>z.stuck_inst_cfwd||0),backgroundColor:'#0d9488',borderRadius:3,stack:'s'},
+      {label:'Commercial',data:d.by_zone.map(z=>z.stuck_comm_cfwd||0),backgroundColor:'#7c3aed',borderRadius:3,stack:'s'},
+      {label:'CWP',data:d.by_zone.map(z=>z.stuck_cwp_cfwd||0),backgroundColor:'#d97706',borderRadius:3,stack:'s'},
+    ]},options:{...baseOptsH(),plugins:{...legendOpts()}}});
+    renderTable('tbl-stuck-classes','METER EXCEPTIONS BY CUSTOMER CLASS REPORT',ROWS.stuck_classes,d.monthly,'stuck-classes');
+    mountExportBar('stuck-classes');
+  }catch(e){errMsg('sc-kpis','Class-based meter exceptions failed');}
+}
+
+async function loadPipeMaterials(){
+  kpis('pm-kpis',[{l:'Loading...',v:'-'}]);
+  try{
+    const d=await apiPanel('pipe-materials'),k=d.kpi;
+    const dm=d.monthly.filter(m=>m.has_data),lb=dm.map(m=>MONTHS_SHORT[m.month]||m.month);
+    const sizes=[['gi_15mm','GI 15mm'],['gi_20mm','GI 20mm'],['gi_25mm','GI 25mm'],['gi_40mm','GI 40mm'],['gi_50mm','GI 50mm'],['gi_75mm','GI 75mm'],['gi_100mm','GI 100mm'],['gi_150mm','GI 150mm'],['gi_200mm','GI 200mm'],['di_150mm','DI 150mm'],['di_200mm','DI 200mm'],['di_250mm','DI 250mm'],['di_300mm','DI 300mm'],['di_350mm','DI 350mm'],['di_525mm','DI 525mm'],['hdpe_20mm','HDPE 20mm'],['hdpe_25mm','HDPE 25mm'],['hdpe_32mm','HDPE 32mm'],['hdpe_50mm','HDPE 50mm'],['ac_50mm','AC 50mm'],['ac_75mm','AC 75mm'],['ac_100mm','AC 100mm'],['ac_150mm','AC 150mm']];
+    const topSizes=sizes.map(([field,label])=>({field,label,total:Number(k[field]||0)})).filter(x=>x.total>0).sort((a,b)=>b.total-a.total).slice(0,8);
+    kpis('pm-kpis',[
+      {l:'PVC Failures',v:F.num(k.pipe_pvc),s:'PVC breakdowns already tracked separately',icon:ICON.pipe},
+      {l:'GI Failures',v:F.num(k.pipe_gi),s:'Galvanized iron failures',icon:ICON.pipe},
+      {l:'DI Failures',v:F.num(k.pipe_di),s:'Ductile iron failures',icon:ICON.pipe},
+      {l:'HDPE and AC Failures',v:F.num(k.pipe_hdpe_ac),s:'HDPE and asbestos cement failures',icon:ICON.pipe},
+      {l:'Total Pipe Failures',v:F.num(k.pipe_breakdowns),s:'All pipe-failure events in scope',icon:ICON.chart,badgeLabel:'KPI'},
+    ]);
+    document.getElementById('pm-kpis').className='kpi-row kpi-g3';
+    mkChart('ch-pm-main',{type:'bar',data:{labels:lb,datasets:[
+      {label:'GI',data:dm.map(m=>m.pipe_gi||0),backgroundColor:'#1A8FD1',borderRadius:3,stack:'s'},
+      {label:'DI',data:dm.map(m=>m.pipe_di||0),backgroundColor:'#0d9488',borderRadius:3,stack:'s'},
+      {label:'HDPE + AC',data:dm.map(m=>m.pipe_hdpe_ac||0),backgroundColor:'#7c3aed',borderRadius:3,stack:'s'},
+      {label:'PVC',data:dm.map(m=>m.pipe_pvc||0),backgroundColor:'#d97706',borderRadius:3,stack:'s'},
+    ]},options:{...baseOpts(),plugins:{...legendOpts()}}});
+    mkChart('ch-pm-size',{type:'bar',data:{labels:topSizes.map(x=>x.label),datasets:[{label:'Failures',data:topSizes.map(x=>x.total),backgroundColor:topSizes.map((_,i)=>['#1A8FD1','#0d9488','#7c3aed','#d97706','#dc2626','#0891b2','#65a30d','#9333ea'][i%8]),borderRadius:4}]},options:{...baseOptsH(),plugins:{...legendOpts()}}});
+    renderTable('tbl-pipe-materials','PIPE FAILURE BY MATERIAL AND SIZE REPORT',ROWS.pipe_materials,d.monthly,'pipe-materials');
+    mountExportBar('pipe-materials');
+  }catch(e){errMsg('pm-kpis','Pipe materials report failed');}
 }
 
 function hydrateHubWorkspace(page){
@@ -2709,9 +3194,19 @@ function groupForPage(page){
 function handleSidebarHubClick(id,evt){
   evt?.stopPropagation?.();
   evt?.preventDefault?.();
+  const grp=document.getElementById('grp-'+id);
+  const isExpanded=!!grp && !grp.classList.contains('collapsed');
+  const currentGroup=groupForPage(currentPage);
+  if(isExpanded && currentGroup===id){
+    setNavGroupExpanded(id,false);
+    _saveNavState('');
+    return;
+  }
   const targetPage=HUB_DEFAULT_PAGE[id]||id;
   collapseAllNavGroups(id);
-  navigate(targetPage,{fromHub:id});
+  if(currentGroup!==id || currentPage===id){
+    navigate(targetPage,{fromHub:id});
+  }
 }
 
 function toggleNavGroup(id,evt){
@@ -2756,18 +3251,47 @@ async function initDashboard(opts={}){
   const now=new Date();const calYear=now.getMonth()>=3?now.getFullYear()+1:now.getFullYear();
   try{
     const token=getToken();
-    const years=await fetch(`${API}/api/catalogue/years`,{headers:{Authorization:'Bearer '+token}}).then(r=>r.ok?r.json():[]);
-    const latestDbYear = years.length ? Math.max(...years) : calYear;
-    dbState.year = latestDbYear;
+    // Use enriched fiscal-years endpoint which includes status, has_data, has_budget
+    const fyMeta=await fetchJsonSafe(`${API}/api/catalogue/fiscal-years`,{token,fallback:[],label:'/api/catalogue/fiscal-years'});
+    dbState.fyMeta = fyMeta; // store for use by budget page and other callers
+
+    // Determine best default year: prefer the "current" status FY, or latest with data
+    const currentFy = fyMeta.find(f=>f.status==='current');
+    const latestDataFy = [...fyMeta].filter(f=>f.has_data).sort((a,b)=>b.year-a.year)[0];
+    const defaultYear = (currentFy||latestDataFy||fyMeta[0])?.year || calYear;
+    dbState.year = defaultYear;
+
     const sel=document.getElementById('fy-select');sel.innerHTML='';
-    // Always show a useful range: current FY, previous two, plus any DB years
-    const range=[calYear-2, calYear-1, calYear];
-    const all=[...new Set([...years,...range])].sort((a,b)=>a-b);
-    for(const y of all){const opt=document.createElement('option');opt.value=y;opt.textContent=`FY ${y-1}/${String(y).slice(-2)}`;if(y===latestDbYear)opt.selected=true;sel.appendChild(opt);}
+
+    // Group & sort: future (desc) → current → historical (desc)
+    const ordered = [...fyMeta].sort((a,b)=>b.year-a.year);
+    for(const fy of ordered){
+      const opt=document.createElement('option');
+      opt.value=fy.year;
+      let label=fy.label||`FY ${fy.year-1}/${String(fy.year).slice(-2)}`;
+      if(fy.status==='future') label+=' ▸ Future';
+      if(fy.status==='current') label+=' ★ Current';
+      if(!fy.has_data && fy.status!=='historical') label+=' (no data)';
+      opt.textContent=label;
+      if(fy.year===defaultYear)opt.selected=true;
+      sel.appendChild(opt);
+    }
+
+    // Fallback: if no FYs came from registry, add a sensible local range
+    if(ordered.length===0){
+      for(const y of [calYear-2,calYear-1,calYear,calYear+1,calYear+2,calYear+3,calYear+4]){
+        const opt=document.createElement('option');opt.value=y;
+        opt.textContent=`FY ${y-1}/${String(y).slice(-2)}`;
+        if(y===calYear)opt.selected=true;sel.appendChild(opt);
+      }
+    }
   }catch{
-    dbState.year=calYear;
+    dbState.year=calYear;dbState.fyMeta=[];
     const sel=document.getElementById('fy-select');sel.innerHTML='';
-    for(const y of [calYear-2,calYear-1,calYear]){const opt=document.createElement('option');opt.value=y;opt.textContent=`FY ${y-1}/${String(y).slice(-2)}`;if(y===calYear)opt.selected=true;sel.appendChild(opt);}
+    for(const y of [calYear-2,calYear-1,calYear,calYear+1,calYear+2,calYear+3,calYear+4]){
+      const opt=document.createElement('option');opt.value=y;opt.textContent=`FY ${y-1}/${String(y).slice(-2)}`;
+      if(y===calYear)opt.selected=true;sel.appendChild(opt);
+    }
   }
   await loadZoneSchemes();
   renderQuickFilterControls();
@@ -2783,7 +3307,7 @@ async function initDashboard(opts={}){
 }
 
 async function loadLoginKpis(){
-  try{const token=getToken();if(!token)return;const kpi=await fetch(`${API}/api/analytics/kpi`,{headers:{Authorization:'Bearer '+token}}).then(r=>r.ok?r.json():null);if(!kpi||!kpi.active_customers)return;document.getElementById('lkpi-cust').textContent=F.num(kpi.active_customers);document.getElementById('lkpi-prod').textContent=F.m3(kpi.vol_produced);document.getElementById('lkpi-nrw').textContent=F.pct(kpi.nrw_pct);document.getElementById('lkpi-cash').textContent=F.mwk(kpi.cash_collected);document.getElementById('login-kpi-grid').style.visibility='visible';}catch{}}
+  try{const token=getToken();if(!token)return;const kpi=await fetchJsonSafe(`${API}/api/analytics/kpi`,{token,fallback:null,label:'/api/analytics/kpi'});if(!kpi||!kpi.active_customers)return;document.getElementById('lkpi-cust').textContent=F.num(kpi.active_customers);document.getElementById('lkpi-prod').textContent=F.m3(kpi.vol_produced);document.getElementById('lkpi-nrw').textContent=F.pct(kpi.nrw_pct);document.getElementById('lkpi-cash').textContent=F.mwk(kpi.cash_collected);document.getElementById('login-kpi-grid').style.visibility='visible';}catch{}}
 
 /* ════════════════════════════════════════════════════════════════════════
    UPLOAD MODAL  —  state machine
@@ -2922,18 +3446,8 @@ async function umUploadAndPreview(){
   fd.append('file', UM.file);
 
   try{
-    const token = getToken();
-    const res = await fetch(`${API}/api/upload/preview`, {
-      method: 'POST',
-      headers: { Authorization: 'Bearer ' + token },
-      body: fd,
-    });
     umShowProgress('Processing results…', 70);
-
-    const data = await res.json();
-    if(!res.ok){
-      throw new Error(data.detail || `Server error ${res.status}`);
-    }
+    const data = await fetchJsonSafe(`${API}/api/upload/preview`,{method:'POST',body:fd,label:'/api/upload/preview'});
 
     UM.previewToken = data.preview_token;
     umShowProgress('Validation complete', 100);
@@ -2962,19 +3476,12 @@ async function umCommit(){
   const effectiveMode = UM.mode === 'clear' ? 'replace' : UM.mode;
 
   try{
-    const token = getToken();
-    const res = await fetch(`${API}/api/upload/commit`, {
-      method: 'POST',
-      headers: { Authorization: 'Bearer '+token, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
+    umShowProgress('Finalising…', 90);
+    const data = await fetchJsonSafe(`${API}/api/upload/commit`,{method:'POST',headers:{ 'Content-Type': 'application/json' },body:JSON.stringify({
         preview_token: UM.previewToken,
         global_conflict_mode: effectiveMode,
         conflict_resolutions: {},
-      }),
-    });
-    umShowProgress('Finalising…', 90);
-    const data = await res.json();
-    if(!res.ok) throw new Error(data.detail || `Commit failed (${res.status})`);
+      }),label:'/api/upload/commit'});
 
     umShowProgress('Done!', 100);
     await new Promise(r=>setTimeout(r,350));
@@ -2994,6 +3501,14 @@ async function umCommit(){
 
 function umRenderPreview(data){
   document.getElementById('um-preview').style.display = 'block';
+  document.getElementById('um-btn-upload').style.display = 'none';
+  document.getElementById('um-btn-upload').disabled = false;
+  document.getElementById('um-spinner').style.display = 'none';
+  document.getElementById('um-btn-commit').style.display = '';
+  document.getElementById('um-btn-commit').disabled = false;
+  document.getElementById('um-spinner-commit').style.display = 'none';
+  document.getElementById('um-commit-label').textContent = 'Confirm Import';
+  document.getElementById('um-btn-done').style.display = 'none';
 
   // Stats
   document.getElementById('um-stat-total').textContent    = data.total_rows ?? '—';
@@ -3033,10 +3548,10 @@ function umRenderPreview(data){
   // Show commit / abort buttons
   document.getElementById('um-btn-upload').style.display = 'none';
   if((data.importable_count ?? 0) > 0){
-    document.getElementById('um-btn-commit').style.display = '';
     document.getElementById('um-commit-label').textContent = 'Confirm Import';
     document.getElementById('um-btn-cancel').textContent = 'Discard';
   } else {
+    document.getElementById('um-btn-commit').style.display = 'none';
     document.getElementById('um-btn-cancel').textContent = 'Close';
   }
 }
@@ -3049,7 +3564,7 @@ function umAddIssuePill(container, type, msg){
     : '<svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M8 6v3m0 2v.5" stroke="#D97706" stroke-width="1.6" stroke-linecap="round"/><path d="M7.1 2.5L1.5 12a1 1 0 00.9 1.5h11.2a1 1 0 00.9-1.5L9 2.5a1 1 0 00-1.8 0z" stroke="#D97706" stroke-width="1.3"/></svg>';
   const div = document.createElement('div');
   div.className = `um-issue-pill ${type}`;
-  div.innerHTML = `<span style="flex-shrink:0;margin-top:1px">${icon}</span><span>${msg}</span>`;
+  div.innerHTML = DOMPurify.sanitize(`<span style="flex-shrink:0;margin-top:1px">${icon}</span><span>${msg}</span>`);
   container.appendChild(div);
 }
 
@@ -3066,7 +3581,7 @@ function umRenderResult(data){
 
   const icon = document.getElementById('um-result-icon');
   icon.className = 'um-result-icon success';
-  document.getElementById('um-result-svg').innerHTML = '<path d="M8 16l5 5 10-10" stroke="#16a34a" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>';
+  document.getElementById('um-result-svg').innerHTML = DOMPurify.sanitize('<path d="M8 16l5 5 10-10" stroke="#16a34a" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>');
 
   document.getElementById('um-result-title').textContent = 'Import complete';
 
@@ -3103,7 +3618,7 @@ function umRenderResultError(msg){
 
   const icon = document.getElementById('um-result-icon');
   icon.className = 'um-result-icon error';
-  document.getElementById('um-result-svg').innerHTML = '<path d="M8 6v5m0 2.5v.5" stroke="#DC2626" stroke-width="2" stroke-linecap="round"/><circle cx="16" cy="16" r="14" stroke="#DC2626" stroke-width="2"/>';
+  document.getElementById('um-result-svg').innerHTML = DOMPurify.sanitize('<path d="M8 6v5m0 2.5v.5" stroke="#DC2626" stroke-width="2" stroke-linecap="round"/><circle cx="16" cy="16" r="14" stroke="#DC2626" stroke-width="2"/>');
 
   document.getElementById('um-result-title').textContent = 'Import failed — fully rolled back';
   document.getElementById('um-result-period').textContent = msg;
@@ -3193,15 +3708,136 @@ function admShowNavLink(role){
 function admTab(tabName){
   document.querySelectorAll('.adm-tab').forEach(t =>
     t.classList.toggle('active', t.dataset.tab === tabName));
-  ['users','profile','roles','data','uploads','activity','system'].forEach(t => {
+  ['users','profile','roles','data','uploads','activity','fy-budget','system'].forEach(t => {
     const el = document.getElementById('adm-tab-'+t);
     if(el) el.style.display = t === tabName ? '' : 'none';
   });
-  if(tabName === 'users')   admLoadUsers();
-  if(tabName === 'uploads') admLoadUploads();
-  if(tabName === 'activity') admLoadActivity();
-  if(tabName === 'profile')  admLoadProfile();
-  if(tabName === 'system')  admLoadSystem();
+  if(tabName === 'users')     admLoadUsers();
+  if(tabName === 'uploads')   admLoadUploads();
+  if(tabName === 'activity')  admLoadActivity();
+  if(tabName === 'profile')   admLoadProfile();
+  if(tabName === 'system')    admLoadSystem();
+  // fy-budget loaded on demand via admLoadFyBudget() called from onclick
+}
+
+/* ══════════════════════════════════════════════════════════════════════════
+   FY BUDGET SETUP ADMIN  —  /api/fiscal-years
+   ══════════════════════════════════════════════════════════════════════════ */
+
+let _fyBudgetLoaded = false;
+
+async function admLoadFyBudget(){
+  if(_fyBudgetLoaded) return;
+  _fyBudgetLoaded = false; // always refresh on explicit call
+  await admFyRefresh();
+}
+
+async function admFyRefresh(){
+  const token = getToken();
+  if(!token) return;
+  const grid = document.getElementById('adm-fy-grid');
+  if(!grid) return;
+  grid.innerHTML = DOMPurify.sanitize('<div style="color:var(--text-muted);font-size:.85rem;padding:.5rem 0">Loading…</div>');
+
+  try{
+    const fys = await fetchJsonSafe(`${API}/api/fiscal-years`,{token,fallback:[],label:'/api/fiscal-years'});
+    _fyBudgetLoaded = true;
+
+    if(!fys.length){
+      grid.innerHTML= DOMPurify.sanitize('<div style="color:var(--text-muted);font-size:.85rem">No fiscal years configured. Run the seed script to initialise.</div>');
+      return;
+    }
+
+    // Populate copy-from/to dropdowns
+    const src = document.getElementById('adm-copy-src');
+    const dst = document.getElementById('adm-copy-dst');
+    if(src && dst){
+      src.innerHTML= DOMPurify.sanitize('<option value="">— select source —</option>');
+      dst.innerHTML= DOMPurify.sanitize('<option value="">— select target —</option>');
+      fys.forEach(fy=>{
+        const label=`${fy.label}${fy.has_budget?' ✓':''}`;
+        src.innerHTML+= DOMPurify.sanitize(`<option value="${fy.year}">${label}</option>`);
+        dst.innerHTML+= DOMPurify.sanitize(`<option value="${fy.year}">${label}</option>`);
+      });
+    }
+
+    // Status badge colours
+    const badge = s => {
+      const map = {current:'background:#d1fae5;color:#065f46',future:'background:#dbeafe;color:#1e40af',historical:'background:#f3f4f6;color:#6b7280'};
+      return `<span style="display:inline-block;padding:.15rem .5rem;border-radius:4px;font-size:.7rem;font-weight:600;${map[s]||''}">${s.toUpperCase()}</span>`;
+    };
+
+    let html = `<table style="width:100%;border-collapse:collapse;font-size:.85rem">
+      <thead><tr style="border-bottom:2px solid var(--border)">
+        <th style="text-align:left;padding:.5rem .75rem">FY</th>
+        <th style="text-align:left;padding:.5rem .75rem">Status</th>
+        <th style="text-align:left;padding:.5rem .75rem">Tariff (MK/m³)</th>
+        <th style="text-align:center;padding:.5rem .75rem">Has Data</th>
+        <th style="text-align:center;padding:.5rem .75rem">Budget Lines</th>
+        <th style="text-align:center;padding:.5rem .75rem">Zone Shares</th>
+        <th style="text-align:center;padding:.5rem .75rem">SPC Limits</th>
+        <th style="text-align:left;padding:.5rem .75rem">Notes</th>
+      </tr></thead><tbody>`;
+
+    const tick = ok => ok
+      ? '<span style="color:#059669;font-size:1rem">✓</span>'
+      : '<span style="color:#d1d5db;font-size:1rem">—</span>';
+
+    fys.forEach(fy=>{
+      const rowBg = fy.status==='current'?'background:rgba(16,185,129,.04)':
+                    fy.status==='future' ?'background:rgba(59,130,246,.04)':'';
+      html+=`<tr style="border-bottom:1px solid var(--border);${rowBg}">
+        <td style="padding:.5rem .75rem;font-weight:600">${fy.label}</td>
+        <td style="padding:.5rem .75rem">${badge(fy.status)}</td>
+        <td style="padding:.5rem .75rem">${fy.tariff_per_m3!=null?'MK '+fy.tariff_per_m3.toLocaleString():'<span style="color:var(--text-muted)">TBD</span>'}</td>
+        <td style="text-align:center;padding:.5rem .75rem">${tick(fy.has_data)}</td>
+        <td style="text-align:center;padding:.5rem .75rem">${fy.has_budget?`<span style="color:#059669">${fy.budget_line_count}</span>`:tick(false)}</td>
+        <td style="text-align:center;padding:.5rem .75rem">${tick(fy.has_zone_shares)}</td>
+        <td style="text-align:center;padding:.5rem .75rem">${tick(fy.has_spc_limits)}</td>
+        <td style="padding:.5rem .75rem;color:var(--text-muted);font-size:.8rem">${fy.notes||''}</td>
+      </tr>`;
+    });
+    html += '</tbody></table>';
+    grid.innerHTML = DOMPurify.sanitize(html);
+
+  }catch(e){
+    grid.innerHTML= DOMPurify.sanitize(`<div style="color:var(--error)">Failed to load fiscal years: ${e.message}</div>`);
+  }
+}
+
+async function admDoCopyBudget(){
+  const token=getToken();if(!token)return;
+  const src   = parseInt(document.getElementById('adm-copy-src')?.value||'0');
+  const dst   = parseInt(document.getElementById('adm-copy-dst')?.value||'0');
+  const pct   = parseFloat(document.getElementById('adm-copy-inflation')?.value||'0');
+  const overw = document.getElementById('adm-copy-overwrite')?.checked||false;
+  const res   = document.getElementById('adm-copy-result');
+
+  if(!src||!dst){ if(res)res.innerHTML='<span style="color:var(--error)">Please select both source and target FY.</span>'; return; }
+  if(src===dst){  if(res)res.innerHTML='<span style="color:var(--error)">Source and target must differ.</span>'; return; }
+
+  if(res)res.innerHTML= DOMPurify.sanitize('<span style="color:var(--text-muted)">Copying…</span>');
+  try{
+    const rate = pct/100;
+    const resp = await fetch(
+      `${API}/api/fiscal-years/${dst}/copy-from/${src}?inflation_rate=${rate}&overwrite=${overw}`,
+      {method:'POST',headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'}}
+    );
+    const data = await resp.json();
+    if(!resp.ok) throw new Error(data.detail||resp.statusText);
+    const infl = pct>0?` (+${pct}% inflation on MWK values)`:'';
+    res.innerHTML= DOMPurify.sanitize(`<span style="color:#059669">✓ Copied from FY${src-1}/${String(src).slice(-2)} → FY${dst-1}/${String(dst).slice(-2)}${infl}: `+
+      `${data.copied.budget_lines} budget lines, ${data.copied.zone_shares} zone shares, ${data.copied.spc_limits} SPC limits`+
+      `${data.skipped_budget_lines?' ('+data.skipped_budget_lines+' skipped — already existed)':''}</span>`);
+    _fyBudgetLoaded=false;
+    await admFyRefresh();
+    // Refresh the global FY selector so the new data shows
+    dbState.fyMeta=[];
+    const fyList=await fetchJsonSafe(`${API}/api/catalogue/fiscal-years`,{token,fallback:[],label:'/api/catalogue/fiscal-years'});
+    dbState.fyMeta=fyList;
+  }catch(e){
+    if(res)res.innerHTML= DOMPurify.sanitize(`<span style="color:var(--error)">Copy failed: ${e.message}</span>`);
+  }
 }
 
 // ── Load admin page ────────────────────────────────────────────────────────
@@ -3217,15 +3853,13 @@ async function admLoadUsers(){
   const token = getToken();
   if(!token) return;
   try{
-    const users = await fetch(`${API}/api/admin/users`,{
-      headers:{Authorization:'Bearer '+token}
-    }).then(r=>r.ok?r.json():[]);
+    const users = await fetchJsonSafe(`${API}/api/admin/users`,{token,fallback:[],label:'/api/admin/users'});
     ADM.users = users;
     admRenderUsers(users);
     admUpdateStats(users);
   }catch(e){
-    document.getElementById('adm-user-tbody').innerHTML =
-      `<tr><td colspan="6" class="adm-err">Failed to load users: ${e.message}</td></tr>`;
+    document.getElementById('adm-user-tbody').innerHTML = DOMPurify.sanitize(
+      `<tr><td colspan="6" class="adm-err">Failed to load users: ${e.message}</td></tr>`);
   }
 }
 
@@ -3243,55 +3877,54 @@ function admRenderUsers(users){
   const me = getUser();
   const tbody = document.getElementById('adm-user-tbody');
   if(!users.length){
-    tbody.innerHTML = '<tr><td colspan="6" class="adm-empty">No users found</td></tr>';
+    tbody.innerHTML = DOMPurify.sanitize('<tr><td colspan="6" class="adm-empty">No users found</td></tr>');
     return;
   }
-  tbody.innerHTML = users.map(u => {
-    const roleCls  = {'admin':'admin','user':'user','viewer':'viewer'}[u.role]||'viewer';
-    const isSelf   = me && u.username === me.username;
-    const created  = u.created_at ? new Date(u.created_at).toLocaleDateString('en-GB',
+  tbody.innerHTML = sanitizeRows(users.map(u => {
+    const roleCls = {'admin':'admin','user':'user','viewer':'viewer'}[u.role]||'viewer';
+    const isSelf  = me && u.username === me.username;
+    const created = u.created_at ? new Date(u.created_at).toLocaleDateString('en-GB',
       {day:'numeric',month:'short',year:'numeric'}) : '—';
+    const lastLogin = u.last_login
+      ? new Date(u.last_login+'Z').toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'})
+      : '<em style="color:var(--ds-text-muted)">Never</em>';
+    const initials = (u.full_name||u.username)[0].toUpperCase();
 
     return `<tr>
       <td>
-        <div style="display:flex;align-items:center;gap:8px">
-          <div style="width:30px;height:30px;border-radius:50%;
-            background:linear-gradient(135deg,var(--ds-blue),var(--ds-teal));
-            display:flex;align-items:center;justify-content:center;
-            font-size:12px;font-weight:700;color:#fff;flex-shrink:0">
-            ${(u.full_name||u.username)[0].toUpperCase()}
+        <div class="adm-user-cell">
+          <div class="adm-user-av">${initials}</div>
+          <div class="adm-user-info">
+            <div class="adm-user-name">${u.username}${isSelf?' <span class="adm-you-tag">you</span>':''}</div>
+            <div class="adm-user-fullname">${u.full_name||'<em>—</em>'}</div>
           </div>
-          ${u.username}${isSelf?' <span style="font-size:9px;color:var(--ds-text-muted)">(you)</span>':''}
         </div>
       </td>
-      <td style="font-size:13px;color:var(--ds-text-primary)">${u.full_name||'<span style="color:var(--ds-text-muted);font-style:italic">—</span>'}</td>
       <td><span class="role-badge ${roleCls}">${u.role}</span></td>
       <td>
         <span class="status-dot ${u.is_active?'active':'inactive'}"></span>
-        ${u.is_active?'Active':'Inactive'}
+        <span style="font-size:12px">${u.is_active?'Active':'Inactive'}</span>
       </td>
-      <td style="color:var(--ds-text-muted);font-size:12px">${u.last_login ? new Date(u.last_login+'Z').toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric'}) : '<span style="color:var(--ds-text-muted);font-style:italic">Never</span>'}</td>
-      <td style="color:var(--ds-text-muted);font-size:12px">${created}</td>
+      <td class="adm-td-meta">${lastLogin}</td>
+      <td class="adm-td-meta">${created}</td>
       <td>
-        <div style="display:flex;gap:6px;flex-wrap:wrap">
-          <button class="adm-act-btn edit" onclick="admOpenEditUser(${u.id})">Edit</button>
-          <button class="adm-act-btn reset" onclick="admOpenReset(${u.id},'${u.username}')">
-            Reset PW
-          </button>
-          <button class="adm-act-btn ${u.is_active?'danger':'edit'}"
+        <div class="adm-act-row">
+          <button class="adm-act-btn edit" onclick="admOpenEditUser(${u.id})" title="Edit user">Edit</button>
+          <button class="adm-act-btn reset" onclick="admOpenReset(${u.id},'${u.username}')" title="Reset password">Reset PW</button>
+          <button class="adm-act-btn ${u.is_active?'warn':'edit'}"
             onclick="admToggleActive(${u.id},${u.is_active})"
-            ${isSelf?'disabled title="Cannot deactivate yourself"':''}>
+            ${isSelf?'disabled title="Cannot deactivate yourself"':'title="'+(u.is_active?'Deactivate':'Activate')+' user"'}>
             ${u.is_active?'Deactivate':'Activate'}
           </button>
           <button class="adm-act-btn danger"
             onclick="admDeleteUser(${u.id},'${u.username}')"
-            ${isSelf?'disabled title="Cannot delete yourself"':''}>
+            ${isSelf?'disabled title="Cannot delete yourself"':'title="Delete user"'}>
             Delete
           </button>
         </div>
       </td>
     </tr>`;
-  }).join('');
+  }).join(''));
 }
 
 // ── Create user modal ──────────────────────────────────────────────────────
@@ -3343,12 +3976,7 @@ async function admSaveUser(){
     if(!username||!password){ errEl.textContent='Username and password are required.'; errEl.style.display=''; return; }
     if(password.length < 8){ errEl.textContent='Password must be at least 8 characters.'; errEl.style.display=''; return; }
     try{
-      const resp = await fetch(`${API}/api/admin/users`,{
-        method:'POST', headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},
-        body:JSON.stringify({username,full_name,password,role})
-      });
-      const data = await resp.json();
-      if(!resp.ok){ errEl.textContent = data.detail||'Failed to create user.'; errEl.style.display=''; return; }
+      await fetchJsonSafe(`${API}/api/admin/users`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username,full_name,password,role}),label:'/api/admin/users'});
       admCloseUserModal(); admLoadUsers();
     }catch(e){ errEl.textContent=e.message; errEl.style.display=''; }
   } else {
@@ -3356,12 +3984,7 @@ async function admSaveUser(){
     const role      = document.getElementById('adm-f-role').value;
     const full_name = document.getElementById('adm-f-full-name').value.trim() || null;
     try{
-      const resp = await fetch(`${API}/api/admin/users/${ADM.editingId}`,{
-        method:'PUT', headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},
-        body:JSON.stringify({role,full_name})
-      });
-      const data = await resp.json();
-      if(!resp.ok){ errEl.textContent = data.detail||'Failed to update user.'; errEl.style.display=''; return; }
+      await fetchJsonSafe(`${API}/api/admin/users/${ADM.editingId}`,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({role,full_name}),label:`/api/admin/users/${ADM.editingId}`});
       admCloseUserModal(); admLoadUsers();
     }catch(e){ errEl.textContent=e.message; errEl.style.display=''; }
   }
@@ -3391,7 +4014,7 @@ async function admDeleteUser(userId, username){
     const resp = await fetch(`${API}/api/admin/users/${userId}`,{
       method:'DELETE', headers:{Authorization:'Bearer '+token}
     });
-    if(!resp.ok){ const d=await resp.json(); alert(d.detail||'Delete failed.'); return; }
+    if(!resp.ok){ const d=await fetchJsonSafe(`${API}/api/admin/users/${userId}`,{method:'DELETE',label:`/api/admin/users/${userId}`}).catch(e=>({detail:e.message})); alert(d.detail||'Delete failed.'); return; }
     admLoadUsers();
   }catch(e){ alert('Error: '+e.message); }
 }
@@ -3421,7 +4044,7 @@ async function admDoReset(){
       method:'POST', headers:{Authorization:'Bearer '+token,'Content-Type':'application/json'},
       body:JSON.stringify({new_password:password})
     });
-    if(!resp.ok){ const d=await resp.json(); errEl.textContent=d.detail||'Reset failed.'; errEl.style.display=''; return; }
+    if(!resp.ok){ const d=await fetchJsonSafe(`${API}/api/admin/users/${ADM.resetUserId}/reset-password`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({new_password:password}),label:`/api/admin/users/${ADM.resetUserId}/reset-password`}).catch(e=>({detail:e.message})); errEl.textContent=d.detail||'Reset failed.'; errEl.style.display=''; return; }
     admCloseResetModal();
     alert('Password reset successfully. The user will need their new password on next login.');
   }catch(e){ errEl.textContent=e.message; errEl.style.display=''; }
@@ -3432,16 +4055,14 @@ async function admDoReset(){
 async function admLoadUploads(){
   const token = getToken();
   try{
-    const data = await fetch(`${API}/api/upload/history`,{
-      headers:{Authorization:'Bearer '+token}
-    }).then(r=>r.ok?r.json():{uploads:[]});
+    const data = await fetchJsonSafe(`${API}/api/upload/history`,{token,fallback:{uploads:[]},label:'/api/upload/history'});
     const tbody = document.getElementById('adm-upload-tbody');
     const uploads = data.uploads||[];
     if(!uploads.length){
-      tbody.innerHTML='<tr><td colspan="9" class="adm-empty">No upload history yet</td></tr>'; return;
+      tbody.innerHTML= DOMPurify.sanitize('<tr><td colspan="9" class="adm-empty">No upload history yet</td></tr>'); return;
     }
     const MONTHS=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-    tbody.innerHTML = uploads.map(u=>{
+    tbody.innerHTML = sanitizeRows(uploads.map(u=>{
       const dt = new Date(u.uploaded_at+'Z');
       const period = u.period_month && u.period_year
         ? MONTHS[(u.period_month-1)%12]+' '+u.period_year : '—';
@@ -3456,10 +4077,10 @@ async function admLoadUploads(){
         <td style="text-align:right;color:var(--ds-amber);font-weight:700">${u.rows_skipped}</td>
         <td style="text-align:right;color:${u.rows_errored>0?'var(--ds-red)':'var(--ds-text-muted)'};font-weight:700">${u.rows_errored}</td>
       </tr>`;
-    }).join('');
+    }).join(''));
   }catch(e){
-    document.getElementById('adm-upload-tbody').innerHTML=
-      `<tr><td colspan="9" class="adm-err">Failed to load history: ${e.message}</td></tr>`;
+    document.getElementById('adm-upload-tbody').innerHTML= DOMPurify.sanitize(
+      `<tr><td colspan="9" class="adm-err">Failed to load history: ${e.message}</td></tr>`);
   }
 }
 
@@ -3475,9 +4096,7 @@ async function admLoadSystem(){
     if(er) er.textContent = me.role;
   }
   try{
-    const d = await fetch(`${API}/api/admin/system`,{
-      headers:{Authorization:'Bearer '+token}
-    }).then(r=>r.ok?r.json():null);
+    const d = await fetchJsonSafe(`${API}/api/admin/system`,{token,fallback:null,label:'/api/admin/system'});
     if(!d) return;
     const g = id=>document.getElementById(id);
     if(g('sys-db-size'))    g('sys-db-size').textContent    = (d.database.size_mb||0)+' MB';
@@ -3510,17 +4129,15 @@ const ACTION_LABELS = {
 async function admLoadActivity(){
   const token = getToken(); if(!token) return;
   const tbody = document.getElementById('adm-activity-tbody'); if(!tbody) return;
-  tbody.innerHTML='<tr><td colspan="5" style="text-align:center;padding:20px;color:var(--ds-text-muted)">Loading…</td></tr>';
+  tbody.innerHTML= DOMPurify.sanitize('<tr><td colspan="5" style="text-align:center;padding:20px;color:var(--ds-text-muted)">Loading…</td></tr>');
   try{
-    const rows = await fetch(`${API}/api/admin/activity?limit=100`,{
-      headers:{Authorization:'Bearer '+token}
-    }).then(r=>r.ok?r.json():[]);
+    const rows = await fetchJsonSafe(`${API}/api/admin/activity?limit=100`,{token,fallback:[],label:'/api/admin/activity?limit=100'});
     if(!rows.length){
-      tbody.innerHTML='<tr><td colspan="5" style="text-align:center;padding:20px;color:var(--ds-text-muted)">No activity recorded yet</td></tr>';
+      tbody.innerHTML= DOMPurify.sanitize('<tr><td colspan="5" style="text-align:center;padding:20px;color:var(--ds-text-muted)">No activity recorded yet</td></tr>');
       return;
     }
     const clrMap={green:'color:var(--ds-green)',amber:'color:var(--ds-amber)',red:'color:var(--ds-red)',blue:'color:var(--ds-blue)'};
-    tbody.innerHTML=rows.map(r=>{
+    tbody.innerHTML= sanitizeRows(rows.map(r=>{
       const meta=ACTION_LABELS[r.action]||{icon:'•',cls:'',label:r.action};
       const dt=r.logged_at?new Date(r.logged_at+'Z').toLocaleString('en-GB',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}):'—';
       return `<tr>
@@ -3533,19 +4150,38 @@ async function admLoadActivity(){
         <td style="font-size:12px;color:var(--ds-text-secondary)">${r.detail||'—'}</td>
         <td style="font-size:11px;color:var(--ds-text-muted);font-family:var(--ds-mono)">${r.ip_address||'—'}</td>
       </tr>`;
-    }).join('');
+    }).join(''));
   }catch(e){
-    tbody.innerHTML=`<tr><td colspan="5" style="color:var(--ds-red);padding:20px;text-align:center">Error: ${e.message}</td></tr>`;
+    tbody.innerHTML= DOMPurify.sanitize(`<tr><td colspan="5" style="color:var(--ds-red);padding:20px;text-align:center">Error: ${e.message}</td></tr>`);
   }
 }
 
 // ── Role-based UI enforcement ─────────────────────────────────────────────
 function enforceRoleUI(role){
-  const isAdmin  = role==='admin';
-  const isViewer = role==='viewer';
+  const normalizedRole = normalizeRole(role);
+  const isAdmin  = normalizedRole==='admin';
+  const isViewer = normalizedRole==='viewer';
   // Admin panel nav
   const adminGroup=document.getElementById('nav-admin-group');
   if(adminGroup) adminGroup.style.display = isAdmin ? '' : 'none';
+  document.querySelectorAll('.nav-item[data-page="reports"]').forEach(el=>{
+    el.style.display = isAdmin ? '' : 'none';
+  });
+  document.querySelectorAll('.nav-item[data-page="compliance"]').forEach(el=>{
+    el.style.display = isAdmin ? '' : 'none';
+  });
+  document.querySelectorAll('[data-admin-only="reports"]').forEach(el=>{
+    el.style.display = isAdmin ? '' : 'none';
+  });
+  document.querySelectorAll('[data-admin-only="compliance"]').forEach(el=>{
+    el.style.display = isAdmin ? '' : 'none';
+  });
+  document.querySelectorAll('[onclick*="navigate(\'reports\')"]').forEach(el=>{
+    el.style.display = isAdmin ? '' : 'none';
+  });
+  document.querySelectorAll('[onclick*="navigate(\'compliance\')"]').forEach(el=>{
+    el.style.display = isAdmin ? '' : 'none';
+  });
   // Upload button
   const uploadBtn=document.getElementById('tb-upload-btn');
   if(uploadBtn) uploadBtn.classList.toggle('visible',isAdmin);
@@ -3558,6 +4194,9 @@ function enforceRoleUI(role){
     document.querySelectorAll('[data-role="export"],[data-export]').forEach(el=>{
       el.style.display='none';
     });
+  }
+  if(!isAdmin && ['reports','compliance'].includes(currentPage)){
+    navigate(getRoleHomePage(normalizedRole),{forceRoleHome:true});
   }
 }
 
@@ -3574,7 +4213,7 @@ function admLoadProfile(){
   if(nm) nm.textContent = u.username;
   if(rb){
     const roleCls = {'admin':'admin','user':'user','viewer':'viewer'}[u.role]||'viewer';
-    rb.innerHTML = '<span class="role-badge '+roleCls+'">'+u.role+'</span>';
+    rb.innerHTML = DOMPurify.sanitize('<span class="role-badge '+roleCls+'">'+u.role+'</span>');
   }
   ['profile-cur-pw','profile-new-pw','profile-conf-pw'].forEach(id=>{
     const el=document.getElementById(id); if(el) el.value='';
@@ -3610,7 +4249,7 @@ async function admChangeOwnPassword(){
         const el=document.getElementById(id);if(el)el.value='';
       });
     } else {
-      const d=await resp.json().catch(()=>({}));
+      const d=await (async()=>{const t=await resp.text();try{return t?JSON.parse(t):{};}catch{return {detail:t};}})();
       showMsg(d.detail||'Failed to update password.',false);
     }
   }catch(e){showMsg('Network error: '+e.message,false);}
@@ -3641,7 +4280,7 @@ async function loadNarrative(force=false){
   if(!body) return;
 
   body.className = 'ai-nar-body loading';
-  body.innerHTML = '<div class="spin-sm" style="border-top-color:#7c3aed"></div>Generating AI summary…';
+  body.innerHTML = DOMPurify.sanitize('<div class="spin-sm" style="border-top-color:#7c3aed"></div>Generating AI summary…');
   if(meta) meta.textContent = '';
 
   try{
@@ -3649,17 +4288,17 @@ async function loadNarrative(force=false){
     const resp = await fetch(`${API}/api/insights/narrative?year=${year}`, {
       headers:{Authorization:'Bearer '+token}
     });
-    const data = resp.ok ? await resp.json() : null;
+    const data = resp.ok ? await fetchJsonSafe(`${API}/api/insights/narrative?year=${year}`,{token,label:`/api/insights/narrative?year=${year}`}) : null;
 
     if(!data || data.error){
       const errMsg = data?.error || `Server error ${resp.status}`;
       body.className = 'ai-nar-body error';
       if(errMsg.includes('groq') || errMsg.includes('key') || errMsg.includes('installed')){
-        body.innerHTML = '⚠ Groq not configured — create <code>data/groq.key</code> and run <code>pip install groq</code>';
+        body.innerHTML = DOMPurify.sanitize('⚠ Groq not configured — create <code>data/groq.key</code> and run <code>pip install groq</code>');
       } else if(errMsg.includes('Connection')){
-        body.innerHTML = '⚠ Could not reach Groq API — check your internet connection and that <code>pip install groq</code> has been run.';
+        body.innerHTML = DOMPurify.sanitize('⚠ Could not reach Groq API — check your internet connection and that <code>pip install groq</code> has been run.');
       } else {
-        body.innerHTML = '⚠ ' + errMsg;
+        body.innerHTML = DOMPurify.sanitize('⚠ ' + errMsg);
       }
       return;
     }
@@ -3675,7 +4314,7 @@ async function loadNarrative(force=false){
 
   }catch(e){
     body.className = 'ai-nar-body error';
-    body.innerHTML = '⚠ Connection error: ' + e.message;
+    body.innerHTML = DOMPurify.sanitize('⚠ Connection error: ' + e.message);
   }
 }
 
@@ -3705,13 +4344,11 @@ async function loadAlerts(force=false){
   if(!token) return;
 
   const list = document.getElementById('ad-list');
-  list.innerHTML = '<div class="ad-loading"><div class="spin-sm"></div>Analysing data…</div>';
+  list.innerHTML = DOMPurify.sanitize('<div class="ad-loading"><div class="spin-sm"></div>Analysing data…</div>');
 
   try{
     const year = dbState.year || new Date().getFullYear();
-    const data = await fetch(`${API}/api/insights/summary?year=${year}`, {
-      headers:{Authorization:'Bearer '+token}
-    }).then(r=>r.ok?r.json():null);
+    const data = await fetchJsonSafe(`${API}/api/insights/summary?year=${year}`,{token,fallback:null,label:`/api/insights/summary?year=${year}`});
 
     if(!data){ list.innerHTML='<div class="ad-loading">Failed to load alerts.</div>'; return; }
 
@@ -3740,7 +4377,7 @@ async function loadAlerts(force=false){
       now.toLocaleDateString('en-GB',{day:'numeric',month:'short'});
 
   }catch(e){
-    list.innerHTML='<div class="ad-loading">Error: '+e.message+'</div>';
+    list.innerHTML= DOMPurify.sanitize('<div class="ad-loading">Error: '+e.message+'</div>');
   }
 }
 
@@ -3754,13 +4391,13 @@ function renderAlerts(data){
 
   const list = document.getElementById('ad-list');
   if(!alerts.length){
-    list.innerHTML = '<div class="ad-loading" style="color:var(--ds-green)">'+
+    list.innerHTML = DOMPurify.sanitize('<div class="ad-loading" style="color:var(--ds-green)">'+
       '<svg width="28" height="28" viewBox="0 0 24 24" fill="none"><path d="M9 12l2 2 4-4" stroke="#16a34a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/><circle cx="12" cy="12" r="9" stroke="#16a34a" stroke-width="1.5"/></svg>'+
-      '<span>No alerts — all KPIs within target ranges</span></div>';
+      '<span>No alerts — all KPIs within target ranges</span></div>');
     return;
   }
 
-  list.innerHTML = alerts.map(a => {
+  list.innerHTML = DOMPurify.sanitize(alerts.map(a => {
     const catLabel = CAT_LABELS[a.category] || a.category;
     const zoneTag  = a.zone ? `<span style="font-size:9px;font-weight:600;color:var(--ds-text-muted);background:rgba(0,0,0,.06);padding:1px 6px;border-radius:8px;margin-left:4px">${a.zone}</span>` : '';
     return `<div class="ad-item ${a.severity}">
@@ -3771,7 +4408,7 @@ function renderAlerts(data){
       </div>
       <div class="ad-item-detail">${a.detail}</div>
     </div>`;
-  }).join('');
+  }).join(''));
 }
 
 // Auto-load alerts 3 seconds after login (non-blocking)
@@ -3779,24 +4416,7 @@ function scheduleAlertLoad(){
   setTimeout(()=>loadAlerts(), 3000);
 }
 
-// Re-load alerts when FY selector changes
-const _origOnFyChange = typeof onFyChange === 'function' ? onFyChange : null;
-function onFyChange(val){
-  if(_origOnFyChange) _origOnFyChange(val);
-  updateFooter();
-  alertsLoaded = false;
-  narrativeLoaded = false;
-  if(document.getElementById('ov-nar-body')){
-    const b=document.getElementById('ov-nar-body');
-    b.className='ai-nar-body loading';
-    b.innerHTML='<div class="spin-sm" style="border-top-color:#7c3aed"></div>Generating AI summary…';
-    setTimeout(()=>loadNarrative(),500);
-  }
-  // Reset badge
-  document.getElementById('alert-badge').className='alert-badge';
-  document.getElementById('tb-alert-btn').className='';
-  if(alertDrawerOpen) loadAlerts();
-}
+// Alert/narrative reset on FY change is handled inside onFyChange (defined earlier).
 
 // Close drawer when clicking outside
 document.addEventListener('click', e=>{
@@ -3830,12 +4450,65 @@ const fmtCompactMwk = v => {
 
 async function loadBudget() {
   try {
-    const d = await api('/api/budget/variance?year=2026');
+    const yr = dbState.year||2026;
+    const d = await api(`/api/budget/variance?year=${yr}`);
+
+    // Future / no-data FY notice banner
+    const budgetPage = document.getElementById('page-budget');
+    let noticeBanner = document.getElementById('bgt-fy-notice');
+    if(!noticeBanner && budgetPage){
+      noticeBanner = document.createElement('div');
+      noticeBanner.id='bgt-fy-notice';
+      noticeBanner.style.cssText='margin:.75rem 1.5rem;padding:.75rem 1rem;border-radius:6px;font-size:.85rem;display:none';
+      budgetPage.insertBefore(noticeBanner, budgetPage.firstChild);
+    }
+    if(noticeBanner){
+      const fyInfo = (dbState.fyMeta||[]).find(f=>f.year===yr);
+      if(fyInfo?.status==='future' && !fyInfo?.has_data){
+        noticeBanner.style.display='block';
+        noticeBanner.style.background='rgba(59,130,246,.08)';
+        noticeBanner.style.border='1px solid rgba(59,130,246,.25)';
+        noticeBanner.style.color='#1e40af';
+        noticeBanner.innerHTML= DOMPurify.sanitize(`<strong>Future FY — ${fyInfo.label}</strong>: No operational data yet for this year. `+
+          `${fyInfo.has_budget?'Budget figures are loaded and shown as targets.':'No budget entered yet — use <em>Admin → FY Budget Setup</em> to seed this FY from a prior year.'} `+
+          `Upload data for ${fyInfo.label} via the Data Upload module to enable actuals tracking.`);
+      } else if(d.error){
+        noticeBanner.style.display='block';
+        noticeBanner.style.background='rgba(217,119,6,.08)';
+        noticeBanner.style.border='1px solid rgba(217,119,6,.25)';
+        noticeBanner.style.color='#92400e';
+        noticeBanner.innerHTML= DOMPurify.sanitize(`<strong>No data available</strong> for FY ${yr-1}/${String(yr).slice(-2)}. Upload data to enable this view.`);
+      } else {
+        noticeBanner.style.display='none';
+        if(!d.meta?.has_budget){
+          noticeBanner.style.display='block';
+          noticeBanner.style.background='rgba(217,119,6,.08)';
+          noticeBanner.style.border='1px solid rgba(217,119,6,.25)';
+          noticeBanner.style.color='#92400e';
+          noticeBanner.innerHTML= DOMPurify.sanitize(`<strong>No approved budget loaded</strong> for FY ${yr-1}/${String(yr).slice(-2)}. `+
+            `Variance comparators are not available. Use <em>Admin → FY Budget Setup → Copy Budget</em> to seed this year's budget.`);
+        }
+      }
+    }
+
+    if(d.error) return;
+
     const m = d.meta;
     const el = document.getElementById('pg-meta-budget');
     if (el) el.textContent =
       `${m.period} · ${m.data_months} months complete · Budget prorated ${Math.round(m.budget_factor*100)}%`;
 
+    if (el) {
+      const scopeBits = [];
+      if (m?.scope?.zones?.length) scopeBits.push(m.scope.zones.length === 1 ? m.scope.zones[0] : `${m.scope.zones.length} Zones`);
+      if (m?.scope?.schemes?.length) scopeBits.push(m.scope.schemes.length === 1 ? m.scope.schemes[0] : `${m.scope.schemes.length} Schemes`);
+      if (m?.scope?.months?.length) scopeBits.push(`${m.scope.months.length} Months`);
+      const scopeText = scopeBits.length ? ` | ${scopeBits.join(' | ')}` : '';
+      const basisText = m?.budget_scope_label ? ` | ${m.budget_scope_label}` : '';
+      el.textContent = `${m.period} | ${m.data_months} months complete | Budget prorated ${Math.round(m.budget_factor*100)}%${basisText}${scopeText}`;
+    }
+
+    _bgtApplyPlainLanguage(d);
     _bgtHeadline(d);
     _bgtExecSummary(d);
     _bgtVarTable('bgt-rev-table',  d.revenue);
@@ -3867,32 +4540,119 @@ async function loadBudget() {
 }
 
 // ── Headline ────────────────────────────────────────────────────────────────
+function _bgtApplyPlainLanguage(d) {
+  const meta = d?.meta || {};
+  const scope = meta.scope || {};
+  const scopeLabel = meta.budget_scope_label || 'Approved board budget comparator';
+  const scopeNote = meta.budget_scope_note || 'This page compares actuals with the approved board budget.';
+  const hasSchemeScope = Array.isArray(scope.schemes) && scope.schemes.length > 0;
+  const hasZoneScope = Array.isArray(scope.zones) && scope.zones.length > 0;
+  const setText = (selector, text, index = 0) => {
+    const nodes = document.querySelectorAll(selector);
+    if (nodes[index]) nodes[index].textContent = text;
+  };
+
+  setText('.pg-sub', 'A plain-language view of budget progress, the main gaps, and how each zone is performing.');
+  setText('.bgt-framework-title', 'How to read this page');
+  setText('.bgt-framework-copy', `This page compares results with the approved board budget dated 22 Feb 2025. ${scopeNote} Costs cover operating-site data in the database, not head-office overheads, depreciation, or finance costs. Revenue uses a fixed tariff of MK 1,450 per m3. The budget score is Actual / Budget; above 1.0 means ahead of budget.`);
+
+  const chips = document.querySelectorAll('.bgt-chip-row .bgt-chip');
+  if (chips[0]) chips[0].textContent = 'Approved budget reference | 22 Feb 2025';
+  if (chips[1]) chips[1].textContent = scopeLabel;
+  if (chips[2]) chips[2].textContent = 'Costs shown | field operations only';
+  if (chips[3]) chips[3].textContent = 'Water-loss trend checked against recent pattern';
+
+  const exTitles = document.querySelectorAll('.ex-hdr .ex-title');
+  if (exTitles[1]) exTitles[1].textContent = 'Operational performance against budget';
+  if (exTitles[2]) exTitles[2].textContent = 'Water loss trend and warning view';
+  if (exTitles[3]) exTitles[3].textContent = 'Operating cost performance - field operations';
+  if (exTitles[4]) exTitles[4].textContent = 'Zone comparison';
+  if (exTitles[7]) exTitles[7].textContent = 'Reference performance indicators';
+
+  const exSubs = document.querySelectorAll('.ex-hdr .ex-sub');
+  if (exSubs[0]) exSubs[0].textContent = 'Revenue compared with budget using a fixed tariff of MK 1,450 per m3.';
+  if (exSubs[1]) exSubs[1].textContent = 'Key operating measures: water produced, water loss, new connections, and hours of supply.';
+  if (exSubs[2]) exSubs[2].textContent = 'Shows whether water-loss levels are staying within the recent normal range or moving into warning levels.';
+  if (exSubs[3]) exSubs[3].textContent = 'Chemical and electricity costs compared with budget for the operating sites captured in the database.';
+  if (exSubs[4]) exSubs[4].textContent = hasSchemeScope
+    ? 'Filtered selection compared with an indicative scheme budget slice within the chosen parent scope.'
+    : hasZoneScope
+      ? 'Selected zones compared using the allocated board budget for those zones.'
+      : 'Five zones compared using the same shared budget basis.';
+  if (exSubs[5]) exSubs[5].textContent = 'Five zones ranked by an overall score built from the main service and financial results.';
+  if (exSubs[6]) exSubs[6].textContent = hasSchemeScope
+    ? 'Selected schemes ranked by service, collections, revenue efficiency, and connection activity. Budget interpretation is indicative at scheme level.'
+    : '33 schemes ranked by an overall score based on service, collections, revenue efficiency, and connection activity.';
+  if (exSubs[7]) exSubs[7].textContent = 'Calculated from 11 months of results and compared with common water-utility reference points.';
+
+  const boxes = document.querySelectorAll('.bgt-framework-box');
+  if (boxes[1]) boxes[1].innerHTML = `<strong>Overall score (0-100):</strong>
+          Water loss 35% | Collection rate 35% | Revenue against budget 20% | New connections against budget 10%.
+          &nbsp;&nbsp;
+          <span style="display:inline-flex;align-items:center;gap:4px">
+            <span style="width:8px;height:8px;border-radius:50%;background:#16a34a;display:inline-block"></span><span style="font-size:10.5px">Green >=70</span>
+          </span>&nbsp;
+          <span style="display:inline-flex;align-items:center;gap:4px">
+            <span style="width:8px;height:8px;border-radius:50%;background:#d97706;display:inline-block"></span><span style="font-size:10.5px">Amber 50-69</span>
+          </span>&nbsp;
+          <span style="display:inline-flex;align-items:center;gap:4px">
+            <span style="width:8px;height:8px;border-radius:50%;background:#dc2626;display:inline-block"></span><span style="font-size:10.5px">Red &lt;50</span>
+          </span>`;
+  if (boxes[2]) boxes[2].innerHTML = `<strong>Overall score (0-100):</strong>
+          Water loss 35% | Collection rate 35% | Revenue per m3 efficiency 20% | Connection activity 10%.
+          ${hasSchemeScope ? '<span style="display:block;margin-top:6px;color:var(--ds-text-secondary)">Budget comparisons shown with scheme filters are indicative slices, not approved scheme budgets.</span>' : ''}
+          &nbsp;&nbsp;
+          <span style="display:inline-flex;align-items:center;gap:4px">
+            <span style="width:8px;height:8px;border-radius:50%;background:#16a34a;display:inline-block"></span><span style="font-size:10.5px">Green >=70</span>
+          </span>&nbsp;
+          <span style="display:inline-flex;align-items:center;gap:4px">
+            <span style="width:8px;height:8px;border-radius:50%;background:#d97706;display:inline-block"></span><span style="font-size:10.5px">Amber 50-69</span>
+          </span>&nbsp;
+          <span style="display:inline-flex;align-items:center;gap:4px">
+            <span style="width:8px;height:8px;border-radius:50%;background:#dc2626;display:inline-block"></span><span style="font-size:10.5px">Red &lt;50</span>
+          </span>`;
+
+  setText('.bgt-scope-warn', 'Scope note: This section covers operating-site costs recorded in the database only. Wider corporate costs, including bottled water operations not yet in service, are excluded here. Chemical and power budgets are estimated from recent cost patterns and the approved budget lines.');
+
+  const source = document.querySelector('.bgt-source');
+  if (source) {
+    const schemeText = hasSchemeScope ? `${scope.schemes.length} selected scheme${scope.schemes.length !== 1 ? 's' : ''}` : '33 schemes';
+    source.innerHTML = DOMPurify.sanitize(`<strong style="color:var(--ds-text-primary)">Data and reference points:</strong>
+        Budget - <em>SRWB Draft Revenue &amp; Capital Expenditure Budget FY2025/26</em>, MoF, 22 Feb 2025.
+        Actuals - operational DB (${schemeText}, ${meta.period || 'April 2025 - February 2026'}).
+        External reference points from recognised water-sector and financial reporting guidance were used where relevant.
+        &nbsp;&nbsp);
+        <span style="color:var(--ds-green)">Favourable</span> &nbsp;
+        <span style="color:var(--ds-red)">Below budget</span> &nbsp;
+        <span style="color:var(--ds-text-muted)">Close to budget (+/-2%)</span>`);
+  }
+}
 function _bgtHeadline(d) {
   const h = d.headline, ek = d.efficiency_kpis;
   const mkB  = v => (v >= 0 ? '+' : '') + 'MK ' + (Math.abs(v)/1e9).toFixed(2) + 'B';
   const mkM  = v => (v >= 0 ? '+' : '') + 'MK ' + (Math.abs(v)/1e6).toFixed(0) + 'M';
   const row=document.getElementById('bgt-headline'); if(row) row.className='kpi-row kpi-g4';
   kpis('bgt-headline', [
-    { l:'Revenue Variance (YTD)',
+    { l:'Revenue gap vs budget (YTD)',
       v: mkB(h.revenue_variance_mk),
-      s:`BPI ${ek.bpi_revenue} — Actual ÷ Budget`,
+      s:`Budget score ${ek.bpi_revenue} — actual divided by budget`,
       cls: h.revenue_variance_mk >= 0 ? 'kc-up' : 'kc-dn', icon: ICON.revenue,
       badgeLabel: h.revenue_variance_mk >= 0 ? 'FAV' : 'ADV',
-      bm: `${Math.round(ek.bpi_revenue*100)}% of water revenue budget achieved` },
-    { l:'NRW Variance',
+      bm: `${Math.round(ek.bpi_revenue*100)}% of the water revenue budget achieved` },
+    { l:'Water loss vs target',
       v: (h.nrw_pp_variance >= 0 ? '+' : '') + h.nrw_pp_variance.toFixed(1) + ' pp',
       s: `Actual ${(27 + h.nrw_pp_variance).toFixed(1)}% vs 27% target`,
       cls: h.nrw_pp_variance > 0 ? 'kc-dn' : 'kc-up', icon: ICON.gauge,
       badgeLabel: h.nrw_pp_variance > 0 ? 'ADV' : 'FAV',
-      bm: `NRW financial cost: MK ${(h.nrw_financial_cost/1e9).toFixed(2)}B` },
-    { l:'Connection Shortfall (YTD)',
+      bm: `Estimated cost of water loss: MK ${(h.nrw_financial_cost/1e9).toFixed(2)}B` },
+    { l:'Connection gap (YTD)',
       v: Math.round(h.conn_variance).toLocaleString(),
       s: h.conn_variance < 0 ? `${Math.abs(Math.round(h.conn_variance))} below YTD target` : 'Ahead of target',
       cls: h.conn_variance < -100 ? 'kc-dn' : h.conn_variance >= 0 ? 'kc-up' : 'kc-nt',
       icon: ICON.clock,
       badgeLabel: h.conn_variance < -100 ? 'ADV' : h.conn_variance >= 0 ? 'FAV' : 'WATCH',
-      bm: `Annual target: 8,588 · BPI: ${ek.bpi_connections}` },
-    { l:'Chemical Cost Overrun',
+      bm: `Annual target: 8,588 · budget score ${ek.bpi_connections}` },
+    { l:'Chemical cost overrun',
       v: mkM(h.chem_overrun_mk),
       s: h.chem_overrun_mk > 0 ? 'Above full-year budget with 1 month remaining' : 'Under budget',
       cls: h.chem_overrun_mk > 0 ? 'kc-dn' : 'kc-up', icon: ICON.chart,
@@ -3916,18 +4676,18 @@ function _bgtExecSummary(d){
   const spc = d.spc_limits || {};
   const statusTone = Number(spc.months_above_2sigma||0) > 0 ? 'watch' : Number(h.nrw_pp_variance||0) > 0 ? 'high' : 'good';
   const items = [
-    {k:'Revenue variance', v:fmtCompactMwk(h.revenue_variance_mk||0), tone:(h.revenue_variance_mk||0)>=0?'good':'high', n:`Water revenue is ${ek.bpi_revenue||'—'}x budget on a YTD basis.`},
-    {k:'NRW vs target', v:`${fmt1(27 + Number(h.nrw_pp_variance||0))}%`, tone:Number(h.nrw_pp_variance||0)<=0?'good':'high', n:`Variance to the 27% target is ${(Number(h.nrw_pp_variance||0)>=0?'+':'') + fmt1(h.nrw_pp_variance||0)} pp.`},
-    {k:'Chemical overrun', v:fmtCompactMwk(h.chem_overrun_mk||0), tone:(h.chem_overrun_mk||0)>0?'high':'good', n:`Field chemicals ${Number(h.chem_overrun_mk||0)>0?'remain above':'are within'} the annual budget path.`},
-    {k:'Weakest revenue zone', v:worstRevenueZone.zone, tone:worstRevenueZone.ratio>=1?'good':worstRevenueZone.ratio>=0.9?'watch':'high', n:`Current zone BPI: ${Number.isFinite(worstRevenueZone.ratio)?fmt1(worstRevenueZone.ratio):'—'}.`},
-    {k:'Control focus', v:highestNrwZone.zone, tone:statusTone, n:`Highest NRW zone is ${highestNrwZone.zone} at ${fmtPct1(highestNrwZone.val)}.`},
+    {k:'Revenue gap', v:fmtCompactMwk(h.revenue_variance_mk||0), tone:(h.revenue_variance_mk||0)>=0?'good':'high', n:`Revenue is currently at ${ek.bpi_revenue||'—'} times budget.`},
+    {k:'Water loss level', v:`${fmt1(27 + Number(h.nrw_pp_variance||0))}%`, tone:Number(h.nrw_pp_variance||0)<=0?'good':'high', n:`This is ${(Number(h.nrw_pp_variance||0)>=0?'+':'') + fmt1(h.nrw_pp_variance||0)} percentage points against the 27% target.`},
+    {k:'Chemical overspend', v:fmtCompactMwk(h.chem_overrun_mk||0), tone:(h.chem_overrun_mk||0)>0?'high':'good', n:`Field chemical spending ${Number(h.chem_overrun_mk||0)>0?'is above':'is within'} the annual budget path.`},
+    {k:'Weakest revenue zone', v:worstRevenueZone.zone, tone:worstRevenueZone.ratio>=1?'good':worstRevenueZone.ratio>=0.9?'watch':'high', n:`Current budget score: ${Number.isFinite(worstRevenueZone.ratio)?fmt1(worstRevenueZone.ratio):'—'}.`},
+    {k:'Priority zone', v:highestNrwZone.zone, tone:statusTone, n:`Highest water loss is in ${highestNrwZone.zone} at ${fmtPct1(highestNrwZone.val)}.`},
   ];
-  host.innerHTML = items.map(it => `
+  host.innerHTML = DOMPurify.sanitize(items.map(it => `
     <div class="bgt-summary-card">
       <div class="bgt-summary-kicker">${it.k}</div>
       <div class="bgt-summary-value" data-tone="${it.tone}">${it.v}</div>
       <div class="bgt-summary-note">${it.n}</div>
-    </div>`).join('');
+    </div>`).join(''));
 }
 
 // ── Variance table ──────────────────────────────────────────────────────────
@@ -3959,9 +4719,9 @@ function _bgtVarTable(hostId, rows) {
 
   const dirCls = d => d==='favourable' ? 'num-fav' : d==='on_budget' ? 'num-on' : 'num-adv';
   const badgeCls = d => d==='favourable' ? 'bgt-badge bgt-fav' : d==='on_budget' ? 'bgt-badge bgt-on' : 'bgt-badge bgt-adv';
-  const badgeTxt = d => d==='favourable' ? '▲ Favourable' : d==='on_budget' ? '● On Budget' : '▼ Adverse';
-  const scopeTag = s => s==='field' ? '<span class="bgt-scope-field">field</span>' : s==='target' ? '<span class="bgt-scope-target">target</span>' : '';
-  const piTag = p => p ? `<span class="bgt-iwa">[${p}]</span>` : '';
+  const badgeTxt = d => d==='favourable' ? '▲ Better than budget' : d==='on_budget' ? '● Close to budget' : '▼ Below budget';
+  const scopeTag = s => s==='target' ? '<span class="bgt-scope-target">target</span>' : '';
+  const piTag = _ => '';
 
   let html = `<div class="bgt-var-wrap"><table class="bgt-var-table">
     <thead><tr>
@@ -3969,7 +4729,7 @@ function _bgtVarTable(hostId, rows) {
       <th>Actual (YTD)</th>
       <th>Budget (YTD)</th>
       <th>Variance</th>
-      <th>Var %</th>
+      <th>% gap</th>
       <th style="text-align:center;min-width:110px">Status</th>
     </tr></thead><tbody>`;
 
@@ -3989,14 +4749,14 @@ function _bgtVarTable(hostId, rows) {
   });
 
   html += `</tbody></table></div>`;
-  host.innerHTML = html;
+  host.innerHTML = DOMPurify.sanitize(html);
 }
 
 // ── Revenue decomposition waterfall ─────────────────────────────────────────
 function _bgtDecomp(d) {
   const dec = d.decomposition, ek = d.efficiency_kpis;
   const sub = document.getElementById('bgt-decomp-subtitle');
-  if (sub) sub.textContent = 'Budget benchmark versus the biggest revenue and NRW pressure points. Longer bars indicate the strongest drivers.';
+  if (sub) sub.textContent = 'This chart compares budget with actual revenue and highlights the biggest reasons for the gap. Longer bars mean a bigger effect.';
   const title = document.getElementById('bgt-decomp-title');
   if (title) title.textContent = 'Budget Pressure Snapshot (MWK, YTD)';
 
@@ -4004,11 +4764,11 @@ function _bgtDecomp(d) {
   const act = d.revenue.find(r => r.metric.includes('Water Sales'))?.actual || 0;
 
   const items = [
-    { label:'Budget Sales (YTD)', value:bud, kind:'budget' },
-    { label:'Actual Sales', value:act, kind:'actual' },
-    { label:'Volume Shortfall', value:Math.abs(dec.revenue_volume_effect_mk), kind:'pressure' },
-    { label:'Extra NRW (unbilled)', value:Math.abs(dec.nrw_revenue_impact_mk), kind:'pressure' },
-    { label:'NRW Financial Cost', value:Math.abs(ek.nrw_financial_cost_mk), kind:'cost' },
+    { label:'Budget revenue (YTD)', value:bud, kind:'budget' },
+    { label:'Actual revenue', value:act, kind:'actual' },
+    { label:'Lost revenue from lower volume', value:Math.abs(dec.revenue_volume_effect_mk), kind:'pressure' },
+    { label:'Extra water loss not billed', value:Math.abs(dec.nrw_revenue_impact_mk), kind:'pressure' },
+    { label:'Estimated cost of water loss', value:Math.abs(ek.nrw_financial_cost_mk), kind:'cost' },
   ];
 
   const palette = {
@@ -4065,9 +4825,11 @@ function _bgtRevTrend(m) {
       {label:'Monthly Budget', data:m.budget_sales,    borderColor:'#D97706', borderDash:[6,3], borderWidth:1.5, pointRadius:0, fill:false},
       {label:'Cash Collected', data:m.actual_collected,borderColor:'#16a34a', borderDash:[3,2], borderWidth:1.5, pointRadius:3, fill:false, tension:0.3},
     ]},
-    options:{...baseOpts(v=>'MK '+(v/1e9).toFixed(2)+'B'),
-      plugins:{...tooltipPlugin.plugins, legend:{display:true,position:'top',labels:{font:{size:10},color:LC,usePointStyle:true}}},
-      scales:baseScales(v=>'MK '+(v/1e9).toFixed(2)+'B')},
+    options:{
+      ...baseOpts(v=>'MK '+(v/1e9).toFixed(1)+'B'),
+      plugins:{...legendOptsCompact()},
+      scales:{...baseScales(v=>'MK '+(v/1e9).toFixed(1)+'B'),y:{...baseScales().y,ticks:{color:LC,font:{size:9},callback:v=>'MK '+(v/1e9).toFixed(1)+'B'},grace:'12%'}},
+    },
   });
 }
 
@@ -4077,10 +4839,10 @@ function _bgtBpiZone(zones) {
   const bpis = zones.map(z => z.budget_sales_ytd > 0 ? +(z.actual_sales/z.budget_sales_ytd).toFixed(3) : null);
   mkChart('ch-bgt-bpi-zone', {
     type:'bar', data:{labels:lbls, datasets:[
-      {label:'BPI', data:bpis,
+      {label:'Budget score', data:bpis,
        backgroundColor:bpis.map(v => v==null?'#9ca3af':v>=1?'rgba(22,163,74,0.78)':'rgba(220,38,38,0.75)'),
        borderWidth:0, borderRadius:5},
-      {label:'Target 1.0', data:lbls.map(()=>1), type:'line', borderColor:'#D97706', borderDash:[6,3], borderWidth:1.5, pointRadius:0, fill:false},
+      {label:'On-budget line (1.0)', data:lbls.map(()=>1), type:'line', borderColor:'#D97706', borderDash:[6,3], borderWidth:1.5, pointRadius:0, fill:false},
     ]},
     options:{
       plugins:{legend:{display:false},...tooltipPlugin.plugins},
@@ -4094,18 +4856,19 @@ function _bgtBpiZone(zones) {
 
 // ── Volume trend ─────────────────────────────────────────────────────────────
 function _bgtVolTrend(m) {
+  const maxVol=Math.max(...m.actual_vol_prod.filter(v=>v!=null), ...m.budget_vol_prod.filter(v=>v!=null), 0);
   mkChart('ch-bgt-vol-trend', {
     type:'bar', data:{labels:m.months, datasets:[
-      {label:'Actual',data:m.actual_vol_prod,
+      {label:'Actual Produced',data:m.actual_vol_prod,
        backgroundColor:m.actual_vol_prod.map((v,i)=>v==null?'transparent':v>=(m.budget_vol_prod[i]||0)?'rgba(22,163,74,0.75)':'rgba(220,38,38,0.72)'),
-       borderWidth:0, borderRadius:3},
+       borderWidth:0, borderRadius:3, maxBarThickness:30},
       {label:'Monthly Budget',data:m.budget_vol_prod,type:'line',borderColor:'#D97706',borderDash:[6,3],borderWidth:1.5,pointRadius:0,fill:false},
     ]},
     options:{
-      plugins:{...tooltipPlugin.plugins,legend:{display:true,position:'top',labels:{font:{size:10},color:LC,usePointStyle:true}}},
+      plugins:{...legendOptsSharp()},
       scales:{
         x:{ticks:{color:LC,font:{size:9}},grid:{display:false}},
-        y:{ticks:{color:LC,font:{size:9},callback:v=>(v/1e6).toFixed(1)+'M'},grid:{color:'rgba(0,0,0,0.05)'}},
+        y:{ticks:{color:LC,font:{size:9},callback:v=>(v/1e6).toFixed(1)+'M'},grid:{color:'rgba(0,0,0,0.05)'},suggestedMax:maxVol*1.12},
       },
     },
   });
@@ -4119,16 +4882,17 @@ function _bgtConnTrend(m) {
     if(a!=null) ca+=a; cb+=b;
     cumA.push(a!=null?ca:null); cumB.push(cb);
   });
+  const maxConn=Math.max(...cumA.filter(v=>v!=null), ...cumB.filter(v=>v!=null), 0);
   mkChart('ch-bgt-conn-trend', {
     type:'line', data:{labels:m.months, datasets:[
-      {label:'Actual (cumulative)',data:cumA,borderColor:'#16a34a',backgroundColor:'rgba(22,163,74,0.08)',tension:0.2,pointRadius:4,borderWidth:2,fill:true},
-      {label:'Budget (cumulative)',data:cumB,borderColor:'#D97706',borderDash:[6,3],borderWidth:1.5,pointRadius:0,fill:false},
+      {label:'Actual (cumulative)',data:cumA,borderColor:'#16a34a',backgroundColor:'rgba(22,163,74,0.08)',tension:0.2,pointRadius:4,pointHoverRadius:5,borderWidth:2.5,fill:true},
+      {label:'Budget (cumulative)',data:cumB,borderColor:'#D97706',borderDash:[6,3],borderWidth:1.75,pointRadius:0,fill:false},
     ]},
     options:{
-      plugins:{...tooltipPlugin.plugins,legend:{display:true,position:'top',labels:{font:{size:10},color:LC,usePointStyle:true}}},
+      plugins:{...legendOptsSharp()},
       scales:{
         x:{ticks:{color:LC,font:{size:9}},grid:{display:false}},
-        y:{ticks:{color:LC,font:{size:9},callback:v=>v.toLocaleString()},grid:{color:'rgba(0,0,0,0.05)'}},
+        y:{ticks:{color:LC,font:{size:9},callback:v=>v.toLocaleString()},grid:{color:'rgba(0,0,0,0.05)'},suggestedMax:maxConn*1.12},
       },
     },
   });
@@ -4139,12 +4903,12 @@ function _bgtNrwSpc(d) {
   const m=d.monthly, s=d.spc_limits.nrw_pct;
   const sub = document.getElementById('bgt-spc-subtitle');
   if (sub) sub.textContent =
-    `ISO 7870-2 Shewhart X-bar. Mean = ${s.mean}%, 2σ UCL = ${s.ucl2}%, 3σ UCL = ${s.ucl3}%. `+
-    `${m.actual_nrw_pct.filter(v=>v!=null&&v>s.ucl2).length} month(s) above 2σ warning limit.`;
+    `Average for the period = ${s.mean}%. Amber line = early warning at ${s.ucl2}%. Red line = action level at ${s.ucl3}%. `+
+    `${m.actual_nrw_pct.filter(v=>v!=null&&v>s.ucl2).length} month(s) are above the warning line.`;
 
   mkChart('ch-bgt-nrw-spc', {
     type:'line', data:{labels:m.months, datasets:[
-      {label:'Actual NRW %', data:m.actual_nrw_pct,
+      {label:'Actual water loss %', data:m.actual_nrw_pct,
        borderColor:'#dc2626', backgroundColor:'rgba(220,38,38,0.06)',
        tension:0.25, pointRadius:5, borderWidth:2.5, fill:true,
        pointBackgroundColor:m.actual_nrw_pct.map(v=>v==null?'transparent':v>s.ucl3?'#dc2626':v>s.ucl2?'#d97706':'#16a34a'),
@@ -4157,7 +4921,7 @@ function _bgtNrwSpc(d) {
        borderColor:'rgba(100,116,139,0.6)',borderDash:[3,3],borderWidth:1,pointRadius:0,fill:false},
       {label:`2σ LCL (${s.lcl2}%)`, data:m.spc_nrw_lcl2,
        borderColor:'rgba(22,163,74,0.45)',borderDash:[6,3],borderWidth:1,pointRadius:0,fill:false},
-      {label:'Budget Target (27%)', data:m.budget_nrw_pct,
+      {label:'Board target (27%)', data:m.budget_nrw_pct,
        borderColor:'#1A8FD1',borderDash:[8,4],borderWidth:2,pointRadius:0,fill:false},
     ]},
     options:{
@@ -4173,7 +4937,7 @@ function _bgtNrwZone(zones) {
   const nrws = zones.map(z=>z.actual_nrw_pct);
   mkChart('ch-bgt-nrw-zone', {
     type:'bar', data:{labels:zones.map(z=>z.zone), datasets:[
-      {label:'Actual NRW %', data:nrws,
+      {label:'Actual water loss %', data:nrws,
        backgroundColor:nrws.map(v=>v>30?'rgba(220,38,38,0.78)':v>27?'rgba(217,119,6,0.78)':'rgba(22,163,74,0.75)'),
        borderWidth:0, borderRadius:5},
       {label:'Target 27%', data:zones.map(()=>27),type:'line',borderColor:'#1A8FD1',borderDash:[6,3],borderWidth:1.5,pointRadius:0,fill:false},
@@ -4237,13 +5001,13 @@ function _bgtNrwCards(d) {
     {label:'Revenue Recovery Potential',value:'MK '+((d.spc_limits.nrw_pct.mean-27)/100*d.budget_ref.vol_produced_target*d.meta.budget_factor*d.meta.tariff_mk_m3/1e6).toFixed(0)+'M',
      sub:'If NRW reduced to 27% target (annualised estimate)', color:'#16a34a'},
   ];
-  host.innerHTML = items.map(it =>
+  host.innerHTML = DOMPurify.sanitize(items.map(it =>
     `<div class="bgt-impact-card" style="border-left-color:${it.color}">
       <div class="ic-label">${it.label}</div>
       <div class="ic-value" style="color:${it.color}">${it.value}</div>
       <div class="ic-sub">${it.sub}</div>
     </div>`
-  ).join('');
+  ).join(''));
 }
 
 // ── Chemical trend ───────────────────────────────────────────────────────────
@@ -4337,13 +5101,13 @@ function _bgtZoneTable(zones) {
       <th>Actual Sales</th>
       <th>Budget YTD</th>
       <th>Sales Variance</th>
-      <th>BPI</th>
-      <th>NRW %</th>
-      <th>NRW Var</th>
+      <th>Budget score</th>
+      <th>Water loss %</th>
+      <th>Gap to target</th>
       <th>Vol Prod (m³)</th>
-      <th>New Conn</th>
-      <th>Coll Rate</th>
-      <th>Budget Share</th>
+      <th>New connections</th>
+      <th>Collection rate</th>
+      <th>Share of budget</th>
     </tr></thead><tbody>`;
 
   zones.forEach(z => {
@@ -4364,7 +5128,7 @@ function _bgtZoneTable(zones) {
     </tr>`;
   });
   h += `</tbody></table>`;
-  host.innerHTML = h;
+  host.innerHTML = DOMPurify.sanitize(h);
 }
 
 // ── Radar chart ──────────────────────────────────────────────────────────────
@@ -4374,11 +5138,11 @@ function _bgtRadar(zones) {
     return inv ? 100-n : n;
   };
   const metrics = [
-    { key:'nrw', label:'NRW Performance', color:'#4C8DAE', score:z => norm(z.actual_nrw_pct, 45, 10, true) },
+    { key:'nrw', label:'Water loss control', color:'#4C8DAE', score:z => norm(z.actual_nrw_pct, 45, 10, true) },
     { key:'collection', label:'Collection Rate', color:'#5B7CFA', score:z => Math.min(100, Math.max(0, z.collection_rate || 0)) },
-    { key:'revenue', label:'Revenue vs Budget', color:'#8B6FCF', score:z => Math.min(100, Math.max(0, (z.budget_sales_ytd>0?(z.actual_sales/z.budget_sales_ytd):0)*100)) },
-    { key:'volume', label:'Volume vs Budget', color:'#C98A3D', score:z => Math.min(100, Math.max(0, (z.budget_vol_ytd>0?(z.actual_vol_produced/z.budget_vol_ytd):0)*100)) },
-    { key:'connections', label:'Connections vs Budget', color:'#C96B7A', score:z => Math.min(100, Math.max(0, (z.budget_connections_ytd>0?(z.actual_connections/z.budget_connections_ytd):0)*100)) },
+    { key:'revenue', label:'Revenue against budget', color:'#8B6FCF', score:z => Math.min(100, Math.max(0, (z.budget_sales_ytd>0?(z.actual_sales/z.budget_sales_ytd):0)*100)) },
+    { key:'volume', label:'Production against budget', color:'#C98A3D', score:z => Math.min(100, Math.max(0, (z.budget_vol_ytd>0?(z.actual_vol_produced/z.budget_vol_ytd):0)*100)) },
+    { key:'connections', label:'Connections against budget', color:'#C96B7A', score:z => Math.min(100, Math.max(0, (z.budget_connections_ytd>0?(z.actual_connections/z.budget_connections_ytd):0)*100)) },
   ];
 
   const zoneLabels = zones.map(z => z.zone);
@@ -4491,7 +5255,7 @@ function _bgtZoneVar(zones) {
               const bpi = budget[idx] > 0 ? actual[idx] / budget[idx] : 0;
               return [
                 `Variance: ${variance >= 0 ? '+' : '-'}${fmtCompactMwk(Math.abs(variance))}`,
-                `BPI: ${budget[idx] > 0 ? bpi.toFixed(2) : '—'}`,
+                `Budget score: ${budget[idx] > 0 ? bpi.toFixed(2) : '—'}`,
               ];
             }
           }
@@ -4524,9 +5288,9 @@ function _bgtSchemeTable(schemes) {
       <th>Zone</th>
       <th>Scheme</th>
       <th style="text-align:center;min-width:72px">Score</th>
-      <th>NRW %</th>
-      <th>NRW Var</th>
-      <th>Coll %</th>
+      <th>Water loss %</th>
+      <th>Gap to target</th>
+      <th>Collection %</th>
       <th>Revenue</th>
       <th>MK/m³</th>
       <th>Vol (m³)</th>
@@ -4566,7 +5330,7 @@ function _bgtSchemeTable(schemes) {
     </tr>`;
   });
   h += `</tbody></table>`;
-  host.innerHTML = h;
+  host.innerHTML = DOMPurify.sanitize(h);
 }
 
 // ── IWA/IBNET efficiency KPI cards ───────────────────────────────────────────
@@ -4577,15 +5341,15 @@ function _bgtEffKpis(ek, br) {
      cls:ek.operating_ratio<1?'kc-up':'kc-dn', icon:ICON.gauge,
      badgeLabel:ek.operating_ratio<0.9?'GOOD':ek.operating_ratio<1?'WATCH':'ADV',
      bm:'World Bank target <1.0'},
-    {l:'OpEx per m³ Produced [Op39]', v:'MK '+ek.opex_per_m3_produced,
+    {l:'Operating cost per m³ produced', v:'MK '+ek.opex_per_m3_produced,
      s:'Field total cost per m³ produced',
      cls:'kc-nt', icon:ICON.chart, badgeLabel:'RATE',
      bm:'Lower = more efficient field operations'},
-    {l:'Revenue per Connection [Cu8]', v:'MK '+F.num(ek.revenue_per_connection),
+    {l:'Revenue per connection', v:'MK '+F.num(ek.revenue_per_connection),
      s:'YTD water sales ÷ active customers',
      cls:'kc-up', icon:ICON.revenue, badgeLabel:'RATE',
      bm:`~MK ${F.num(ek.revenue_per_connection*12/1e3)}K annualised per customer`},
-    {l:'Chemical Cost per m³ [Op34]', v:'MK '+ek.chemical_cost_per_m3,
+    {l:'Chemical cost per m³', v:'MK '+ek.chemical_cost_per_m3,
      s:'Field chemical spend per m³ produced',
      cls:ek.chemical_cost_per_m3>100?'kc-dn':'kc-nt', icon:ICON.gauge,
      badgeLabel:ek.chemical_cost_per_m3>100?'HIGH':'OK',
@@ -4594,17 +5358,17 @@ function _bgtEffKpis(ek, br) {
      s:'Field electricity per m³ produced',
      cls:'kc-nt', icon:ICON.chart, badgeLabel:'RATE',
      bm:`Budget estimate: ~MK ${Math.round(br.electricity_budget/br.vol_produced_target)}/m³`},
-    {l:'Collection Rate [Fi9]', v:ek.collection_rate_pct+'%',
+    {l:'Collection rate', v:ek.collection_rate_pct+'%',
      s:'Cash collected ÷ amount billed × 100',
      cls:ek.collection_rate_pct>=90?'kc-up':ek.collection_rate_pct>=80?'kc-nt':'kc-dn',
      icon:ICON.revenue,
      badgeLabel:ek.collection_rate_pct>=90?'GOOD':ek.collection_rate_pct>=80?'WATCH':'ADV',
      bm:'IBNET benchmark >90%'},
-    {l:'NRW Financial Cost [Wn1]', v:'MK '+(ek.nrw_financial_cost_mk/1e9).toFixed(3)+'B',
+    {l:'Estimated cost of water loss', v:'MK '+(ek.nrw_financial_cost_mk/1e9).toFixed(3)+'B',
      s:'Total NRW volume × MK 1,450/m³ tariff',
      cls:'kc-dn', icon:ICON.gauge, badgeLabel:'COST',
      bm:`Budget NRW cost: MK ${(ek.budget_nrw_cost_mk/1e9).toFixed(3)}B`},
-    {l:'Volume BPI', v:ek.bpi_volume!=null?ek.bpi_volume.toFixed(3):'—',
+    {l:'Production budget score', v:ek.bpi_volume!=null?ek.bpi_volume.toFixed(3):'—',
      s:'Actual volume ÷ budget volume',
      cls:ek.bpi_volume>=1?'kc-up':ek.bpi_volume>=0.9?'kc-nt':'kc-dn',
      icon:ICON.chart,
@@ -4672,8 +5436,8 @@ function _bgtZoneLeague(zones) {
       <th>NRW %</th>
       <th>NRW Var</th>
       <th>Coll Rate</th>
-      <th>Rev BPI</th>
-      <th>Vol BPI</th>
+      <th>Revenue budget score</th>
+      <th>Production budget score</th>
       <th>Conn Var</th>
       <th>Chem/m³</th>
       <th>Pwr/m³</th>
@@ -4729,5 +5493,351 @@ function _bgtZoneLeague(zones) {
   });
 
   h += `</tbody></table>`;
-  host.innerHTML = h;
+  host.innerHTML = DOMPurify.sanitize(h);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   REPORT CENTRE
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+const REPORT_TEMPLATES = {
+  'board-pack':            { title:'Board Pack',              endpoint:'/api/reports/board-pack',        landscape:true,  ai:true  },
+  'management-dashboard':  { title:'Management Dashboard',    endpoint:'/api/reports/operations',        landscape:true,  ai:true  },
+  'annual-performance':    { title:'Annual Performance',      endpoint:'/api/reports/zone-comparison',   landscape:true,  ai:false },
+  'water-production':      { title:'Water Production & NRW',  endpoint:'/api/reports/operations',        landscape:true,  ai:false },
+  'infrastructure-status': { title:'Infrastructure Status',   endpoint:'/api/reports/infrastructure',    landscape:true,  ai:false },
+  'service-delivery':      { title:'Service Delivery',        endpoint:'/api/reports/operations',        landscape:false, ai:false },
+  'revenue-collections':   { title:'Revenue & Collections',   endpoint:'/api/reports/financial',         landscape:true,  ai:false },
+  'budget-performance':    { title:'Budget Performance',      endpoint:'/api/reports/financial',         landscape:true,  ai:false },
+  'cost-analysis':         { title:'Operating Cost Analysis', endpoint:'/api/reports/financial',         landscape:false, ai:false },
+  'workforce-fleet':       { title:'Workforce & Fleet',       endpoint:'/api/reports/hra',               landscape:false, ai:false },
+  'staff-productivity':    { title:'Staff Productivity',      endpoint:'/api/reports/hra',               landscape:false, ai:false },
+  'network-infrastructure':{ title:'Network Infrastructure',  endpoint:'/api/reports/infrastructure',    landscape:true,  ai:false },
+  'nrw-deep-dive':         { title:'NRW Deep Dive',           endpoint:'/api/reports/nrw-analysis',      landscape:true,  ai:false },
+  'zone-comparison':       { title:'Zone Comparison',         endpoint:'/api/reports/zone-comparison',   landscape:true,  ai:false },
+  'scheme-performance':    { title:'Scheme Performance',      endpoint:'/api/reports/scheme-performance',landscape:true,  ai:false },
+  'monthly-digest':        { title:'Monthly Digest',          endpoint:'/api/reports/board-pack',        landscape:false, ai:false },
+};
+
+let _rcCurrentTemplate = null;
+let _rcCurrentData = null;
+
+function loadReportCentre() { updatePageMeta(); }
+
+function switchReportCategory(cat) {
+  document.querySelectorAll('.rc-tab').forEach(t => t.classList.toggle('active', t.dataset.cat === cat));
+  document.querySelectorAll('.rc-cards').forEach(c => c.classList.toggle('rc-cards-hidden', c.id !== 'rc-cards-' + cat));
+}
+
+async function generateReport(templateId) {
+  const tpl = REPORT_TEMPLATES[templateId]; if(!tpl) return;
+  _rcCurrentTemplate = templateId;
+  const overlay = document.getElementById('report-output-overlay');
+  const content = document.getElementById('report-output-content');
+  const roTitle = document.getElementById('ro-title');
+  const printBtn = document.getElementById('ro-print-btn');
+  const exportBtn = document.getElementById('ro-export-btn');
+  roTitle.textContent = tpl.title;
+  printBtn.style.display = 'none'; exportBtn.style.display = 'none';
+  content.innerHTML = DOMPurify.sanitize(`<div class="ro-spinner"><div class="ro-spinner-ring"></div><div class="ro-spinner-label">Generating ${tpl.title}…</div></div>`);
+  overlay.classList.add('open');
+  document.body.classList.add('ro-open');
+  try {
+    const token = getToken();
+    const year = dbState.year || new Date().getFullYear();
+    const zones = filterState.zones.join(',');
+    const months = filterState.months.join(',');
+    let url = `${API}${tpl.endpoint}?year=${year}`;
+    if(zones) url += `&zones=${encodeURIComponent(zones)}`;
+    if(months) url += `&months=${encodeURIComponent(months)}`;
+    const data = await fetchJsonSafe(url, {token, label:tpl.endpoint});
+    let narrative = null;
+    if(tpl.ai){
+      try{ narrative = await fetchJsonSafe(`${API}/api/insights/summary?year=${year}`,{token,fallback:null,label:'insights/summary'}); }catch{}
+    }
+    const scope = [`FY ${year-1}/${String(year).slice(-2)}`, zones||'All Zones', months ? months.split(',').length+' months' : 'All Months'].join(' · ');
+    const generated = new Date().toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'});
+    content.innerHTML = _rcRender(templateId, data, narrative, {year, zones, months, scope, generated});
+    printBtn.style.display = ''; exportBtn.style.display = '';
+  } catch(e) {
+    content.innerHTML = DOMPurify.sanitize(`<div class="ro-error"><strong>Failed to generate report</strong><br><span style="font-size:12px;color:var(--ds-text-muted)">${e.message}</span></div>`);
+  }
+}
+
+function closeReportOutput() {
+  document.getElementById('report-output-overlay').classList.remove('open');
+  document.body.classList.remove('ro-open');
+}
+
+function printGeneratedReport() {
+  const tpl = REPORT_TEMPLATES[_rcCurrentTemplate]||{};
+  let s = document.getElementById('print-page-size');
+  if(!s){s=document.createElement('style');s.id='print-page-size';document.head.appendChild(s);}
+  s.textContent = tpl.landscape ? `@page{size:297mm 210mm;margin:5mm 6mm}` : `@page{size:210mm 297mm;margin:8mm 10mm}`;
+  document.body.classList.add('printing-report','printing-report-overlay');
+  window.print();
+  setTimeout(()=>document.body.classList.remove('printing-report','printing-report-overlay'),800);
+}
+
+function exportReportExcel() {
+  const content = document.getElementById('report-output-content'); if(!content) return;
+  const tables = content.querySelectorAll('table');
+  if(!tables.length){alert('No table data in this report.');return;}
+  const wb = XLSX.utils.book_new();
+  tables.forEach((tbl,i)=>{
+    const ws = XLSX.utils.table_to_sheet(tbl,{raw:false});
+    XLSX.utils.book_append_sheet(wb, ws, (tbl.dataset.sheet||`Sheet${i+1}`).slice(0,31));
+  });
+  const tpl = REPORT_TEMPLATES[_rcCurrentTemplate];
+  XLSX.writeFile(wb, `${tpl?.title||'Report'}_FY${dbState.year}.xlsx`);
+}
+
+/* ── Helpers ─────────────────────────────────────────────────────────────── */
+function _rcFmt(n,d=0){if(n==null||isNaN(n))return'—';return Number(n).toLocaleString('en-GB',{minimumFractionDigits:d,maximumFractionDigits:d});}
+function _rcMK(n){if(n==null||isNaN(n))return'—';const a=Math.abs(n);if(a>=1e9)return'MK '+(n/1e9).toFixed(2)+'B';if(a>=1e6)return'MK '+(n/1e6).toFixed(1)+'M';if(a>=1e3)return'MK '+(n/1e3).toFixed(0)+'K';return'MK '+_rcFmt(n);}
+function _rcPct(n,d=1){return n==null?'—':Number(n).toFixed(d)+'%';}
+function _rcTone(v,good,warn,rev=false){if(v==null)return'';if(rev){if(v<=good)return'rc-good';if(v<=warn)return'rc-warn';return'rc-bad';}if(v>=good)return'rc-good';if(v>=warn)return'rc-warn';return'rc-bad';}
+function _rcHeader(title,scope,generated){
+  return `<div class="rc-rpt-header">
+    <div class="rc-rpt-org">Southern Region Water Board · Malawi</div>
+    <div class="rc-rpt-title">${title}</div>
+    <div class="rc-rpt-meta">${scope} &nbsp;·&nbsp; Generated ${generated}</div>
+    <div class="rc-rpt-rule"></div>
+  </div>`;
+}
+function _rcSectionHdr(title){return `<div class="rc-section-hdr">${title}</div>`;}
+function _rcKpiRow(cards){return `<div class="rc-kpi-row">${cards.map(c=>`<div class="rc-kpi-card ${c.tone||''}"><div class="rc-kpi-val">${c.val}</div><div class="rc-kpi-lbl">${c.lbl}</div>${c.sub?`<div class="rc-kpi-sub">${c.sub}</div>`:''}</div>`).join('')}</div>`;}
+function _rcTable(headers,rows,sheet){
+  return `<div class="rc-tbl-wrap"><table class="rc-tbl"${sheet?` data-sheet="${sheet}"`:''}><thead><tr>${headers.map(h=>`<th>${h}</th>`).join('')}</tr></thead><tbody>${rows.map(r=>`<tr>${r.map((c,i)=>`<td${i===0?' class="rc-row-label"':''}>${c??'—'}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
+}
+function _rcNarrative(n){
+  if(!n)return'';
+  const items=[n.financial_performance,n.operational_efficiency,n.customer_service,n.infrastructure_reliability].filter(Boolean);
+  if(!items.length)return'';
+  return `<div class="rc-narrative"><div class="rc-narrative-title">AI Performance Narrative</div><div class="rc-narrative-body">${items.map(s=>`<p>${s}</p>`).join('')}</div></div>`;
+}
+
+/* ── Master renderer ─────────────────────────────────────────────────────── */
+function _rcRender(templateId, data, narrative, {scope,generated}={}){
+  const hdr = _rcHeader(REPORT_TEMPLATES[templateId]?.title||'Report', scope, generated);
+  switch(templateId){
+    case 'board-pack': case 'management-dashboard': case 'monthly-digest':
+      return hdr+_rcBoardPack(data,narrative);
+    case 'annual-performance': case 'zone-comparison':
+      return hdr+_rcZoneComparison(data);
+    case 'water-production': case 'service-delivery':
+      return hdr+_rcOperations(data);
+    case 'infrastructure-status': case 'network-infrastructure':
+      return hdr+_rcInfrastructure(data);
+    case 'revenue-collections': case 'budget-performance': case 'cost-analysis':
+      return hdr+_rcFinancial(data);
+    case 'workforce-fleet': case 'staff-productivity':
+      return hdr+_rcHRA(data);
+    case 'nrw-deep-dive':
+      return hdr+_rcNRWAnalysis(data);
+    case 'scheme-performance':
+      return hdr+_rcSchemePerf(data);
+    default:
+      return hdr+`<p style="padding:12px;color:var(--ds-text-muted)">Report data loaded successfully.</p>`;
+  }
+}
+
+/* ── Board Pack ─────────────────────────────────────────────────────────── */
+function _rcBoardPack(d,narrative){
+  const f=d.financial||{},op=d.operational||{},z=d.zone_risks||[];
+  let h='';
+  h+=_rcSectionHdr('Key Performance Indicators');
+  h+=_rcKpiRow([
+    {val:_rcMK(f.total_revenue),      lbl:'Total Revenue',   sub:'YTD'},
+    {val:_rcPct(f.collection_rate),   lbl:'Collection Rate', sub:'IBNET >90%', tone:_rcTone(f.collection_rate,90,75)},
+    {val:_rcPct(op.avg_nrw_pct),      lbl:'NRW Rate',        sub:'SRWB <27%',  tone:_rcTone(op.avg_nrw_pct,27,35,true)},
+    {val:_rcFmt(f.op_ratio,2),        lbl:'Operating Ratio', sub:'W.Bank <1.0',tone:_rcTone(f.op_ratio,1.0,1.2,true)},
+    {val:_rcFmt(f.dso),               lbl:'DSO (days)',       sub:'IBNET <90d', tone:_rcTone(f.dso,90,120,true)},
+    {val:_rcFmt((op.total_production||0)/1e6,2)+'M m³',lbl:'Vol Produced',sub:'YTD'},
+  ]);
+  h+=_rcSectionHdr('Financial Snapshot');
+  h+=_rcTable(['Indicator','Value','Benchmark'],[
+    ['Total Revenue (YTD)',       _rcMK(f.total_revenue),    '—'],
+    ['Total Cash Collected',      _rcMK(f.total_collected),  '—'],
+    ['Collection Rate',           _rcPct(f.collection_rate), '>90% (IBNET)'],
+    ['Total Operating Costs',     _rcMK(f.total_op_cost),    '—'],
+    ['Operating Ratio',           _rcFmt(f.op_ratio,2),      '<1.0 (World Bank)'],
+    ['Total Debtors Outstanding', _rcMK(f.total_debtors),    '—'],
+    ['Days Sales Outstanding',    _rcFmt(f.dso)+' days',     '<90d (IBNET)'],
+  ],'Financial Snapshot');
+  if(z.length){
+    h+=_rcSectionHdr('Zone Risk Ranking');
+    h+=_rcTable(['Zone','NRW %','Collection Rate','DSO (days)','Risk Score'],
+      z.map(r=>[r.zone,_rcPct(r.nrw_pct),_rcPct(r.collection_rate),_rcFmt(r.dso),_rcFmt(r.risk_score,1)]),'Zone Risks');
+  }
+  const yoy=d.yoy_comparison||{};
+  if(Object.keys(yoy).length){
+    h+=_rcSectionHdr('Year-on-Year Comparison');
+    h+=_rcTable(['Metric','Prior Year','Current Year','Change'],
+      Object.entries(yoy).map(([k,v])=>[
+        k.replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase()),
+        v.prior!=null?(k.includes('revenue')||k.includes('cost')||k.includes('collected')?_rcMK(v.prior):(k.includes('pct')||k.includes('rate')?_rcPct(v.prior):_rcFmt(v.prior,1))):'—',
+        v.current!=null?(k.includes('revenue')||k.includes('cost')||k.includes('collected')?_rcMK(v.current):(k.includes('pct')||k.includes('rate')?_rcPct(v.current):_rcFmt(v.current,1))):'—',
+        v.change_pct!=null?(v.change_pct>=0?`▲ +${v.change_pct.toFixed(1)}%`:`▼ ${v.change_pct.toFixed(1)}%`):'—',
+      ]),'YoY Comparison');
+  }
+  const trend=d.nrw_trend||[];
+  if(trend.length){
+    h+=_rcSectionHdr('NRW Rate — 12-Month Trend');
+    h+=_rcTable(['Month','NRW %'],trend.map(t=>[t.month,_rcPct(t.value)]),'NRW Trend');
+  }
+  h+=_rcNarrative(narrative);
+  return h;
+}
+
+/* ── Zone Comparison ─────────────────────────────────────────────────────── */
+function _rcZoneComparison(d){
+  const zones=d.zones||[];
+  let h=_rcSectionHdr('Cross-Zone KPI Comparison');
+  h+=_rcTable(['Zone','Vol Produced (m³)','NRW %','Collection Rate','Active Customers','Breakdowns','DSO (days)','Op Cost/m³'],
+    zones.map(z=>[z.zone,_rcFmt(z.vol_produced),_rcPct(z.nrw_pct),_rcPct(z.collection_rate),_rcFmt(z.active_customers),_rcFmt(z.breakdowns),_rcFmt(z.dso),_rcFmt(z.op_cost_per_m3,2)]),'Zone Comparison');
+  return h;
+}
+
+/* ── Operations ──────────────────────────────────────────────────────────── */
+function _rcOperations(d){
+  const prod=d.production_summary||{};
+  let h=_rcSectionHdr('Production Overview');
+  h+=_rcKpiRow([
+    {val:_rcFmt((prod.total_vol_produced||0)/1e6,2)+'M m³',lbl:'Total Produced'},
+    {val:_rcFmt((prod.total_revenue_water||0)/1e6,2)+'M m³',lbl:'Revenue Water'},
+    {val:_rcPct(prod.avg_nrw_pct),lbl:'Avg NRW Rate',tone:_rcTone(prod.avg_nrw_pct,27,35,true)},
+    {val:_rcFmt(prod.avg_energy_intensity,2)+' kWh/m³',lbl:'Energy Intensity',tone:_rcTone(prod.avg_energy_intensity,0.5,0.7,true)},
+  ]);
+  const bz=d.nrw_by_zone||[];
+  if(bz.length){
+    h+=_rcSectionHdr('NRW by Zone');
+    h+=_rcTable(['Zone','Vol Produced (m³)','NRW Volume (m³)','NRW %','vs Target'],
+      bz.map(z=>[z.zone,_rcFmt(z.vol_produced),_rcFmt(z.nrw_vol),_rcPct(z.nrw_pct),z.nrw_pct>27?`▲ +${(z.nrw_pct-27).toFixed(1)}pp`:'✓ On target']),'NRW by Zone');
+  }
+  const trend=d.monthly_production_trend||[];
+  if(trend.length){
+    h+=_rcSectionHdr('Monthly Production Trend');
+    h+=_rcTable(['Month','Vol Produced (m³)'],trend.map(t=>[t.month,_rcFmt(t.value)]),'Production Trend');
+  }
+  const bd=d.breakdowns_by_zone||[];
+  if(bd.length){
+    h+=_rcSectionHdr('Breakdown Incidents by Zone');
+    h+=_rcTable(['Zone','Pipe Breaks','Pump Breaks','Pump Hours Lost','Supply Hours/Day'],
+      bd.map(z=>[z.zone,_rcFmt(z.pipe_breakdowns),_rcFmt(z.pump_breakdowns),_rcFmt(z.pump_hours_lost),_rcFmt(z.supply_hours,1)]),'Breakdowns');
+  }
+  return h;
+}
+
+/* ── Financial ───────────────────────────────────────────────────────────── */
+function _rcFinancial(d){
+  const s=d.summary||{};
+  let h=_rcSectionHdr('Financial Performance Summary');
+  h+=_rcKpiRow([
+    {val:_rcMK(s.total_revenue),    lbl:'Total Revenue'},
+    {val:_rcMK(s.total_collected),  lbl:'Cash Collected'},
+    {val:_rcPct(s.collection_rate), lbl:'Collection Rate',tone:_rcTone(s.collection_rate,90,75)},
+    {val:_rcMK(s.total_op_cost),    lbl:'Operating Costs'},
+    {val:_rcFmt(s.op_ratio,2),      lbl:'Operating Ratio',tone:_rcTone(s.op_ratio,1.0,1.2,true)},
+    {val:_rcFmt(s.dso)+'d',         lbl:'DSO',tone:_rcTone(s.dso,90,120,true)},
+  ]);
+  const dz=d.debtors_by_zone||[];
+  if(dz.length){
+    h+=_rcSectionHdr('Debtors by Zone');
+    h+=_rcTable(['Zone','Total Debtors','Private','Public','DSO (days)'],
+      dz.map(z=>[z.zone,_rcMK(z.total_debtors),_rcMK(z.private_debtors),_rcMK(z.public_debtors),_rcFmt(z.dso)]),'Debtors by Zone');
+  }
+  const trend=d.billed_vs_collected_trend||[];
+  if(trend.length){
+    h+=_rcSectionHdr('Billed vs Collected — Monthly');
+    h+=_rcTable(['Month','Total Billed','Cash Collected','Collection Rate'],
+      trend.map(t=>[t.month,_rcMK(t.billed),_rcMK(t.collected),_rcPct(t.collection_rate)]),'Billed vs Collected');
+  }
+  const bv=d.budget_variance||[];
+  if(bv.length){
+    h+=_rcSectionHdr('Budget Variance');
+    h+=_rcTable(['Category','Budget','Actual','Variance','%'],
+      bv.map(r=>[r.category,_rcMK(r.budget),_rcMK(r.actual),_rcMK(r.variance),_rcPct(r.variance_pct)]),'Budget Variance');
+  }
+  return h;
+}
+
+/* ── HRA ─────────────────────────────────────────────────────────────────── */
+function _rcHRA(d){
+  const s=d.summary||{};
+  let h=_rcSectionHdr('Workforce Overview');
+  h+=_rcKpiRow([
+    {val:_rcFmt(s.total_perm_staff),   lbl:'Permanent Staff'},
+    {val:_rcFmt(s.total_temp_staff),   lbl:'Temporary Staff'},
+    {val:_rcFmt(s.total_staff),        lbl:'Total Staff'},
+    {val:_rcFmt(s.avg_m3_per_staff,0), lbl:'m³ per Staff'},
+    {val:_rcMK(s.total_wages),         lbl:'Total Wages'},
+    {val:_rcFmt(s.total_fuel_litres,0)+' L',lbl:'Fuel Used'},
+  ]);
+  const bz=d.staff_by_zone||[];
+  if(bz.length){
+    h+=_rcSectionHdr('Staff & Productivity by Zone');
+    h+=_rcTable(['Zone','Perm','Temp','Total','m³/Staff','Wages','Fuel (L)','Distances (km)'],
+      bz.map(z=>[z.zone,_rcFmt(z.perm_staff),_rcFmt(z.temp_staff),_rcFmt(z.total_staff),_rcFmt(z.m3_per_staff,0),_rcMK(z.wages),_rcFmt(z.fuel_litres,0),_rcFmt(z.distances_km,0)]),'Staff by Zone');
+  }
+  return h;
+}
+
+/* ── Infrastructure ──────────────────────────────────────────────────────── */
+function _rcInfrastructure(d){
+  const s=d.summary||{};
+  let h=_rcSectionHdr('Infrastructure Summary');
+  h+=_rcKpiRow([
+    {val:_rcFmt(s.total_pipe_breakdowns),lbl:'Pipe Breakdowns',tone:_rcTone(s.total_pipe_breakdowns,50,100,true)},
+    {val:_rcFmt(s.total_pump_breakdowns),lbl:'Pump Breakdowns'},
+    {val:_rcFmt(s.total_pump_hours_lost),lbl:'Pump Hours Lost'},
+    {val:_rcFmt(s.total_stuck_meters),   lbl:'Stuck Meters'},
+    {val:_rcFmt(s.total_dev_lines),      lbl:'Pipe Extensions'},
+    {val:_rcFmt(s.avg_supply_hours,1)+'h',lbl:'Avg Supply Hrs/Day',tone:_rcTone(s.avg_supply_hours,20,16)},
+  ]);
+  const bz=d.breakdowns_by_zone||[];
+  if(bz.length){
+    h+=_rcSectionHdr('Breakdown Analysis by Zone');
+    h+=_rcTable(['Zone','Pipe Breaks','Pump Breaks','Hours Lost','Supply Hrs/Day','Power Fail Hrs'],
+      bz.map(z=>[z.zone,_rcFmt(z.pipe_breakdowns),_rcFmt(z.pump_breakdowns),_rcFmt(z.pump_hours_lost),_rcFmt(z.supply_hours,1),_rcFmt(z.power_fail_hours)]),'Breakdowns by Zone');
+  }
+  const ext=d.extensions_by_size||[];
+  if(ext.length){
+    h+=_rcSectionHdr('Pipeline Extensions by Size');
+    h+=_rcTable(['Pipe Size','Total Length (m)'],ext.map(r=>[r.size,_rcFmt(r.total_length)]),'Extensions');
+  }
+  return h;
+}
+
+/* ── NRW Analysis ────────────────────────────────────────────────────────── */
+function _rcNRWAnalysis(d){
+  const s=d.summary||{};
+  let h=_rcSectionHdr('NRW Summary');
+  h+=_rcKpiRow([
+    {val:_rcFmt((s.total_vol_produced||0)/1e6,2)+'M m³',lbl:'Total Produced'},
+    {val:_rcFmt((s.total_nrw_vol||0)/1e6,2)+'M m³',     lbl:'Total NRW'},
+    {val:_rcPct(s.avg_nrw_pct),lbl:'Avg NRW Rate',tone:_rcTone(s.avg_nrw_pct,27,35,true)},
+    {val:(d.zones_above_target||[]).length+' zones',lbl:'Above 27% Target'},
+  ]);
+  const bz=d.nrw_by_zone||[];
+  if(bz.length){
+    h+=_rcSectionHdr('NRW by Zone vs 27% Target');
+    h+=_rcTable(['Zone','Vol Produced (m³)','NRW Volume (m³)','NRW %','Gap to Target','Status'],
+      bz.map(z=>[z.zone,_rcFmt(z.vol_produced),_rcFmt(z.nrw_vol),_rcPct(z.nrw_pct),Math.abs(z.nrw_pct-27).toFixed(1)+'pp',z.nrw_pct>27?'⚠ Above':'✓ On target']),'NRW by Zone');
+  }
+  const trend=d.nrw_trend||[];
+  if(trend.length){
+    h+=_rcSectionHdr('NRW Rate Monthly Trend');
+    h+=_rcTable(['Month','NRW %'],trend.map(t=>[t.month,_rcPct(t.value)]),'NRW Trend');
+  }
+  return h;
+}
+
+/* ── Scheme Performance ──────────────────────────────────────────────────── */
+function _rcSchemePerf(d){
+  const schemes=d.schemes||[];
+  let h=_rcSectionHdr(`Scheme Performance (${schemes.length} schemes)`);
+  if(!schemes.length) return h+'<p style="padding:12px;color:var(--ds-text-muted)">No scheme data for selected filter.</p>';
+  return h+_rcTable(['Scheme','Zone','Vol Produced (m³)','NRW %','Active Customers','Cash Collected','Debtors','Breakdowns'],
+    schemes.map(s=>[s.scheme,s.zone,_rcFmt(s.vol_produced),_rcPct(s.nrw_pct),_rcFmt(s.active_customers),_rcMK(s.cash_collected),_rcMK(s.total_debtors),_rcFmt(s.breakdowns)]),'Scheme Performance');
 }

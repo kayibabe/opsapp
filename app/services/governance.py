@@ -362,6 +362,16 @@ CHART_GOVERNANCE_REGISTRY: list[ChartGovernanceItem] = [
         print_priority="high",
     ),
     ChartGovernanceItem(
+        page_key="collections",
+        title="Billed vs Collected — Monthly (MWK)",
+        benchmark_mode="line",
+        benchmark_label="Target line",
+        note="Benchmark context: billed and collected values are paired with the monthly collection-rate line and the IBNET 95% benchmark, so cash conversion can be read directly against the approved efficiency threshold.",
+        rationale="Because the chart now includes the KPI efficiency line, the benchmark is a legitimate comparator on the same visual rather than a decorative reference.",
+        legend_style="compact-top",
+        print_priority="high",
+    ),
+    ChartGovernanceItem(
         page_key="connectivity",
         title="Days to Quotation & Days to Connect",
         benchmark_mode="band",

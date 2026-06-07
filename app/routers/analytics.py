@@ -18,9 +18,10 @@ from collections import defaultdict
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
-from sqlalchemy import func, or_, and_
+from sqlalchemy import func
 
 from app.database import Record, get_db
+from app.utils import MONTHS_ORDER, apply_fy_filter, csv_list
 
 router = APIRouter(prefix="/api/analytics", tags=["Analytics"])
 
@@ -32,11 +33,6 @@ ZONE_COLORS = {
     "Mulanje": "#16a34a", "Ngabu": "#d97706", "Zomba": "#7c3aed",
 }
 
-MONTHS_ORDER = [
-    "April","May","June","July","August","September",
-    "October","November","December","January","February","March",
-]
-MONTH_NO = {m: i+4 if i < 9 else i-8 for i, m in enumerate(MONTHS_ORDER)}
 
 
 # ── shared filter helper ──────────────────────────────────────
@@ -46,18 +42,10 @@ def _filter(q, zones=None, schemes=None, months=None, quarters=None, year=None):
     if months:   q = q.filter(Record.month.in_(months))
     if quarters: q = q.filter(Record.quarter.in_(quarters))
     if year:
-        # FY runs April->March. year param is the FY end year.
-        # FY2025/26 (year=2026): Apr-Dec 2025 (year-1, month_no>=4)
-        #                     + Jan-Mar 2026 (year,   month_no<=3)
-        q = q.filter(or_(
-            and_(Record.year == year - 1, Record.month_no >= 4),
-            and_(Record.year == year,     Record.month_no <= 3),
-        ))
+        q = apply_fy_filter(q, year)
     return q
 
 
-def _parse(v: Optional[str]) -> Optional[List[str]]:
-    return v.split(",") if v else None
 
 
 # ── KPI summary ───────────────────────────────────────────────
@@ -72,8 +60,8 @@ def kpi_summary(
 ) -> Dict[str, Any]:
 
     rows = _filter(
-        db.query(Record), _parse(zones), _parse(schemes),
-        _parse(months), _parse(quarters), year
+        db.query(Record), csv_list(zones), csv_list(schemes),
+        csv_list(months), csv_list(quarters), year
     ).all()
 
     if not rows:
@@ -156,8 +144,8 @@ def monthly_pivot(
     """Returns one dict per month in FY order with summed/latest metrics."""
 
     rows = _filter(
-        db.query(Record), _parse(zones), _parse(schemes),
-        None, _parse(quarters), year
+        db.query(Record), csv_list(zones), csv_list(schemes),
+        None, csv_list(quarters), year
     ).all()
 
     # Group by month
@@ -243,8 +231,8 @@ def by_zone(
 ) -> List[Dict[str, Any]]:
 
     rows = _filter(
-        db.query(Record), _parse(zones), _parse(schemes),
-        _parse(months), _parse(quarters), year
+        db.query(Record), csv_list(zones), csv_list(schemes),
+        csv_list(months), csv_list(quarters), year
     ).all()
 
     zone_data: Dict[str, List[Record]] = defaultdict(list)
@@ -308,8 +296,8 @@ def by_scheme(
 ) -> List[Dict[str, Any]]:
 
     rows = _filter(
-        db.query(Record), _parse(zones), _parse(schemes),
-        _parse(months), _parse(quarters), year
+        db.query(Record), csv_list(zones), csv_list(schemes),
+        csv_list(months), csv_list(quarters), year
     ).all()
 
     sch_data: Dict[str, List[Record]] = defaultdict(list)
@@ -352,7 +340,7 @@ def nrw_trend(
     db: Session = Depends(get_db),
 ) -> Dict[str, Any]:
 
-    rows = _filter(db.query(Record), _parse(zones), None, None, None, year).all()
+    rows = _filter(db.query(Record), csv_list(zones), None, None, None, year).all()
 
     zone_month: Dict[str, Dict[str, tuple]] = defaultdict(lambda: defaultdict(lambda: (0.0, 0.0)))
     for r in rows:
@@ -384,8 +372,8 @@ def customer_pivot(
     """Monthly customer metrics — drives the Customers Report pivot table."""
 
     rows = _filter(
-        db.query(Record), _parse(zones), _parse(schemes),
-        _parse(months), None, year
+        db.query(Record), csv_list(zones), csv_list(schemes),
+        csv_list(months), None, year
     ).all()
 
     by_month: Dict[str, List[Record]] = defaultdict(list)

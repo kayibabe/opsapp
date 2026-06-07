@@ -77,18 +77,15 @@ def generate_alerts(db: Session, year: int = None) -> dict[str, Any]:
       "kpi_snapshot": {...},    # key figures used in calculations
     }
     """
-    from sqlalchemy import or_, and_
     from app.database import Record
+    from app.utils import apply_fy_filter
 
     if year is None:
         from datetime import date
         now = date.today()
         year = now.year + 1 if now.month >= 4 else now.year
 
-    q = db.query(Record).filter(or_(
-        and_(Record.year == year - 1, Record.month_no >= 4),
-        and_(Record.year == year,     Record.month_no <= 3),
-    ))
+    q = apply_fy_filter(db.query(Record), year)
     rows = q.all()
 
     if not rows:

@@ -17,13 +17,16 @@ import io
 from datetime import datetime
 from typing import List, Optional
 
+from app.utils import apply_fy_filter, csv_list
+
 from openpyxl import Workbook
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from app.auth import get_current_user, require_export
+from app.core.limiter import limiter
 from app.database import Record, User, get_db
 from app.schemas import RecordIn, RecordOut
 
@@ -41,7 +44,7 @@ def _apply_filters(q, zones, schemes, months, quarters, year):
     if quarters:
         q = q.filter(Record.quarter.in_(quarters))
     if year:
-        q = q.filter(Record.year == year)
+        q = apply_fy_filter(q, year)
     return q
 
 
@@ -60,10 +63,10 @@ def _filtered_rows(db: Session, zones, schemes, months, quarters, year):
     q = db.query(Record).order_by(Record.zone, Record.scheme, Record.month_no)
     q = _apply_filters(
         q,
-        zones.split(",") if zones else None,
-        schemes.split(",") if schemes else None,
-        months.split(",") if months else None,
-        quarters.split(",") if quarters else None,
+        csv_list(zones),
+        csv_list(schemes),
+        csv_list(months),
+        csv_list(quarters),
         year,
     )
     return q.all()
@@ -84,10 +87,10 @@ def list_records(
     q = db.query(Record).order_by(Record.zone, Record.scheme, Record.month_no)
     q = _apply_filters(
         q,
-        zones.split(",")    if zones    else None,
-        schemes.split(",")  if schemes  else None,
-        months.split(",")   if months   else None,
-        quarters.split(",") if quarters else None,
+        csv_list(zones),
+        csv_list(schemes),
+        csv_list(months),
+        csv_list(quarters),
         year,
     )
     return q.offset(skip).limit(limit).all()
@@ -104,7 +107,8 @@ def get_record(record_id: int, db: Session = Depends(get_db)):
 
 # ── POST create ───────────────────────────────────────────────
 @router.post("/", response_model=RecordOut, status_code=201)
-def create_record(payload: RecordIn, db: Session = Depends(get_db)):
+@limiter.limit("60/minute")
+def create_record(request: Request, payload: RecordIn, db: Session = Depends(get_db)):
     # Prevent duplicate zone+scheme+month+year
     existing = (
         db.query(Record)
@@ -132,7 +136,8 @@ def create_record(payload: RecordIn, db: Session = Depends(get_db)):
 
 # ── PUT update ────────────────────────────────────────────────
 @router.put("/{record_id}", response_model=RecordOut)
-def update_record(record_id: int, payload: RecordIn, db: Session = Depends(get_db)):
+@limiter.limit("60/minute")
+def update_record(request: Request, record_id: int, payload: RecordIn, db: Session = Depends(get_db)):
     r = db.query(Record).filter(Record.id == record_id).first()
     if not r:
         raise HTTPException(404, f"Record {record_id} not found")
@@ -145,7 +150,8 @@ def update_record(record_id: int, payload: RecordIn, db: Session = Depends(get_d
 
 # ── DELETE ────────────────────────────────────────────────────
 @router.delete("/{record_id}", status_code=204)
-def delete_record(record_id: int, db: Session = Depends(get_db)):
+@limiter.limit("30/minute")
+def delete_record(request: Request, record_id: int, db: Session = Depends(get_db)):
     r = db.query(Record).filter(Record.id == record_id).first()
     if not r:
         raise HTTPException(404, f"Record {record_id} not found")

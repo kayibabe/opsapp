@@ -18,14 +18,11 @@ from typing import List, Dict, Any
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
-from app.database import Record, get_db
+from app.database import BudgetLine, FiscalYear, Record, get_db
+from app.utils import MONTHS_ORDER, fy_label
 
 router = APIRouter(prefix="/api/catalogue", tags=["Catalogue"])
 
-MONTHS_ORDER = [
-    "April","May","June","July","August","September",
-    "October","November","December","January","February","March",
-]
 
 # ── Simple in-process cache for the data-quality scan ────────────────────
 # The scan loads every record into Python memory — fine for small datasets,
@@ -83,15 +80,83 @@ def available_months(db: Session = Depends(get_db)) -> List[str]:
 
 @router.get("/years", response_model=List[int])
 def available_years(db: Session = Depends(get_db)):
-    # Returns FY end years: 2026 = FY2025/26 (Apr 2025 to Mar 2026)
+    """
+    Returns all FY end years, merging:
+    1. Years derived from actual data in the records table
+    2. All years configured in the fiscal_years registry (including future FYs)
+
+    This means future FYs with no data yet still appear in the selector,
+    allowing budget planning and forward navigation.
+    """
+    # Years from actual data
     rows = db.query(Record.year, Record.month_no).distinct().all()
-    fy_years = set()
+    fy_years: set[int] = set()
     for cal_year, month_no in rows:
-        # Apr(4)-Dec(12) -> FY ends NEXT calendar year
-        # Jan(1)-Mar(3)  -> FY ends THIS calendar year
         fy_end = cal_year + 1 if month_no >= 4 else cal_year
         fy_years.add(fy_end)
+
+    # Years from the fiscal_years registry (historical + current + future)
+    configured = db.query(FiscalYear.year).all()
+    for (y,) in configured:
+        fy_years.add(y)
+
     return sorted(fy_years)
+
+
+@router.get("/fiscal-years")
+def fiscal_years_list(db: Session = Depends(get_db)) -> List[Dict]:
+    """
+    Enriched list of all configured fiscal years with status badges,
+    date ranges, tariff, and budget readiness indicators.
+    Used by the frontend FY selector to show CURRENT / FUTURE / HISTORICAL labels.
+    """
+    from sqlalchemy import func as sqlfunc
+    fys = db.query(FiscalYear).order_by(FiscalYear.year.desc()).all()
+
+    # Budget line counts per year
+    counts = (db.query(BudgetLine.year, sqlfunc.count().label("n"))
+              .group_by(BudgetLine.year).all())
+    count_map = {r.year: r.n for r in counts}
+
+    # Years that have actual data
+    data_rows = db.query(Record.year, Record.month_no).distinct().all()
+    data_years: set[int] = set()
+    for cal_year, month_no in data_rows:
+        data_years.add(cal_year + 1 if month_no >= 4 else cal_year)
+
+    result = []
+    for fy in fys:
+        result.append({
+            "year":          fy.year,
+            "label":         fy.label,
+            "start_date":    fy.start_date,
+            "end_date":      fy.end_date,
+            "status":        fy.status,
+            "tariff_per_m3": fy.tariff_per_m3,
+            "notes":         fy.notes,
+            "has_data":      fy.year in data_years,
+            "has_budget":    count_map.get(fy.year, 0) > 0,
+            "budget_line_count": count_map.get(fy.year, 0),
+        })
+
+    # Also include data-years not yet in the fiscal_years registry
+    # (handles historical data uploaded before this feature existed)
+    registered = {fy.year for fy in fys}
+    for y in sorted(data_years - registered):
+        result.append({
+            "year":    y,
+            "label":   fy_label(y),
+            "start_date": f"{y-1}-04-01", "end_date": f"{y}-03-31",
+            "status":  "historical",
+            "tariff_per_m3": None,
+            "notes":   "Auto-detected from data; not in FY registry",
+            "has_data":  True,
+            "has_budget": False,
+            "budget_line_count": 0,
+        })
+
+    result.sort(key=lambda x: x["year"], reverse=True)
+    return result
 
 
 @router.get("/data-quality")

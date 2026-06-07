@@ -15,15 +15,11 @@ from collections import defaultdict
 from typing import Optional
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.orm import Session
-from sqlalchemy import or_, and_
 from app.database import Record, get_db
+from app.utils import MONTHS_ORDER as FY_MONTHS, apply_fy_filter, csv_list
 
 router = APIRouter(prefix="/api/panels", tags=["Panels"])
 
-FY_MONTHS = [
-    "April","May","June","July","August","September",
-    "October","November","December","January","February","March",
-]
 ZONE_COLORS = {
     "Liwonde":"#0077b6","Mangochi":"#0d9488",
     "Mulanje":"#16a34a","Ngabu":"#d97706","Zomba":"#7c3aed",
@@ -39,13 +35,9 @@ def _filter(q, zones=None, schemes=None, months=None, year=None):
     if schemes: q = q.filter(Record.scheme.in_(schemes))
     if months:  q = q.filter(Record.month.in_(months))
     if year:
-        q = q.filter(or_(
-            and_(Record.year == year-1, Record.month_no >= 4),
-            and_(Record.year == year,   Record.month_no <= 3),
-        ))
+        q = apply_fy_filter(q, year)
     return q
 
-def _parse(v): return v.split(",") if v else None
 
 def _latest(rows):
     """Latest row per (zone, scheme) that has actual data.
@@ -94,6 +86,72 @@ def _nz_sum(rows, field):
     return sum(getattr(r, field, 0) or 0 for r in rows)
 
 
+CHEM_INTENSITY_FIELDS = [
+    'chlorine_kg_per_m3', 'alum_kg_per_m3', 'soda_ash_kg_per_m3',
+    'algae_floc_per_m3', 'sud_floc_per_m3', 'kmno4_per_m3',
+]
+CUSTOMER_VOLUME_FIELDS = [
+    'vol_billed_indiv_pp', 'vol_billed_cwp_pp', 'vol_billed_inst_pp', 'vol_billed_comm_pp',
+    'vol_billed_indiv_prepaid', 'vol_billed_cwp_prepaid', 'vol_billed_inst_prepaid', 'vol_billed_comm_prepaid',
+]
+CONNECTION_FLOW_FIELDS = [
+    'conn_indiv_applied_pp', 'conn_indiv_done_pp', 'conn_indiv_done_prepaid', 'conn_indiv_total_done',
+    'conn_inst_applied_pp', 'conn_inst_done_pp', 'conn_inst_done_prepaid', 'conn_inst_total_done',
+    'conn_comm_applied_pp', 'conn_comm_done_pp', 'conn_comm_done_prepaid', 'conn_comm_total_done',
+    'conn_cwp_applied_pp', 'conn_cwp_done_pp', 'conn_cwp_done_prepaid', 'conn_cwp_total_done',
+]
+CONNECTION_STOCK_FIELDS = [
+    'conn_indiv_bfwd', 'conn_indiv_cfwd',
+    'conn_inst_bfwd', 'conn_inst_cfwd',
+    'conn_comm_bfwd', 'conn_comm_cfwd',
+    'conn_cwp_bfwd', 'conn_cwp_cfwd',
+]
+STUCK_FLOW_FIELDS = [
+    'stuck_indiv_new', 'stuck_indiv_repaired', 'stuck_indiv_replaced',
+    'stuck_inst_new', 'stuck_inst_repaired', 'stuck_inst_replaced',
+    'stuck_comm_new', 'stuck_comm_repaired', 'stuck_comm_replaced',
+    'stuck_cwp_new', 'stuck_cwp_repaired', 'stuck_cwp_replaced',
+]
+STUCK_STOCK_FIELDS = [
+    'all_stuck_cfwd',
+    'stuck_indiv_bfwd', 'stuck_indiv_cfwd',
+    'stuck_inst_bfwd', 'stuck_inst_cfwd',
+    'stuck_comm_bfwd', 'stuck_comm_cfwd',
+    'stuck_cwp_bfwd', 'stuck_cwp_cfwd',
+]
+SEGMENT_REVENUE_FIELDS = [
+    'cash_coll_indiv_pp', 'cash_coll_cwp_pp', 'cash_coll_comm_pp', 'cash_coll_inst_pp',
+    'cash_coll_indiv_prepaid', 'cash_coll_cwp_prepaid', 'cash_coll_comm_prepaid', 'cash_coll_inst_prepaid',
+    'amt_billed_indiv_pp', 'amt_billed_cwp_pp', 'amt_billed_inst_pp', 'amt_billed_comm_pp',
+    'amt_billed_indiv_prepaid', 'amt_billed_cwp_prepaid', 'amt_billed_inst_prepaid', 'amt_billed_comm_prepaid',
+    'service_charge_individual', 'service_charge_cwp', 'service_charge_institutions', 'service_charge_commercial',
+    'meter_rental_individual', 'meter_rental_cwp', 'meter_rental_institutions', 'meter_rental_commercial',
+]
+PIPE_MATERIAL_SIZE_FIELDS = [
+    'gi_15mm', 'gi_20mm', 'gi_25mm', 'gi_40mm', 'gi_50mm', 'gi_75mm', 'gi_100mm', 'gi_150mm', 'gi_200mm',
+    'di_150mm', 'di_200mm', 'di_250mm', 'di_300mm', 'di_350mm', 'di_525mm',
+    'hdpe_20mm', 'hdpe_25mm', 'hdpe_32mm', 'hdpe_50mm',
+    'ac_50mm', 'ac_75mm', 'ac_100mm', 'ac_150mm',
+]
+WORKFORCE_EFFICIENCY_FIELDS = [
+    'distances_km', 'fuel_used_litres', 'fuel_cost', 'maintenance',
+    'perm_staff', 'temp_staff', 'staff_per_1000m3_12h',
+    'op_cost_per_m3_produced', 'op_cost_per_m3_billed', 'op_cost_per_sales',
+]
+
+
+def _sum_field_map(rows, fields, digits=2):
+    return {field: round(_nz_sum(rows, field), digits) for field in fields}
+
+
+def _latest_field_map(rows, fields, digits=2):
+    return {field: round(sum(getattr(r, field, 0) or 0 for r in rows), digits) for field in fields}
+
+
+def _avg_field_map(rows, fields, cap=None, digits=3):
+    return {field: round(_nz_avg(rows, field, cap=cap), digits) for field in fields}
+
+
 # ── by_zone aggregation ────────────────────────────────────────────────────
 
 def _by_zone(rows):
@@ -109,23 +167,37 @@ def _by_zone(rows):
         pw  = _nz_sum(zrows, 'power_cost')
         bi  = _nz_sum(zrows, 'amt_billed')
         ca  = _nz_sum(zrows, 'cash_collected')
-        result.append({
+        entry = {
             "zone": zone, "color": ZONE_COLORS.get(zone,"#64748b"),
             "vol_produced":      round(vol,1),
             "revenue_water":     round(_nz_sum(zrows,'revenue_water'),1),
             "nrw":               round(nrw,1),
             "nrw_pct":           round(nrw/vol*100,2) if vol else 0,
+            "total_metered":     round(sum(r.total_metered     for r in lv)),
+            "total_disconnected":round(sum(r.total_disconnected for r in lv)),
+            "disconnected_individual": round(sum(r.disconnected_individual for r in lv)),
+            "disconnected_inst":       round(sum(r.disconnected_inst       for r in lv)),
+            "disconnected_commercial": round(sum(r.disconnected_commercial for r in lv)),
+            "disconnected_cwp":        round(sum(r.disconnected_cwp        for r in lv)),
             "active_customers":  round(sum(r.active_customers  for r in lv)),
             "active_postpaid":   round(sum(r.active_postpaid   for r in lv)),
             "active_prepaid":    round(sum(r.active_prepaid    for r in lv)),
+            "active_post_cwp":   round(sum(r.active_post_cwp   for r in lv)),
+            "active_prep_cwp":   round(sum(r.active_prep_cwp   for r in lv)),
+            "pop_supply_area":   round(sum(r.pop_supply_area   for r in lv)),
+            "pop_supplied":      round(sum(r.pop_supplied      for r in lv)),
+            "pct_pop_supplied":  round((sum(r.pop_supplied for r in lv) / sum(r.pop_supply_area for r in lv) * 100), 1) if sum(r.pop_supply_area for r in lv) else 0,
             "new_connections":   round(_nz_sum(zrows,'new_connections')),
             "conn_applied":      round(_nz_sum(zrows,'conn_applied')),
+            "all_conn_applied":  round(_nz_sum(zrows,'all_conn_applied')),
             "cash_collected":    round(ca,2),
             "amt_billed":        round(bi,2),
             "collection_rate":   round(ca/bi*100,1) if bi else 0,
+            "collection_per_sales": round(_nz_avg(zrows,'collection_per_sales'),3),
             "op_cost":           round(_nz_sum(zrows,'op_cost'),2),
             "chem_cost":         round(ch,2),
             "power_cost":        round(pw,2),
+            "power_cost_per_m3": round(pw/vol,2) if vol else 0,
             "power_kwh":         round(_nz_sum(zrows,'power_kwh'),1),
             "fuel_cost":         round(_nz_sum(zrows,'fuel_cost'),2),
             "staff_costs":       round(_nz_sum(zrows,'staff_costs'),2),
@@ -167,7 +239,12 @@ def _by_zone(rows):
             "amt_billed_prepaid":round(_nz_sum(zrows,'amt_billed_prepaid'),2),
             "cash_coll_pp":      round(_nz_sum(zrows,'cash_coll_pp'),2),
             "cash_coll_prepaid": round(_nz_sum(zrows,'cash_coll_prepaid'),2),
-        })
+        }
+        entry.update(_avg_field_map(zrows, CHEM_INTENSITY_FIELDS + ['power_kwh_per_m3', 'staff_per_1000m3_12h'], digits=3))
+        entry.update(_sum_field_map(zrows, CUSTOMER_VOLUME_FIELDS + CONNECTION_FLOW_FIELDS + SEGMENT_REVENUE_FIELDS + PIPE_MATERIAL_SIZE_FIELDS + ['paid_up_applicants'], digits=2))
+        entry.update(_latest_field_map(lv, CONNECTION_STOCK_FIELDS + STUCK_STOCK_FIELDS, digits=2))
+        entry.update(_sum_field_map(zrows, STUCK_FLOW_FIELDS + WORKFORCE_EFFICIENCY_FIELDS + ['connection_days'], digits=2))
+        result.append(entry)
     return result
 
 
@@ -198,7 +275,7 @@ def _monthly(rows):
         opex   = _nz_sum(mr, 'op_cost')
         staff  = _nz_sum(mr, 'staff_costs')
 
-        result.append({
+        entry = {
             "month": month, "has_data": True,
 
             # ── Production & NRW ──────────────────────────────────────
@@ -230,6 +307,10 @@ def _monthly(rows):
             # ── Customers (stock — latest per scheme) ─────────────────
             "total_metered":          round(sum(r.total_metered          for r in lv)),
             "total_disconnected":     round(sum(r.total_disconnected      for r in lv)),
+            "disconnected_individual":round(sum(r.disconnected_individual for r in lv)),
+            "disconnected_inst":      round(sum(r.disconnected_inst       for r in lv)),
+            "disconnected_commercial":round(sum(r.disconnected_commercial for r in lv)),
+            "disconnected_cwp":       round(sum(r.disconnected_cwp        for r in lv)),
             "active_customers":       round(sum(r.active_customers        for r in lv)),
             "active_postpaid":        round(sum(r.active_postpaid         for r in lv)),
             "active_prepaid":         round(sum(r.active_prepaid          for r in lv)),
@@ -241,14 +322,18 @@ def _monthly(rows):
             "active_prep_commercial": round(sum(r.active_prep_commercial  for r in lv)),
             "active_post_cwp":        round(sum(r.active_post_cwp         for r in lv)),
             "active_prep_cwp":        round(sum(r.active_prep_cwp         for r in lv)),
+            "pop_supply_area":        round(sum(r.pop_supply_area         for r in lv)),
             "perm_staff":             round(sum(r.perm_staff              for r in lv)),
             "temp_staff":             round(sum(r.temp_staff              for r in lv)),
             "pop_supplied":           round(sum(r.pop_supplied            for r in lv)),
+            "pct_pop_supplied":       round((sum(r.pop_supplied for r in lv) / sum(r.pop_supply_area for r in lv) * 100), 1) if sum(r.pop_supply_area for r in lv) else None,
 
             # ── Connections ───────────────────────────────────────────
             "new_connections":         round(_nz_sum(mr,'new_connections')),
             "conn_applied":            round(_nz_sum(mr,'conn_applied')),
+            "all_conn_applied":        round(_nz_sum(mr,'all_conn_applied')),
             "prepaid_meters_installed":round(_nz_sum(mr,'prepaid_meters_installed')),
+            "prepaid_installed":       round(_nz_sum(mr,'prepaid_meters_installed')),
             "all_conn_bfwd":           round(sum(r.all_conn_bfwd for r in lv)),
             "all_conn_cfwd":           round(sum(r.all_conn_cfwd for r in lv)),
             "conn_fully_paid":         round(_nz_sum(mr,'conn_fully_paid')),
@@ -328,7 +413,22 @@ def _monthly(rows):
             "private_debtors":round(sum(max(0,r.private_debtors) for r in lv), 2),
             "public_debtors": round(sum(max(0,r.public_debtors)  for r in lv), 2),
             "total_debtors":  round(sum(max(0,r.total_debtors)   for r in lv), 2),
+        }
+        entry.update(_avg_field_map(mr, CHEM_INTENSITY_FIELDS + ['power_kwh_per_m3', 'staff_per_1000m3_12h'], digits=3))
+        entry.update(_sum_field_map(
+            mr,
+            CUSTOMER_VOLUME_FIELDS + CONNECTION_FLOW_FIELDS + STUCK_FLOW_FIELDS +
+            SEGMENT_REVENUE_FIELDS + PIPE_MATERIAL_SIZE_FIELDS +
+            ['paid_up_applicants', 'connection_days', 'fuel_used_litres'],
+            digits=2,
+        ))
+        entry.update(_latest_field_map(lv, CONNECTION_STOCK_FIELDS + STUCK_STOCK_FIELDS, digits=2))
+        entry.update({
+            "op_cost_per_m3_produced": round(_nz_avg(mr, 'op_cost_per_m3_produced'), 2),
+            "op_cost_per_m3_billed": round(_nz_avg(mr, 'op_cost_per_m3_billed'), 2),
+            "op_cost_per_sales": round(_nz_avg(mr, 'op_cost_per_sales'), 3),
         })
+        result.append(entry)
     return result
 
 
@@ -374,7 +474,7 @@ def _dedupe_rows(rows):
 def _base(zones, schemes, months, year, db):
     rows = _filter(
         db.query(Record),
-        _parse(zones), _parse(schemes), _parse(months), year,
+        csv_list(zones), csv_list(schemes), csv_list(months), year,
     ).all()
     rows = _dedupe_rows(rows)
     return rows, _by_zone(rows), _monthly(rows)
@@ -418,7 +518,7 @@ def panel_wt_ei(zones:Optional[str]=None,schemes:Optional[str]=None,
                 months:Optional[str]=None,year:Optional[int]=None,
                 db:Session=Depends(get_db)):
     rows,bz,mo=_base(zones,schemes,months,year,db)
-    vol=_nz_sum(rows,'vol_produced') or 1
+    vol=max(_nz_sum(rows,'vol_produced'), 1)
     chem=_nz_sum(rows,'chem_cost'); power=_nz_sum(rows,'power_cost')
     kwh=_nz_sum(rows,'power_kwh')
     sh_raw   = _nz_avg(rows, 'supply_hours', cap=744)   # monthly hours per scheme
@@ -434,12 +534,23 @@ def panel_wt_ei(zones:Optional[str]=None,schemes:Optional[str]=None,
             "kmno4_kg":round(_nz_sum(rows,'kmno4_kg'),1),
             "power_kwh":round(kwh,1),"power_cost":round(power,2),
             "power_per_m3":round(power/vol,2),
+            "power_kwh_per_m3":round(_nz_avg(rows,'power_kwh_per_m3'),3),
+            "chlorine_kg_per_m3":round(_nz_avg(rows,'chlorine_kg_per_m3'),3),
+            "alum_kg_per_m3":round(_nz_avg(rows,'alum_kg_per_m3'),3),
+            "soda_ash_kg_per_m3":round(_nz_avg(rows,'soda_ash_kg_per_m3'),3),
+            "algae_floc_per_m3":round(_nz_avg(rows,'algae_floc_per_m3'),3),
+            "sud_floc_per_m3":round(_nz_avg(rows,'sud_floc_per_m3'),3),
+            "kmno4_per_m3":round(_nz_avg(rows,'kmno4_per_m3'),3),
             "supply_hours_avg": sh_daily,
             "power_fail_hours":round(_nz_sum(rows,'power_fail_hours')),
         },
         "by_zone":[{"zone":z["zone"],"color":z["color"],
                     "chem_cost":z["chem_cost"],"power_cost":z["power_cost"],
-                    "power_kwh":z["power_kwh"],"chlorine_kg":z["chlorine_kg"]} for z in bz],
+                    "power_kwh":z["power_kwh"],"chlorine_kg":z["chlorine_kg"],
+                    "power_kwh_per_m3":z["power_kwh_per_m3"],
+                    "chlorine_kg_per_m3":z["chlorine_kg_per_m3"],
+                    "alum_kg_per_m3":z["alum_kg_per_m3"],
+                    "soda_ash_kg_per_m3":z["soda_ash_kg_per_m3"]} for z in bz],
         "monthly":mo,
     }
 
@@ -450,16 +561,45 @@ def panel_customers(zones:Optional[str]=None,schemes:Optional[str]=None,
     rows,bz,mo=_base(zones,schemes,months,year,db)
     lv=_latest(rows)
     return {
-        "kpi":{"active_customers":round(sum(r.active_customers for r in lv)),
+        "kpi":{"total_metered":round(sum(r.total_metered for r in lv)),
+               "total_disconnected":round(sum(r.total_disconnected for r in lv)),
+               "disconnected_individual":round(sum(r.disconnected_individual for r in lv)),
+               "disconnected_inst":round(sum(r.disconnected_inst for r in lv)),
+               "disconnected_commercial":round(sum(r.disconnected_commercial for r in lv)),
+               "disconnected_cwp":round(sum(r.disconnected_cwp for r in lv)),
+               "active_customers":round(sum(r.active_customers for r in lv)),
                "active_postpaid":round(sum(r.active_postpaid   for r in lv)),
                "active_prepaid":round(sum(r.active_prepaid     for r in lv)),
+               "active_post_cwp":round(sum(r.active_post_cwp   for r in lv)),
+               "active_prep_cwp":round(sum(r.active_prep_cwp   for r in lv)),
+               "pop_supply_area":round(sum(r.pop_supply_area   for r in lv)),
                "pop_supplied":round(sum(r.pop_supplied          for r in lv)),
+               "pct_pop_supplied":round((sum(r.pop_supplied for r in lv) / sum(r.pop_supply_area for r in lv) * 100),1) if sum(r.pop_supply_area for r in lv) else 0,
                "perm_staff":round(sum(r.perm_staff              for r in lv)),
-               "temp_staff":round(sum(r.temp_staff              for r in lv))},
+               "temp_staff":round(sum(r.temp_staff              for r in lv)),
+               "vol_billed_indiv_pp":round(_nz_sum(rows,'vol_billed_indiv_pp'),1),
+               "vol_billed_inst_pp":round(_nz_sum(rows,'vol_billed_inst_pp'),1),
+               "vol_billed_comm_pp":round(_nz_sum(rows,'vol_billed_comm_pp'),1),
+               "vol_billed_cwp_pp":round(_nz_sum(rows,'vol_billed_cwp_pp'),1),
+               "vol_billed_indiv_prepaid":round(_nz_sum(rows,'vol_billed_indiv_prepaid'),1),
+               "vol_billed_inst_prepaid":round(_nz_sum(rows,'vol_billed_inst_prepaid'),1),
+               "vol_billed_comm_prepaid":round(_nz_sum(rows,'vol_billed_comm_prepaid'),1),
+               "vol_billed_cwp_prepaid":round(_nz_sum(rows,'vol_billed_cwp_prepaid'),1)},
         "by_zone":[{"zone":z["zone"],"color":z["color"],
+                    "total_metered":z["total_metered"],
+                    "total_disconnected":z["total_disconnected"],
+                    "disconnected_individual":z["disconnected_individual"],
+                    "disconnected_inst":z["disconnected_inst"],
+                    "disconnected_commercial":z["disconnected_commercial"],
+                    "disconnected_cwp":z["disconnected_cwp"],
                     "active_customers":z["active_customers"],
                     "active_postpaid":z["active_postpaid"],
-                    "active_prepaid":z["active_prepaid"]} for z in bz],
+                    "active_prepaid":z["active_prepaid"],
+                    "active_post_cwp":z["active_post_cwp"],
+                    "active_prep_cwp":z["active_prep_cwp"],
+                    "pop_supply_area":z["pop_supply_area"],
+                    "pop_supplied":z["pop_supplied"],
+                    "pct_pop_supplied":z["pct_pop_supplied"]} for z in bz],
         "monthly":mo,
     }
 
@@ -472,12 +612,15 @@ def panel_connections(zones:Optional[str]=None,schemes:Optional[str]=None,
     return {
         "kpi":{"new_connections":round(_nz_sum(rows,'new_connections')),
                "conn_applied":round(_nz_sum(rows,'conn_applied')),
+               "all_conn_applied":round(_nz_sum(rows,'all_conn_applied')),
                "all_conn_bfwd":round(sum(r.all_conn_bfwd for r in lv)),
                "all_conn_cfwd":round(sum(r.all_conn_cfwd for r in lv)),
+               "prepaid_meters_installed":round(_nz_sum(rows,'prepaid_meters_installed')),
                "prepaid_installed":round(_nz_sum(rows,'prepaid_meters_installed'))},
         "by_zone":[{"zone":z["zone"],"color":z["color"],
                     "new_connections":z["new_connections"],
-                    "conn_applied":z["conn_applied"]} for z in bz],
+                    "conn_applied":z["conn_applied"],
+                    "all_conn_applied":z["all_conn_applied"]} for z in bz],
         "monthly":mo,
     }
 
@@ -510,8 +653,10 @@ def panel_connectivity(zones:Optional[str]=None,schemes:Optional[str]=None,
     return {
         "kpi":{"conn_applied":round(_nz_sum(rows,'conn_applied')),
                "conn_fully_paid":round(_nz_sum(rows,'conn_fully_paid')),
+               "paid_up_applicants":round(_nz_sum(rows,'paid_up_applicants')),
                "days_to_quotation":_nz_avg(rows,'days_to_quotation',cap=365),
                "days_to_connect":_nz_avg(rows,'days_to_connect',cap=365),
+               "connection_days":_nz_avg(rows,'connection_days',cap=365),
                "connectivity_rate":_nz_avg(rows,'connectivity_rate'),
                "queries_received":round(_nz_sum(rows,'queries_received')),
                "time_to_resolve":_nz_avg(rows,'time_to_resolve',cap=365),
@@ -588,7 +733,11 @@ def panel_billed(zones:Optional[str]=None,schemes:Optional[str]=None,
                "amt_billed_prepaid":round(pre,2),
                "pp_pct":round(pp/total*100,1) if total else 0,
                "prepaid_pct":round(pre/total*100,1) if total else 0,
-               "total_sales":round(_nz_sum(rows,'total_sales'),2)},
+               "total_sales":round(_nz_sum(rows,'total_sales'),2),
+               **_sum_field_map(rows, [
+                   'amt_billed_indiv_pp','amt_billed_cwp_pp','amt_billed_inst_pp','amt_billed_comm_pp',
+                   'amt_billed_indiv_prepaid','amt_billed_cwp_prepaid','amt_billed_inst_prepaid','amt_billed_comm_prepaid',
+               ], digits=2)},
         "by_zone":[{"zone":z["zone"],"color":z["color"],
                     "amt_billed":z["amt_billed"],"amt_billed_pp":z["amt_billed_pp"],
                     "amt_billed_prepaid":z["amt_billed_prepaid"]} for z in bz],
@@ -604,9 +753,14 @@ def panel_collections(zones:Optional[str]=None,schemes:Optional[str]=None,
     return {
         "kpi":{"cash_collected":round(cash,2),"amt_billed":round(billed,2),
                "collection_rate":round(cash/billed*100,2) if billed else 0,
+               "collection_per_sales":round(_nz_avg(rows,'collection_per_sales'),3),
                "billing_gap":round(abs(billed-cash),2),
                "cash_coll_pp":round(_nz_sum(rows,'cash_coll_pp'),2),
-               "cash_coll_prepaid":round(_nz_sum(rows,'cash_coll_prepaid'),2)},
+               "cash_coll_prepaid":round(_nz_sum(rows,'cash_coll_prepaid'),2),
+               **_sum_field_map(rows, [
+                   'cash_coll_indiv_pp','cash_coll_cwp_pp','cash_coll_comm_pp','cash_coll_inst_pp',
+                   'cash_coll_indiv_prepaid','cash_coll_cwp_prepaid','cash_coll_comm_prepaid','cash_coll_inst_prepaid',
+               ], digits=2)},
         "by_zone":[{"zone":z["zone"],"color":z["color"],
                     "cash_collected":z["cash_collected"],"amt_billed":z["amt_billed"],
                     "collection_rate":z["collection_rate"]} for z in bz],
@@ -625,7 +779,11 @@ def panel_charges(zones:Optional[str]=None,schemes:Optional[str]=None,
                "total_sales":round(ts,2),
                "sc_pct":round(sc/ts*100,1) if ts else 0,
                "mr_pct":round(mr/ts*100,1) if ts else 0,
-               "sc_mr_ratio":round(sc/mr,3) if mr else 0},
+               "sc_mr_ratio":round(sc/mr,3) if mr else 0,
+               **_sum_field_map(rows, [
+                   'service_charge_individual','service_charge_cwp','service_charge_institutions','service_charge_commercial',
+                   'meter_rental_individual','meter_rental_cwp','meter_rental_institutions','meter_rental_commercial',
+               ], digits=2)},
         "by_zone":[{"zone":z["zone"],"color":z["color"],
                     "service_charge":z["service_charge"],"meter_rental":z["meter_rental"],
                     "total_sales":z["total_sales"]} for z in bz],
@@ -647,9 +805,19 @@ def panel_expenses(zones:Optional[str]=None,schemes:Optional[str]=None,
                "power_cost":round(power,2),"power_kwh":round(kwh,1),
                "fuel_cost":round(fuel,2),"staff_costs":round(staff,2),
                "wages":round(wages,2),"maintenance":round(maint,2),
-               "distances_km":round(_nz_sum(rows,'distances_km'),1)},
+               "distances_km":round(_nz_sum(rows,'distances_km'),1),
+               "fuel_used_litres":round(_nz_sum(rows,'fuel_used_litres'),1),
+               "perm_staff":round(sum(r.perm_staff for r in _latest(rows))),
+               "temp_staff":round(sum(r.temp_staff for r in _latest(rows))),
+               "staff_per_1000m3_12h":round(_nz_avg(rows,'staff_per_1000m3_12h'),3),
+               "op_cost_per_m3_produced":round(_nz_avg(rows,'op_cost_per_m3_produced'),2),
+               "op_cost_per_m3_billed":round(_nz_avg(rows,'op_cost_per_m3_billed'),2),
+               "op_cost_per_sales":round(_nz_avg(rows,'op_cost_per_sales'),3)},
         "by_zone":[{"zone":z["zone"],"color":z["color"],"op_cost":z["op_cost"],
-                    "chem_cost":z["chem_cost"],"power_cost":z["power_cost"]} for z in bz],
+                    "chem_cost":z["chem_cost"],"power_cost":z["power_cost"],
+                    "fuel_used_litres":z["fuel_used_litres"],
+                    "distances_km":z["distances_km"],
+                    "staff_per_1000m3_12h":z["staff_per_1000m3_12h"]} for z in bz],
         "cost_split":[
             {"label":"Staff",       "value":round(staff,2), "color":"#0077b6"},
             {"label":"Wages",       "value":round(wages,2), "color":"#4DAFEE"},
@@ -684,6 +852,147 @@ def panel_debtors(zones:Optional[str]=None,schemes:Optional[str]=None,
                     "total_debtors":z["total_debtors"],
                     "private_debtors":z["private_debtors"],
                     "public_debtors":z["public_debtors"]} for z in bz],
+        "monthly":mo,
+    }
+
+
+@router.get("/segment-revenue")
+def panel_segment_revenue(zones:Optional[str]=None,schemes:Optional[str]=None,
+                          months:Optional[str]=None,year:Optional[int]=None,
+                          db:Session=Depends(get_db)):
+    rows,bz,mo=_base(zones,schemes,months,year,db)
+    billed_total=_nz_sum(rows,'amt_billed')
+    collected_total=_nz_sum(rows,'cash_collected')
+    return {
+        "kpi":{
+            "amt_billed":round(billed_total,2),
+            "cash_collected":round(collected_total,2),
+            "service_charge":round(_nz_sum(rows,'service_charge'),2),
+            "meter_rental":round(_nz_sum(rows,'meter_rental'),2),
+            "collection_rate":round(collected_total/billed_total*100,2) if billed_total else 0,
+        },
+        "by_zone":[
+            {"zone":z["zone"],"color":z["color"],
+             "amt_billed":z["amt_billed"],"cash_collected":z["cash_collected"],
+             "service_charge":z["service_charge"],"meter_rental":z["meter_rental"]}
+            for z in bz
+        ],
+        "monthly":mo,
+    }
+
+
+@router.get("/workforce")
+def panel_workforce(zones:Optional[str]=None,schemes:Optional[str]=None,
+                    months:Optional[str]=None,year:Optional[int]=None,
+                    db:Session=Depends(get_db)):
+    rows,bz,mo=_base(zones,schemes,months,year,db)
+    latest=_latest(rows)
+    return {
+        "kpi":{
+            "perm_staff":round(sum(r.perm_staff for r in latest)),
+            "temp_staff":round(sum(r.temp_staff for r in latest)),
+            "fuel_used_litres":round(_nz_sum(rows,'fuel_used_litres'),1),
+            "fuel_cost":round(_nz_sum(rows,'fuel_cost'),2),
+            "distances_km":round(_nz_sum(rows,'distances_km'),1),
+            "maintenance":round(_nz_sum(rows,'maintenance'),2),
+            "staff_per_1000m3_12h":round(_nz_avg(rows,'staff_per_1000m3_12h'),3),
+            "op_cost_per_m3_produced":round(_nz_avg(rows,'op_cost_per_m3_produced'),2),
+            "op_cost_per_m3_billed":round(_nz_avg(rows,'op_cost_per_m3_billed'),2),
+            "op_cost_per_sales":round(_nz_avg(rows,'op_cost_per_sales'),3),
+        },
+        "by_zone":[
+            {"zone":z["zone"],"color":z["color"],
+             "perm_staff":z["perm_staff"],"temp_staff":z["temp_staff"],
+             "fuel_used_litres":z["fuel_used_litres"],"fuel_cost":z["fuel_cost"],
+             "distances_km":z["distances_km"],"maintenance":z["maintenance"],
+             "staff_per_1000m3_12h":z["staff_per_1000m3_12h"]}
+            for z in bz
+        ],
+        "monthly":mo,
+    }
+
+
+@router.get("/class-connections")
+def panel_class_connections(zones:Optional[str]=None,schemes:Optional[str]=None,
+                            months:Optional[str]=None,year:Optional[int]=None,
+                            db:Session=Depends(get_db)):
+    rows,bz,mo=_base(zones,schemes,months,year,db)
+    latest=_latest(rows)
+    return {
+        "kpi":{
+            "all_conn_applied":round(_nz_sum(rows,'all_conn_applied')),
+            "new_connections":round(_nz_sum(rows,'new_connections')),
+            "conn_indiv_total_done":round(_nz_sum(rows,'conn_indiv_total_done')),
+            "conn_inst_total_done":round(_nz_sum(rows,'conn_inst_total_done')),
+            "conn_comm_total_done":round(_nz_sum(rows,'conn_comm_total_done')),
+            "conn_cwp_total_done":round(_nz_sum(rows,'conn_cwp_total_done')),
+            "conn_indiv_cfwd":round(sum(r.conn_indiv_cfwd for r in latest)),
+            "conn_inst_cfwd":round(sum(r.conn_inst_cfwd for r in latest)),
+            "conn_comm_cfwd":round(sum(r.conn_comm_cfwd for r in latest)),
+            "conn_cwp_cfwd":round(sum(r.conn_cwp_cfwd for r in latest)),
+        },
+        "by_zone":[
+            {"zone":z["zone"],"color":z["color"],
+             "conn_indiv_total_done":z["conn_indiv_total_done"],
+             "conn_inst_total_done":z["conn_inst_total_done"],
+             "conn_comm_total_done":z["conn_comm_total_done"],
+             "conn_cwp_total_done":z["conn_cwp_total_done"]}
+            for z in bz
+        ],
+        "monthly":mo,
+    }
+
+
+@router.get("/stuck-classes")
+def panel_stuck_classes(zones:Optional[str]=None,schemes:Optional[str]=None,
+                        months:Optional[str]=None,year:Optional[int]=None,
+                        db:Session=Depends(get_db)):
+    rows,bz,mo=_base(zones,schemes,months,year,db)
+    latest=_latest(rows)
+    return {
+        "kpi":{
+            "all_stuck_cfwd":round(sum(r.all_stuck_cfwd for r in latest)),
+            "stuck_indiv_cfwd":round(sum(r.stuck_indiv_cfwd for r in latest)),
+            "stuck_inst_cfwd":round(sum(r.stuck_inst_cfwd for r in latest)),
+            "stuck_comm_cfwd":round(sum(r.stuck_comm_cfwd for r in latest)),
+            "stuck_cwp_cfwd":round(sum(r.stuck_cwp_cfwd for r in latest)),
+            "stuck_indiv_repaired":round(_nz_sum(rows,'stuck_indiv_repaired')),
+            "stuck_inst_repaired":round(_nz_sum(rows,'stuck_inst_repaired')),
+            "stuck_comm_repaired":round(_nz_sum(rows,'stuck_comm_repaired')),
+            "stuck_cwp_repaired":round(_nz_sum(rows,'stuck_cwp_repaired')),
+        },
+        "by_zone":[
+            {"zone":z["zone"],"color":z["color"],
+             "stuck_indiv_cfwd":z["stuck_indiv_cfwd"],
+             "stuck_inst_cfwd":z["stuck_inst_cfwd"],
+             "stuck_comm_cfwd":z["stuck_comm_cfwd"],
+             "stuck_cwp_cfwd":z["stuck_cwp_cfwd"]}
+            for z in bz
+        ],
+        "monthly":mo,
+    }
+
+
+@router.get("/pipe-materials")
+def panel_pipe_materials(zones:Optional[str]=None,schemes:Optional[str]=None,
+                         months:Optional[str]=None,year:Optional[int]=None,
+                         db:Session=Depends(get_db)):
+    rows,bz,mo=_base(zones,schemes,months,year,db)
+    return {
+        "kpi":{
+            "pipe_breakdowns":round(_nz_sum(rows,'pipe_breakdowns')),
+            "pipe_pvc":round(_nz_sum(rows,'pipe_pvc')),
+            "pipe_gi":round(_nz_sum(rows,'pipe_gi')),
+            "pipe_di":round(_nz_sum(rows,'pipe_di')),
+            "pipe_hdpe_ac":round(_nz_sum(rows,'pipe_hdpe_ac')),
+            **_sum_field_map(rows, PIPE_MATERIAL_SIZE_FIELDS, digits=0),
+        },
+        "by_zone":[
+            {"zone":z["zone"],"color":z["color"],
+             "pipe_pvc":z["pipe_pvc"],"pipe_gi":z["pipe_gi"],
+             "pipe_di":z["pipe_di"],"pipe_hdpe_ac":z["pipe_hdpe_ac"]}
+            for z in bz
+        ],
         "monthly":mo,
     }
 

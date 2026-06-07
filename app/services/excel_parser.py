@@ -82,6 +82,12 @@ COLUMN_MAP: dict[str, str] = {
     "cost_of_chemicals_mwk":             "chem_cost",
     # "Chem Cost per m³"  →  "chem_cost_per_m"
     "chem_cost_per_m":                   "chem_cost_per_m3",
+    "chlorine_kg_per_m":                 "chlorine_kg_per_m3",
+    "alum_sulphate_kg_per_m":            "alum_kg_per_m3",
+    "soda_ash_kg_per_m":                 "soda_ash_kg_per_m3",
+    "algae_floc_per_m":                  "algae_floc_per_m3",
+    "sud_floc_per_m":                    "sud_floc_per_m3",
+    "kmno4_per_m":                       "kmno4_per_m3",
 
     # ── POWER ─────────────────────────────────────────────────────────────
     # "Power Usage kWh"  →  "power_usage_kwh"
@@ -90,6 +96,7 @@ COLUMN_MAP: dict[str, str] = {
     "cost_of_power_mwk":                 "power_cost",
     # "Power Cost per m³"  →  "power_cost_per_m"
     "power_cost_per_m":                  "power_cost_per_m3",
+    "power_per_m":                       "power_kwh_per_m3",
 
     # ── TRANSPORT & OPERATIONS ────────────────────────────────────────────
     # "Distances Covered km"  →  "distances_covered_km"
@@ -115,6 +122,7 @@ COLUMN_MAP: dict[str, str] = {
     # ── STAFFING ──────────────────────────────────────────────────────────
     "permanent_staff":                   "perm_staff",
     "temporary_staff":                   "temp_staff",
+    "staff_per_1000m_12h":               "staff_per_1000m3_12h",
 
     # ── CONNECTIONS — AGGREGATED (individual types not stored in DB) ──────
     # "ALL Conn BroughtFwd"  →  "all_conn_broughtfwd"
@@ -125,6 +133,30 @@ COLUMN_MAP: dict[str, str] = {
     # "ALL Conn CarriedFwd"  →  "all_conn_carriedfwd"
     "all_conn_carriedfwd":               "all_conn_cfwd",
     "prepaid_meters_installed":          "prepaid_meters_installed",
+    "indiv_conn_broughtfwd":             "conn_indiv_bfwd",
+    "indiv_conn_applied_pp":             "conn_indiv_applied_pp",
+    "indiv_conn_done_pp":                "conn_indiv_done_pp",
+    "indiv_conn_done_prepaid":           "conn_indiv_done_prepaid",
+    "indiv_conn_total_done":             "conn_indiv_total_done",
+    "indiv_conn_carriedfwd":             "conn_indiv_cfwd",
+    "inst_conn_broughtfwd":              "conn_inst_bfwd",
+    "inst_conn_applied_pp":              "conn_inst_applied_pp",
+    "inst_conn_done_pp":                 "conn_inst_done_pp",
+    "inst_conn_done_prepaid":            "conn_inst_done_prepaid",
+    "inst_conn_total_done":              "conn_inst_total_done",
+    "inst_conn_carriedfwd":              "conn_inst_cfwd",
+    "comm_conn_broughtfwd":              "conn_comm_bfwd",
+    "comm_conn_applied_pp":              "conn_comm_applied_pp",
+    "comm_conn_done_pp":                 "conn_comm_done_pp",
+    "comm_conn_done_prepaid":            "conn_comm_done_prepaid",
+    "comm_conn_total_done":              "conn_comm_total_done",
+    "comm_conn_carriedfwd":              "conn_comm_cfwd",
+    "cwp_conn_broughtfwd":               "conn_cwp_bfwd",
+    "cwp_conn_applied_pp":               "conn_cwp_applied_pp",
+    "cwp_conn_done_pp":                  "conn_cwp_done_pp",
+    "cwp_conn_done_prepaid":             "conn_cwp_done_prepaid",
+    "cwp_conn_total_done":               "conn_cwp_total_done",
+    "cwp_conn_carriedfwd":               "conn_cwp_cfwd",
 
     # ── DISCONNECTIONS ────────────────────────────────────────────────────
     "disconnected_individual":           "disconnected_individual",
@@ -164,6 +196,27 @@ COLUMN_MAP: dict[str, str] = {
     "all_stuckm_new":                    "stuck_new",
     "all_stuckm_repaired":               "stuck_repaired",
     "all_stuckm_replaced":               "stuck_replaced",
+    "all_stuckm_carriedfwd":             "all_stuck_cfwd",
+    "indiv_stuckm_broughtfwd":           "stuck_indiv_bfwd",
+    "indiv_stuckm_new":                  "stuck_indiv_new",
+    "indiv_stuckm_repaired":             "stuck_indiv_repaired",
+    "indiv_stuckm_replaced":             "stuck_indiv_replaced",
+    "indiv_stuckm_carriedfwd":           "stuck_indiv_cfwd",
+    "inst_stuckm_broughtfwd":            "stuck_inst_bfwd",
+    "inst_stuckm_new":                   "stuck_inst_new",
+    "inst_stuckm_repaired":              "stuck_inst_repaired",
+    "inst_stuckm_replaced":              "stuck_inst_replaced",
+    "inst_stuckm_carriedfwd":            "stuck_inst_cfwd",
+    "comm_stuckm_broughtfwd":            "stuck_comm_bfwd",
+    "comm_stuckm_new":                   "stuck_comm_new",
+    "comm_stuckm_repaired":              "stuck_comm_repaired",
+    "comm_stuckm_replaced":              "stuck_comm_replaced",
+    "comm_stuckm_carriedfwd":            "stuck_comm_cfwd",
+    "cwp_stuckm_broughtfwd":             "stuck_cwp_bfwd",
+    "cwp_stuckm_new":                    "stuck_cwp_new",
+    "cwp_stuckm_repaired":               "stuck_cwp_repaired",
+    "cwp_stuckm_replaced":               "stuck_cwp_replaced",
+    "cwp_stuckm_carriedfwd":             "stuck_cwp_cfwd",
     # CarriedFwd not in DB — intentionally skipped
 
     # ── PIPE BREAKDOWNS (individual sizes summed into material totals) ────
@@ -183,30 +236,30 @@ COLUMN_MAP: dict[str, str] = {
     "pvc_200mm":                        "pvc_200mm",
     "pvc_250mm":                        "pvc_250mm",
     "pvc_315mm":                        "pvc_315mm",
-    # Non-PVC breakdown sizes are aggregated to their stored material totals.
-    "gi_15mm":                          "_gi_15mm",
-    "gi_20mm":                          "_gi_20mm",
-    "gi_25mm":                          "_gi_25mm",
-    "gi_40mm":                          "_gi_40mm",
-    "gi_50mm":                          "_gi_50mm",
-    "gi_75mm":                          "_gi_75mm",
-    "gi_100mm":                         "_gi_100mm",
-    "gi_150mm":                         "_gi_150mm",
-    "gi_200mm":                         "_gi_200mm",
-    "di_150mm":                         "_di_150mm",
-    "di_200mm":                         "_di_200mm",
-    "di_250mm":                         "_di_250mm",
-    "di_300mm":                         "_di_300mm",
-    "di_350mm":                         "_di_350mm",
-    "di_525mm":                         "_di_525mm",
-    "hdpe_20mm":                        "_hdpe_20mm",
-    "hdpe_25mm":                        "_hdpe_25mm",
-    "hdpe_32mm":                        "_hdpe_32mm",
-    "hdpe_50mm":                        "_hdpe_50mm",
-    "ac_50mm":                          "_ac_50mm",
-    "ac_75mm":                          "_ac_75mm",
-    "ac_100mm":                         "_ac_100mm",
-    "ac_150mm":                         "_ac_150mm",
+    # Non-PVC breakdown sizes are now stored individually and also rolled into totals.
+    "gi_15mm":                          "gi_15mm",
+    "gi_20mm":                          "gi_20mm",
+    "gi_25mm":                          "gi_25mm",
+    "gi_40mm":                          "gi_40mm",
+    "gi_50mm":                          "gi_50mm",
+    "gi_75mm":                          "gi_75mm",
+    "gi_100mm":                         "gi_100mm",
+    "gi_150mm":                         "gi_150mm",
+    "gi_200mm":                         "gi_200mm",
+    "di_150mm":                         "di_150mm",
+    "di_200mm":                         "di_200mm",
+    "di_250mm":                         "di_250mm",
+    "di_300mm":                         "di_300mm",
+    "di_350mm":                         "di_350mm",
+    "di_525mm":                         "di_525mm",
+    "hdpe_20mm":                        "hdpe_20mm",
+    "hdpe_25mm":                        "hdpe_25mm",
+    "hdpe_32mm":                        "hdpe_32mm",
+    "hdpe_50mm":                        "hdpe_50mm",
+    "ac_50mm":                          "ac_50mm",
+    "ac_75mm":                          "ac_75mm",
+    "ac_100mm":                         "ac_100mm",
+    "ac_150mm":                         "ac_150mm",
 
     # ── PUMPS & SUPPLY HOURS ──────────────────────────────────────────────
     "pump_breakdowns":                   "pump_breakdowns",
@@ -229,17 +282,41 @@ COLUMN_MAP: dict[str, str] = {
     "total_cash_coll_pp":                "cash_coll_pp",
     "total_cash_coll_prepaid":           "cash_coll_prepaid",
     "total_cash_collected":              "cash_collected",
+    "cash_coll_indiv_pp":                "cash_coll_indiv_pp",
+    "cash_coll_cwp_pp":                  "cash_coll_cwp_pp",
+    "cash_coll_comm_pp":                 "cash_coll_comm_pp",
+    "cash_coll_inst_pp":                 "cash_coll_inst_pp",
+    "cash_coll_indiv_prepaid":           "cash_coll_indiv_prepaid",
+    "cash_coll_cwp_prepaid":             "cash_coll_cwp_prepaid",
+    "cash_coll_comm_prepaid":            "cash_coll_comm_prepaid",
+    "cash_coll_inst_prepaid":            "cash_coll_inst_prepaid",
 
     # ── AMOUNTS BILLED (aggregates only) ─────────────────────────────────
     "total_amt_billed_pp":               "amt_billed_pp",
     "total_amt_billed_prepaid":          "amt_billed_prepaid",
     "total_amount_billed":               "amt_billed",
+    "amt_billed_indiv_pp":               "amt_billed_indiv_pp",
+    "amt_billed_cwp_pp":                 "amt_billed_cwp_pp",
+    "amt_billed_inst_pp":                "amt_billed_inst_pp",
+    "amt_billed_comm_pp":                "amt_billed_comm_pp",
+    "amt_billed_indiv_prepaid":          "amt_billed_indiv_prepaid",
+    "amt_billed_cwp_prepaid":            "amt_billed_cwp_prepaid",
+    "amt_billed_inst_prepaid":           "amt_billed_inst_prepaid",
+    "amt_billed_comm_prepaid":           "amt_billed_comm_prepaid",
 
     # ── SERVICE CHARGES & METER RENTAL ───────────────────────────────────
     "total_service_charge":              "service_charge",
     "total_meter_rental":                "meter_rental",
     # "TOTAL Sales MWK"  →  "total_sales_mwk"
     "total_sales_mwk":                   "total_sales",
+    "svc_charge_individual":             "service_charge_individual",
+    "svc_charge_cwp":                    "service_charge_cwp",
+    "svc_charge_institutions":           "service_charge_institutions",
+    "svc_charge_commercial":             "service_charge_commercial",
+    "meter_rental_individual":           "meter_rental_individual",
+    "meter_rental_cwp":                  "meter_rental_cwp",
+    "meter_rental_institutions":         "meter_rental_institutions",
+    "meter_rental_commercial":           "meter_rental_commercial",
 
     # ── DEBTORS ───────────────────────────────────────────────────────────
     # "Private Debtors MWK"  →  "private_debtors_mwk"
@@ -261,7 +338,9 @@ COLUMN_MAP: dict[str, str] = {
     "days_to_quotation":                 "days_to_quotation",
     # "Cust Fully Paid"  →  "cust_fully_paid"
     "cust_fully_paid":                   "conn_fully_paid",
+    "paid_up_applicants":                "paid_up_applicants",
     "days_to_connect":                   "days_to_connect",
+    "connection_days":                   "connection_days",
     "connectivity_rate":                 "connectivity_rate",
 
     # ── QUERY PERFORMANCE ─────────────────────────────────────────────────
@@ -613,10 +692,9 @@ class ExcelParser:
     @staticmethod
     def _rollup_breakdown_metrics(metrics: dict[str, Any]) -> None:
         """
-        Roll temporary per-size pipe-breakdown fields into the stored DB columns.
+        Roll per-size pipe-breakdown fields into the stored DB columns.
         - PVC sizes remain stored individually and also contribute to pipe_pvc.
-        - GI, DI, HDPE and AC sizes are aggregated into their material totals.
-        - Temporary fields are removed so commit/import only sees valid DB columns.
+        - GI, DI, HDPE and AC sizes are stored individually and aggregated into totals.
         """
         def _sum(fields: list[str]) -> float:
             total = 0.0
@@ -630,9 +708,9 @@ class ExcelParser:
             'pvc_20mm','pvc_25mm','pvc_32mm','pvc_40mm','pvc_50mm','pvc_63mm',
             'pvc_75mm','pvc_90mm','pvc_110mm','pvc_160mm','pvc_200mm','pvc_250mm','pvc_315mm',
         ]
-        gi_fields = ['_gi_15mm','_gi_20mm','_gi_25mm','_gi_40mm','_gi_50mm','_gi_75mm','_gi_100mm','_gi_150mm','_gi_200mm']
-        di_fields = ['_di_150mm','_di_200mm','_di_250mm','_di_300mm','_di_350mm','_di_525mm']
-        hdpe_ac_fields = ['_hdpe_20mm','_hdpe_25mm','_hdpe_32mm','_hdpe_50mm','_ac_50mm','_ac_75mm','_ac_100mm','_ac_150mm']
+        gi_fields = ['gi_15mm','gi_20mm','gi_25mm','gi_40mm','gi_50mm','gi_75mm','gi_100mm','gi_150mm','gi_200mm']
+        di_fields = ['di_150mm','di_200mm','di_250mm','di_300mm','di_350mm','di_525mm']
+        hdpe_ac_fields = ['hdpe_20mm','hdpe_25mm','hdpe_32mm','hdpe_50mm','ac_50mm','ac_75mm','ac_100mm','ac_150mm']
 
         pvc_total = _sum(pvc_fields)
         gi_total = _sum(gi_fields)
@@ -648,8 +726,6 @@ class ExcelParser:
         if hdpe_ac_total or 'pipe_hdpe_ac' not in metrics or metrics.get('pipe_hdpe_ac') is None:
             metrics['pipe_hdpe_ac'] = hdpe_ac_total
 
-        for field in gi_fields + di_fields + hdpe_ac_fields:
-            metrics.pop(field, None)
 
     # ── Type coercion helpers ─────────────────────────────────────────────
 

@@ -24,8 +24,7 @@ from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, field_validator
-from slowapi import Limiter
-from slowapi.util import get_remote_address
+from app.core.limiter import limiter as _limiter
 from sqlalchemy.orm import Session
 
 from app.auth import (
@@ -41,10 +40,6 @@ from app.database import User, get_db
 # ── Two separate routers so auth and admin have distinct prefixes ──
 auth_router  = APIRouter(prefix="/api/auth",  tags=["Auth"])
 admin_router = APIRouter(prefix="/api/admin", tags=["Admin"])
-
-# Rate limiter — shares the same key_func as main.py's limiter
-_limiter = Limiter(key_func=get_remote_address)
-
 
 # ── Schemas ───────────────────────────────────────────────────
 class LoginIn(BaseModel):
@@ -80,6 +75,7 @@ class UserOut(BaseModel):
     is_active:  bool
     created_at: Optional[datetime]
     created_by: Optional[str]
+    last_login: Optional[datetime] = None
 
     model_config = {"from_attributes": True}
 
@@ -167,6 +163,8 @@ def login(request: Request, payload: LoginIn, db: Session = Depends(get_db)):
             detail="Incorrect username or password.",
         )
 
+    user.last_login = datetime.utcnow()
+    db.commit()
     token = create_access_token(user.username, user.role, user.full_name)
     return TokenOut(
         access_token=token,
