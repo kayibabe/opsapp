@@ -114,6 +114,8 @@ document.addEventListener('keydown',e=>{
   if(e.key!=='Escape') return;
   const dd=document.getElementById('tb-export');
   if(dd && dd.hasAttribute('open')) dd.removeAttribute('open');
+  const bp=document.getElementById('bp-modal');
+  if(bp && bp.classList.contains('open')) closeBoardPackBuilder();
 });
 function openAdminDataManagement(){
   navigate('admin');
@@ -5896,6 +5898,120 @@ function _rcInitCentre(){
   renderRecentReports();
 }
 
+/* ── Board pack assembly (combine several reports into one document) ─────── */
+const BOARD_PACK_PRESET = ['board-pack','water-production','revenue-collections','zone-comparison'];
+const RC_CATEGORY_LABELS = {executive:'Executive',operations:'Operations',financial:'Financial',hra:'HRA',infrastructure:'Infrastructure',custom:'Custom'};
+let _rcCombined = false;
+
+function openBoardPackBuilder(){
+  if(!_rcCentreReady) _rcInitCentre();
+  const sc=document.getElementById('bp-scope'); if(sc) sc.innerHTML=DOMPurify.sanitize(buildCompactFilterSummary());
+  renderBoardPackList(BOARD_PACK_PRESET);
+  document.getElementById('bp-modal')?.classList.add('open');
+  document.body.classList.add('bp-open');
+}
+function closeBoardPackBuilder(){
+  document.getElementById('bp-modal')?.classList.remove('open');
+  document.body.classList.remove('bp-open');
+}
+function renderBoardPackList(checkedIds){
+  const list=document.getElementById('bp-list'); if(!list) return;
+  const checked=new Set(checkedIds||[]);
+  list.innerHTML='';
+  const byCat={};
+  Object.keys(REPORT_TEMPLATES).forEach(id=>{
+    const cat=_rcCardMeta[id]?.category||'custom';
+    (byCat[cat]=byCat[cat]||[]).push(id);
+  });
+  ['executive','operations','financial','hra','infrastructure','custom'].forEach(cat=>{
+    const ids=byCat[cat]; if(!ids||!ids.length) return;
+    const grp=document.createElement('div'); grp.className='bp-group';
+    const gh=document.createElement('div'); gh.className='bp-group-head'; gh.textContent=RC_CATEGORY_LABELS[cat]||cat;
+    grp.appendChild(gh);
+    ids.forEach(id=>{
+      const meta=_rcCardMeta[id]||{icon:'📄',title:REPORT_TEMPLATES[id]?.title||id};
+      const row=document.createElement('label'); row.className='bp-row';
+      const cb=document.createElement('input'); cb.type='checkbox'; cb.value=id; cb.checked=checked.has(id); cb.className='bp-check';
+      cb.addEventListener('change',updateBoardPackCount);
+      const ico=document.createElement('span'); ico.className='bp-row-ico'; ico.textContent=meta.icon;
+      const t=document.createElement('span'); t.className='bp-row-title'; t.textContent=meta.title;
+      row.append(cb,ico,t);
+      grp.appendChild(row);
+    });
+    list.appendChild(grp);
+  });
+  updateBoardPackCount();
+}
+function _bpChecks(){ return [...document.querySelectorAll('#bp-list .bp-check')]; }
+function _bpSelected(){ return _bpChecks().filter(c=>c.checked).map(c=>c.value); }
+function updateBoardPackCount(){
+  const n=_bpSelected().length;
+  const el=document.getElementById('bp-count'); if(el) el.textContent=`${n} selected`;
+  const btn=document.getElementById('bp-build-btn'); if(btn) btn.disabled=n===0;
+}
+function selectBoardPackPreset(){ const s=new Set(BOARD_PACK_PRESET); _bpChecks().forEach(c=>c.checked=s.has(c.value)); updateBoardPackCount(); }
+function setBoardPackAll(v){ _bpChecks().forEach(c=>c.checked=v); updateBoardPackCount(); }
+
+async function buildBoardPack(){
+  const ids=_bpSelected(); if(!ids.length) return;
+  closeBoardPackBuilder();
+  _rcCombined=true; _rcCurrentTemplate=null;
+  const overlay=document.getElementById('report-output-overlay');
+  const content=document.getElementById('report-output-content');
+  const roTitle=document.getElementById('ro-title');
+  const printBtn=document.getElementById('ro-print-btn');
+  const exportBtn=document.getElementById('ro-export-btn');
+  roTitle.textContent='Board Pack — Combined';
+  printBtn.style.display='none'; exportBtn.style.display='none';
+  content.innerHTML=DOMPurify.sanitize(`<div class="ro-spinner"><div class="ro-spinner-ring"></div><div class="ro-spinner-label">Assembling ${ids.length} report${ids.length>1?'s':''}…</div></div>`);
+  overlay.classList.add('open'); document.body.classList.add('ro-open');
+
+  try{
+    const token=getToken();
+    const year=dbState.year || new Date().getFullYear();
+    const zones=filterState.zones.join(',');
+    const months=filterState.months.join(',');
+    const scope=[`FY ${year-1}/${String(year).slice(-2)}`, zones||'All Zones', months ? months.split(',').length+' months' : 'All Months'].join(' · ');
+    const generated=new Date().toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'});
+
+    let narrative=null;
+    if(ids.some(id=>REPORT_TEMPLATES[id]?.ai)){
+      try{ narrative=await fetchJsonSafe(`${API}/api/insights/summary?year=${year}`,{token,fallback:null,label:'insights/summary'}); }catch{}
+    }
+
+    const sections=[];
+    for(const id of ids){
+      const tpl=REPORT_TEMPLATES[id]; if(!tpl) continue;
+      let url=`${API}${tpl.endpoint}?year=${year}`;
+      if(zones) url+=`&zones=${encodeURIComponent(zones)}`;
+      if(months) url+=`&months=${encodeURIComponent(months)}`;
+      let body;
+      try{
+        const data=await fetchJsonSafe(url,{token,label:tpl.endpoint});
+        body=_rcIsEmpty(data)
+          ? `${_rcHeader(tpl.title,scope,generated)}<div class="ro-empty"><div class="ro-empty-icon">📭</div><div class="ro-empty-title">No data for this section</div><div class="ro-empty-msg">No ${tpl.title} data for the selected scope.</div></div>`
+          : _rcRender(id,data,tpl.ai?narrative:null,{year,zones,months,scope,generated});
+      }catch(e){
+        body=`${_rcHeader(tpl.title,scope,generated)}<div class="ro-error"><strong>Failed to load ${tpl.title}</strong></div>`;
+      }
+      sections.push({title:(_rcCardMeta[id]?.title||tpl.title),body});
+    }
+
+    const cover=`<section class="bp-cover">
+      <div class="bp-cover-org">Southern Region Water Board · Malawi</div>
+      <div class="bp-cover-title">Board Pack</div>
+      <div class="bp-cover-scope">${scope}</div>
+      <div class="bp-cover-gen">Generated ${generated}</div>
+      <div class="bp-toc"><div class="bp-toc-title">Contents</div><ol>${sections.map(s=>`<li>${s.title}</li>`).join('')}</ol></div>
+    </section>`;
+    const bodyHtml=sections.map((s,i)=>`<section class="bp-section${i>0?' bp-pagebreak':''}">${s.body}</section>`).join('');
+    content.innerHTML=DOMPurify.sanitize(cover+bodyHtml);
+    printBtn.style.display=''; exportBtn.style.display='';
+  }catch(e){
+    content.innerHTML=DOMPurify.sanitize(`<div class="ro-error"><strong>Failed to assemble board pack</strong><br><span style="font-size:12px">${e.message}</span></div>`);
+  }
+}
+
 function switchReportCategory(cat) {
   // Picking a category always exits search mode.
   const si = document.getElementById('rc-search');
@@ -5938,6 +6054,7 @@ function filterReportTemplates(q) {
 async function generateReport(templateId, scopeOverride) {
   const tpl = REPORT_TEMPLATES[templateId]; if(!tpl) return;
   _rcCurrentTemplate = templateId;
+  _rcCombined = false;
   const overlay = document.getElementById('report-output-overlay');
   const content = document.getElementById('report-output-content');
   const roTitle = document.getElementById('ro-title');
@@ -5987,7 +6104,9 @@ function printGeneratedReport() {
   const tpl = REPORT_TEMPLATES[_rcCurrentTemplate]||{};
   let s = document.getElementById('print-page-size');
   if(!s){s=document.createElement('style');s.id='print-page-size';document.head.appendChild(s);}
-  s.textContent = tpl.landscape ? `@page{size:297mm 210mm;margin:5mm 6mm}` : `@page{size:210mm 297mm;margin:8mm 10mm}`;
+  // Combined board packs mix orientations; default to landscape for them.
+  const landscape = _rcCombined || tpl.landscape;
+  s.textContent = landscape ? `@page{size:297mm 210mm;margin:5mm 6mm}` : `@page{size:210mm 297mm;margin:8mm 10mm}`;
   document.body.classList.add('printing-report','printing-report-overlay');
   window.print();
   setTimeout(()=>document.body.classList.remove('printing-report','printing-report-overlay'),800);
@@ -6003,7 +6122,8 @@ function exportReportExcel() {
     XLSX.utils.book_append_sheet(wb, ws, (tbl.dataset.sheet||`Sheet${i+1}`).slice(0,31));
   });
   const tpl = REPORT_TEMPLATES[_rcCurrentTemplate];
-  XLSX.writeFile(wb, `${tpl?.title||'Report'}_FY${dbState.year}.xlsx`);
+  const name = _rcCombined ? 'Board_Pack' : (tpl?.title || 'Report');
+  XLSX.writeFile(wb, `${name}_FY${dbState.year}.xlsx`);
 }
 
 /* ── Helpers ─────────────────────────────────────────────────────────────── */

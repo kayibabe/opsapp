@@ -1850,9 +1850,15 @@
           <button class="rc-tab"        data-cat="infrastructure" onclick="switchReportCategory('infrastructure')">Infrastructure</button>
           <button class="rc-tab"        data-cat="custom"         onclick="switchReportCategory('custom')">Custom</button>
         </div>
-        <div class="rc-search-wrap">
-          <svg class="rc-search-icon" width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true"><circle cx="7" cy="7" r="5" stroke="currentColor" stroke-width="1.6"/><path d="M11 11l3.5 3.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
-          <input type="search" id="rc-search" class="rc-search" placeholder="Search reports…" oninput="filterReportTemplates(this.value)" aria-label="Search reports by name or tag">
+        <div class="rc-toolbar-right">
+          <button type="button" class="rc-pack-btn" onclick="openBoardPackBuilder()" title="Combine several reports into one document">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2 4.5h12M2 8h12M2 11.5h7" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+            Build board pack
+          </button>
+          <div class="rc-search-wrap">
+            <svg class="rc-search-icon" width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true"><circle cx="7" cy="7" r="5" stroke="currentColor" stroke-width="1.6"/><path d="M11 11l3.5 3.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+            <input type="search" id="rc-search" class="rc-search" placeholder="Search reports…" oninput="filterReportTemplates(this.value)" aria-label="Search reports by name or tag">
+          </div>
         </div>
       </div>
 
@@ -2021,6 +2027,33 @@
         </div>
       </div>
     </div><!-- /report-output-overlay -->
+
+    <!-- ══ BOARD PACK BUILDER ═══════════════════════════════════════════ -->
+    <div id="bp-modal" class="bp-modal" role="dialog" aria-modal="true" aria-labelledby="bp-title">
+      <div class="bp-backdrop" onclick="closeBoardPackBuilder()"></div>
+      <div class="bp-dialog">
+        <div class="bp-head">
+          <div>
+            <div class="bp-title" id="bp-title">Build board pack</div>
+            <div class="bp-sub">Select the reports to combine into one document. Generated for <strong id="bp-scope">your current scope</strong>.</div>
+          </div>
+          <button type="button" class="bp-close" onclick="closeBoardPackBuilder()" aria-label="Close">
+            <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><path d="M2 2l12 12M14 2L2 14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+          </button>
+        </div>
+        <div class="bp-actions-top">
+          <button type="button" class="bp-link" onclick="selectBoardPackPreset()">Executive preset</button>
+          <button type="button" class="bp-link" onclick="setBoardPackAll(true)">Select all</button>
+          <button type="button" class="bp-link" onclick="setBoardPackAll(false)">Clear</button>
+          <span class="bp-count" id="bp-count">0 selected</span>
+        </div>
+        <div class="bp-list" id="bp-list"></div>
+        <div class="bp-foot">
+          <button type="button" class="bp-btn bp-btn-ghost" onclick="closeBoardPackBuilder()">Cancel</button>
+          <button type="button" class="bp-btn bp-btn-primary" id="bp-build-btn" onclick="buildBoardPack()">Assemble pack</button>
+        </div>
+      </div>
+    </div>
 
     <!-- ══ ADMIN PANEL ══════════════════════════════════════════════════ -->
     <div id="page-admin" class="db-page">
