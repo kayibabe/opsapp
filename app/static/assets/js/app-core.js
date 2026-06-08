@@ -97,6 +97,14 @@ function exportLibraryDataExtract(){
   }
   exportExcel(page);
 }
+/* Toolbar "Export" menu for report pages — routes to current-page export. */
+function exportFromToolbar(mode){
+  const dd=document.getElementById('tb-export');
+  if(dd) dd.removeAttribute('open');
+  if(mode==='print') printLibraryCurrentWorking();
+  else if(mode==='extract') exportLibraryDataExtract();
+  else exportLibraryCurrentWorking();
+}
 function openAdminDataManagement(){
   navigate('admin');
   setTimeout(()=>admTab('data'),0);
@@ -513,10 +521,12 @@ function buildCompactFilterSummary(){
 
 function updatePageMeta(){
   const stamp=new Date().toLocaleString('en-GB',{day:'2-digit',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'});
-  ['overview','operations','commercial','reports','production','wt-ei','customers','connections','stuck','connectivity','breakdowns','pipelines','billed','collections','charges','expenses','debtors','segment-revenue','workforce','class-connections','stuck-classes','pipe-materials','budget','compliance','benchmarking'].forEach(page=>{
+  ['overview','operations','commercial','production','wt-ei','customers','connections','stuck','connectivity','breakdowns','pipelines','billed','collections','charges','expenses','debtors','segment-revenue','workforce','class-connections','stuck-classes','pipe-materials','budget','compliance','benchmarking','report-centre'].forEach(page=>{
     const el=document.getElementById(`pg-meta-${page}`);
     if(el)el.innerHTML= DOMPurify.sanitize(`${buildCompactFilterSummary()} <span class="meta-sep">·</span> Updated ${stamp}`);
   });
+  const sc=document.getElementById('rc-scope-val');
+  if(sc) sc.innerHTML= DOMPurify.sanitize(buildCompactFilterSummary());
 }
 
 function buildFilterSummary(){
@@ -1329,9 +1339,12 @@ function isReportDensityPage(page=currentPage){
 }
 
 function syncReportDensityToolbar(page=currentPage){
+  const active=isReportDensityPage(page);
+  // Toolbar "Export" control — available on report pages, independent of the density toolbar.
+  const exp=document.getElementById('tb-export');
+  if(exp){exp.classList.toggle('is-hidden',!active);if(!active)exp.removeAttribute('open');}
   const wrap=document.getElementById('tb-viewmode');
   if(!wrap)return;
-  const active=isReportDensityPage(page);
   wrap.classList.toggle('is-hidden',!active);
   wrap.setAttribute('aria-hidden',active?'false':'true');
   ['summary','analysis','detail'].forEach(mode=>{
@@ -1879,7 +1892,6 @@ const PAGE_META={
   overview:{section:'Executive Dashboard',title:'Executive Dashboard'},
   operations:{section:'Operations',title:'Operations Hub'},
   commercial:{section:'Commercial',title:'Commercial Hub'},
-  reports:{section:'Reports',title:'Report Library'},
   production:{section:'Operations',title:'Water Production'},
   'wt-ei':{section:'Operations',title:'Treatment & Energy'},
   pipelines:{section:'Operations',title:'Network Extensions'},
@@ -2167,7 +2179,7 @@ async function loadPage(page){
   try{
     await ensureGovernanceBundle();
     await ensureExportGovernanceBundle();
-const map={overview:loadOverview,operations:loadOperationsHub,commercial:loadCommercialHub,reports:loadReportsHub,admin:loadAdmin,production:loadProduction,'wt-ei':loadWtEi,customers:loadCustomersUnified,connections:loadConnections,stuck:loadStuck,connectivity:loadConnectivity,breakdowns:loadBreakdowns,pipelines:loadPipelines,billed:loadBilled,collections:loadCollections,charges:loadCharges,expenses:loadExpenses,debtors:loadDebtors,'segment-revenue':loadSegmentRevenue,workforce:loadWorkforce,'class-connections':loadClassConnections,'stuck-classes':loadStuckClasses,'pipe-materials':loadPipeMaterials,compliance:loadCompliance,budget:loadBudget,benchmarking:loadBenchmarking,'report-centre':loadReportCentre};
+const map={overview:loadOverview,operations:loadOperationsHub,commercial:loadCommercialHub,admin:loadAdmin,production:loadProduction,'wt-ei':loadWtEi,customers:loadCustomersUnified,connections:loadConnections,stuck:loadStuck,connectivity:loadConnectivity,breakdowns:loadBreakdowns,pipelines:loadPipelines,billed:loadBilled,collections:loadCollections,charges:loadCharges,expenses:loadExpenses,debtors:loadDebtors,'segment-revenue':loadSegmentRevenue,workforce:loadWorkforce,'class-connections':loadClassConnections,'stuck-classes':loadStuckClasses,'pipe-materials':loadPipeMaterials,compliance:loadCompliance,budget:loadBudget,benchmarking:loadBenchmarking,'report-centre':loadReportCentre};
     if(map[page])await map[page]();
     await injectChartCredibilityNotes(document.getElementById('page-'+page)||document);
     await injectPageGovernanceStatus(document.getElementById('page-'+page)||document);
@@ -3155,7 +3167,6 @@ function hydrateHubWorkspace(page){
 }
 function loadOperationsHub(){ hydrateHubWorkspace('operations'); }
 function loadCommercialHub(){ hydrateHubWorkspace('commercial'); }
-function loadReportsHub(){ hydrateHubWorkspace('reports'); }
 
 
 /* ══════════════════════ COLLAPSIBLE NAV GROUPS ═══════════════════════ */
@@ -5747,8 +5758,42 @@ async function loadBenchmarking(){
 function loadReportCentre() { updatePageMeta(); }
 
 function switchReportCategory(cat) {
+  // Picking a category always exits search mode.
+  const si = document.getElementById('rc-search');
+  if (si) si.value = '';
+  document.querySelectorAll('.rc-card').forEach(c => { c.style.display = ''; });
+  const nr = document.getElementById('rc-no-results'); if (nr) nr.hidden = true;
   document.querySelectorAll('.rc-tab').forEach(t => t.classList.toggle('active', t.dataset.cat === cat));
   document.querySelectorAll('.rc-cards').forEach(c => c.classList.toggle('rc-cards-hidden', c.id !== 'rc-cards-' + cat));
+}
+
+/* Search across every template (title, description, tags) regardless of tab. */
+function filterReportTemplates(q) {
+  const query = (q || '').trim().toLowerCase();
+  const nr = document.getElementById('rc-no-results');
+  if (!query) {
+    // Restore the active category view.
+    const active = document.querySelector('.rc-tab.active')?.dataset.cat || 'executive';
+    document.querySelectorAll('.rc-card').forEach(c => { c.style.display = ''; });
+    document.querySelectorAll('.rc-cards').forEach(c => c.classList.toggle('rc-cards-hidden', c.id !== 'rc-cards-' + active));
+    if (nr) nr.hidden = true;
+    return;
+  }
+  let matches = 0;
+  document.querySelectorAll('.rc-cards').forEach(cont => {
+    let any = false;
+    cont.querySelectorAll('.rc-card').forEach(card => {
+      const hit = card.textContent.toLowerCase().includes(query);
+      card.style.display = hit ? '' : 'none';
+      if (hit) { any = true; matches++; }
+    });
+    cont.classList.toggle('rc-cards-hidden', !any);
+  });
+  if (nr) {
+    nr.hidden = matches > 0;
+    const qEl = document.getElementById('rc-no-results-q');
+    if (qEl) qEl.textContent = `"${q.trim()}"`;
+  }
 }
 
 async function generateReport(templateId) {
@@ -5773,6 +5818,11 @@ async function generateReport(templateId) {
     if(zones) url += `&zones=${encodeURIComponent(zones)}`;
     if(months) url += `&months=${encodeURIComponent(months)}`;
     const data = await fetchJsonSafe(url, {token, label:tpl.endpoint});
+    if(_rcIsEmpty(data)){
+      const scopeTxt = [`FY ${year-1}/${String(year).slice(-2)}`, zones||'All Zones', months ? months.split(',').length+' months' : 'All Months'].join(' · ');
+      content.innerHTML = DOMPurify.sanitize(`<div class="ro-empty"><div class="ro-empty-icon">📭</div><div class="ro-empty-title">No data for this report</div><div class="ro-empty-msg">There is no data for <strong>${tpl.title}</strong> in the selected scope (${scopeTxt}). Try a different fiscal year, zone, or period — or upload the monthly returns for this period.</div></div>`);
+      return;
+    }
     let narrative = null;
     if(tpl.ai){
       try{ narrative = await fetchJsonSafe(`${API}/api/insights/summary?year=${year}`,{token,fallback:null,label:'insights/summary'}); }catch{}
@@ -5837,6 +5887,19 @@ function _rcNarrative(n){
   const items=[n.financial_performance,n.operational_efficiency,n.customer_service,n.infrastructure_reliability].filter(Boolean);
   if(!items.length)return'';
   return `<div class="rc-narrative"><div class="rc-narrative-title">AI Performance Narrative</div><div class="rc-narrative-body">${items.map(s=>`<p>${s}</p>`).join('')}</div></div>`;
+}
+
+/* True when a report payload carries no usable data for the chosen scope. */
+function _rcIsEmpty(d){
+  if(d==null) return true;
+  if(Array.isArray(d)) return d.length===0;
+  if(typeof d==='object'){
+    const keys=Object.keys(d);
+    if(!keys.length) return true;
+    // Empty when every value is null/undefined or an empty array.
+    return keys.every(k=>{const v=d[k];return v==null||(Array.isArray(v)&&v.length===0);});
+  }
+  return false;
 }
 
 /* ── Master renderer ─────────────────────────────────────────────────────── */

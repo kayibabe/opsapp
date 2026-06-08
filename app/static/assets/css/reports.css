@@ -2149,6 +2149,51 @@
   box-shadow:0 1px 6px rgba(26,143,209,.30);
 }
 
+/* ── Toolbar: tabs + search ──────────────────────────────────────────── */
+.rc-toolbar{
+  display:flex;align-items:center;justify-content:space-between;
+  flex-wrap:wrap;gap:12px;margin-bottom:24px;
+}
+.rc-toolbar .rc-tabs{margin-bottom:0}
+.rc-search-wrap{position:relative;display:inline-flex;align-items:center;min-width:230px;flex:0 1 280px}
+.rc-search-icon{position:absolute;left:11px;color:var(--ds-text-secondary);pointer-events:none}
+.rc-search{
+  width:100%;font-family:var(--ds-font);font-size:12.5px;color:var(--ds-text-primary);
+  padding:8px 12px 8px 32px;border:1px solid var(--ds-border);border-radius:10px;
+  background:var(--ds-surface);transition:border-color .13s,box-shadow .13s;
+}
+.rc-search::placeholder{color:var(--ds-text-secondary)}
+.rc-search:focus{outline:none;border-color:#1A8FD1;box-shadow:0 0 0 3px rgba(26,143,209,.15)}
+@media(max-width:640px){.rc-search-wrap{flex:1 1 100%}}
+
+/* ── Scope banner ────────────────────────────────────────────────────── */
+.rc-scope{
+  display:flex;align-items:center;gap:9px;
+  margin-bottom:16px;padding:10px 14px;
+  background:var(--ds-blue-bg,#eff6ff);
+  border:1px solid #bfdbfe;border-radius:10px;
+  font-size:12px;line-height:1.5;color:var(--ds-text-secondary);
+}
+.rc-scope-icon{color:#1A8FD1;flex:0 0 auto}
+.rc-scope-text strong{color:var(--ds-text-primary);font-weight:700}
+
+/* ── No-results (search) ─────────────────────────────────────────────── */
+.rc-no-results{
+  padding:28px 16px;text-align:center;
+  font-size:13px;color:var(--ds-text-secondary);
+  background:var(--ds-surface);border:1px dashed var(--ds-border);border-radius:12px;
+}
+.rc-no-results strong{color:var(--ds-text-primary)}
+
+/* ── Empty report state (overlay) ────────────────────────────────────── */
+.ro-empty{
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;
+  padding:56px 24px;text-align:center;
+}
+.ro-empty-icon{font-size:40px;line-height:1}
+.ro-empty-title{font-size:15px;font-weight:700;color:var(--ds-text-primary)}
+.ro-empty-msg{font-size:12.5px;color:var(--ds-text-secondary);max-width:420px;line-height:1.6}
+
 /* ── Card grid ───────────────────────────────────────────────────────── */
 .rc-cards{
   display:grid;
