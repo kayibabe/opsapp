@@ -2194,6 +2194,41 @@
 .ro-empty-title{font-size:15px;font-weight:700;color:var(--ds-text-primary)}
 .ro-empty-msg{font-size:12.5px;color:var(--ds-text-secondary);max-width:420px;line-height:1.6}
 
+/* ── Recent reports strip ────────────────────────────────────────────── */
+.rc-recent{margin-bottom:18px}
+.rc-recent-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+.rc-recent-label{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--ds-text-secondary)}
+.rc-recent-clear{border:none;background:none;font-family:var(--ds-font);font-size:11px;font-weight:600;color:#1A8FD1;cursor:pointer;padding:2px 4px;border-radius:6px}
+.rc-recent-clear:hover{background:var(--ds-blue-bg,#eff6ff)}
+.rc-recent-row{display:flex;flex-wrap:wrap;gap:8px}
+.rc-recent-chip{
+  display:inline-flex;align-items:center;gap:9px;
+  font-family:var(--ds-font);text-align:left;
+  background:var(--ds-surface);border:1px solid var(--ds-border);border-radius:10px;
+  padding:7px 12px 7px 10px;cursor:pointer;
+  transition:border-color .13s,box-shadow .13s,transform .1s;
+}
+.rc-recent-chip:hover{border-color:#BFDBFE;box-shadow:0 3px 10px rgba(0,0,0,.06);transform:translateY(-1px)}
+.rc-recent-ico{font-size:17px;line-height:1}
+.rc-recent-meta{display:flex;flex-direction:column;gap:1px}
+.rc-recent-title{font-size:12px;font-weight:700;color:var(--ds-text-primary);line-height:1.2}
+.rc-recent-scope{font-size:10.5px;color:var(--ds-text-secondary);line-height:1.2}
+
+/* ── Pin / favourite ─────────────────────────────────────────────────── */
+.rc-card{position:relative}
+.rc-pin{
+  position:absolute;top:12px;right:12px;
+  display:inline-flex;align-items:center;justify-content:center;
+  width:28px;height:28px;border-radius:8px;
+  border:none;background:none;cursor:pointer;color:var(--ds-text-secondary);
+  opacity:0;transition:opacity .13s,color .13s,background .13s;
+}
+.rc-card:hover .rc-pin,.rc-pin.active{opacity:1}
+.rc-pin:hover{background:var(--ds-bg);color:#1A8FD1}
+.rc-pin.active{color:#F59E0B}
+.rc-pin.active svg{fill:#F59E0B;stroke:#F59E0B}
+.rc-card-fav{border-color:#FDE68A;box-shadow:0 1px 0 #FEF3C7 inset}
+
 /* ── Card grid ───────────────────────────────────────────────────────── */
 .rc-cards{
   display:grid;

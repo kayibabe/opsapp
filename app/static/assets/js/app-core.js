@@ -105,6 +105,16 @@ function exportFromToolbar(mode){
   else if(mode==='extract') exportLibraryDataExtract();
   else exportLibraryCurrentWorking();
 }
+/* Close the toolbar Export menu when clicking outside it or pressing Escape. */
+document.addEventListener('click',e=>{
+  const dd=document.getElementById('tb-export');
+  if(dd && dd.hasAttribute('open') && !dd.contains(e.target)) dd.removeAttribute('open');
+});
+document.addEventListener('keydown',e=>{
+  if(e.key!=='Escape') return;
+  const dd=document.getElementById('tb-export');
+  if(dd && dd.hasAttribute('open')) dd.removeAttribute('open');
+});
 function openAdminDataManagement(){
   navigate('admin');
   setTimeout(()=>admTab('data'),0);
@@ -5755,7 +5765,136 @@ async function loadBenchmarking(){
   }catch(e){console.error('benchmarking',e);errMsg('bm-kpis','Benchmarking failed to load');}
 }
 
-function loadReportCentre() { updatePageMeta(); }
+function loadReportCentre() { updatePageMeta(); _rcInitCentre(); }
+
+/* ── Report Centre: favourites + recent reports ──────────────────────────── */
+const RC_FAV_KEY='rc_favourites', RC_RECENT_KEY='rc_recent', RC_RECENT_MAX=6;
+const _rcCardMeta={};
+let _rcCentreReady=false;
+
+function _rcGetFav(){ try{return JSON.parse(localStorage.getItem(RC_FAV_KEY))||[];}catch{return [];} }
+function _rcSetFav(a){ try{localStorage.setItem(RC_FAV_KEY,JSON.stringify(a));}catch{} }
+function _rcGetRecent(){ try{return JSON.parse(localStorage.getItem(RC_RECENT_KEY))||[];}catch{return [];} }
+function _rcSetRecent(a){ try{localStorage.setItem(RC_RECENT_KEY,JSON.stringify(a));}catch{} }
+
+/* Build id→{icon,title,category} from the static cards and tag each card. */
+function _rcIndexCards(){
+  document.querySelectorAll('#page-report-centre .rc-card').forEach(card=>{
+    const btn=card.querySelector('.rc-generate-btn');
+    const m=btn && btn.getAttribute('onclick')?.match(/generateReport\('([^']+)'\)/);
+    if(!m) return;
+    const id=m[1];
+    card.dataset.tpl=id;
+    _rcCardMeta[id]={
+      icon: card.querySelector('.rc-card-icon')?.textContent || '📄',
+      title: card.querySelector('.rc-card-title')?.textContent || REPORT_TEMPLATES[id]?.title || id,
+      category: card.closest('.rc-cards')?.id.replace('rc-cards-','') || ''
+    };
+  });
+}
+
+/* Add a pin (star) toggle to each card, once. */
+function _rcInjectPins(){
+  const star='<svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><path d="M12 3.6l2.47 5.01 5.53.8-4 3.9.94 5.5L12 16.2l-4.94 2.6.94-5.5-4-3.9 5.53-.8L12 3.6z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>';
+  document.querySelectorAll('#page-report-centre .rc-card').forEach(card=>{
+    const id=card.dataset.tpl;
+    if(!id || card.querySelector('.rc-pin')) return;
+    const pin=document.createElement('button');
+    pin.type='button';
+    pin.className='rc-pin';
+    pin.innerHTML=star;
+    pin.addEventListener('click',e=>toggleReportFavourite(id,e));
+    card.appendChild(pin);
+  });
+}
+
+function toggleReportFavourite(id,ev){
+  if(ev) ev.stopPropagation();
+  const fav=_rcGetFav();
+  const i=fav.indexOf(id);
+  if(i>=0) fav.splice(i,1); else fav.push(id);
+  _rcSetFav(fav);
+  applyReportFavourites();
+}
+
+/* Reflect favourite state on stars and float pinned cards to the top of each tab. */
+function applyReportFavourites(){
+  const fav=_rcGetFav();
+  document.querySelectorAll('#page-report-centre .rc-card').forEach(card=>{
+    const isFav=fav.includes(card.dataset.tpl);
+    card.classList.toggle('rc-card-fav',isFav);
+    const pin=card.querySelector('.rc-pin');
+    if(pin){ pin.classList.toggle('active',isFav); pin.title=isFav?'Unpin from top':'Pin to top'; pin.setAttribute('aria-pressed',isFav?'true':'false'); }
+  });
+  document.querySelectorAll('#page-report-centre .rc-cards').forEach(cont=>{
+    [...cont.querySelectorAll('.rc-card')]
+      .sort((a,b)=>(fav.includes(a.dataset.tpl)?0:1)-(fav.includes(b.dataset.tpl)?0:1))
+      .forEach(c=>cont.appendChild(c));
+  });
+}
+
+function _rcScopeLabel(s){
+  if(!s) return 'Current scope';
+  const fy=s.year?`FY ${s.year-1}/${String(s.year).slice(-2)}`:'FY —';
+  const z=(''+(s.zones||'')).split(',').filter(Boolean);
+  const m=(''+(s.months||'')).split(',').filter(Boolean);
+  const zTxt=z.length?(z.length===1?z[0]:`${z.length} zones`):'All zones';
+  const mTxt=m.length?`${m.length} mo`:'All months';
+  return `${fy} · ${zTxt} · ${mTxt}`;
+}
+
+function _rcPushRecent(id,scope){
+  const same=r=>r.id===id && r.scope.year===scope.year && r.scope.zones===scope.zones && r.scope.months===scope.months;
+  let rec=_rcGetRecent().filter(r=>!same(r));
+  rec.unshift({id,scope,ts:Date.now()});
+  _rcSetRecent(rec.slice(0,RC_RECENT_MAX));
+  renderRecentReports();
+}
+
+function rerunRecentReport(r){ if(r&&r.id) generateReport(r.id,r.scope); }
+
+function clearRecentReports(){ _rcSetRecent([]); renderRecentReports(); }
+
+/* Render the Recent strip (DOM-built — no inline handlers to survive sanitising). */
+function renderRecentReports(){
+  const wrap=document.getElementById('rc-recent');
+  if(!wrap) return;
+  const rec=_rcGetRecent().filter(r=>REPORT_TEMPLATES[r.id]);
+  wrap.innerHTML='';
+  if(!rec.length){ wrap.hidden=true; return; }
+  wrap.hidden=false;
+
+  const head=document.createElement('div'); head.className='rc-recent-head';
+  const lbl=document.createElement('span'); lbl.className='rc-recent-label'; lbl.textContent='Recent reports';
+  const clr=document.createElement('button'); clr.type='button'; clr.className='rc-recent-clear'; clr.textContent='Clear'; clr.addEventListener('click',clearRecentReports);
+  head.append(lbl,clr);
+
+  const row=document.createElement('div'); row.className='rc-recent-row';
+  rec.forEach(r=>{
+    const meta=_rcCardMeta[r.id]||{icon:'📄',title:REPORT_TEMPLATES[r.id]?.title||r.id};
+    const scopeTxt=_rcScopeLabel(r.scope);
+    const chip=document.createElement('button'); chip.type='button'; chip.className='rc-recent-chip';
+    chip.title=`Re-run ${meta.title} — ${scopeTxt}`;
+    const ico=document.createElement('span'); ico.className='rc-recent-ico'; ico.textContent=meta.icon;
+    const box=document.createElement('span'); box.className='rc-recent-meta';
+    const t=document.createElement('span'); t.className='rc-recent-title'; t.textContent=meta.title;
+    const sc=document.createElement('span'); sc.className='rc-recent-scope'; sc.textContent=scopeTxt;
+    box.append(t,sc); chip.append(ico,box);
+    chip.addEventListener('click',()=>rerunRecentReport(r));
+    row.appendChild(chip);
+  });
+  wrap.append(head,row);
+}
+
+function _rcInitCentre(){
+  if(!_rcCentreReady){
+    _rcIndexCards();
+    _rcInjectPins();
+    _rcCentreReady=true;
+  }
+  applyReportFavourites();
+  renderRecentReports();
+}
 
 function switchReportCategory(cat) {
   // Picking a category always exits search mode.
@@ -5796,7 +5935,7 @@ function filterReportTemplates(q) {
   }
 }
 
-async function generateReport(templateId) {
+async function generateReport(templateId, scopeOverride) {
   const tpl = REPORT_TEMPLATES[templateId]; if(!tpl) return;
   _rcCurrentTemplate = templateId;
   const overlay = document.getElementById('report-output-overlay');
@@ -5811,9 +5950,11 @@ async function generateReport(templateId) {
   document.body.classList.add('ro-open');
   try {
     const token = getToken();
-    const year = dbState.year || new Date().getFullYear();
-    const zones = filterState.zones.join(',');
-    const months = filterState.months.join(',');
+    // A scope override (from the Recent strip) reproduces a past run without
+    // touching the global filters; otherwise use the current dashboard scope.
+    const year = scopeOverride?.year || dbState.year || new Date().getFullYear();
+    const zones = scopeOverride ? (scopeOverride.zones || '') : filterState.zones.join(',');
+    const months = scopeOverride ? (scopeOverride.months || '') : filterState.months.join(',');
     let url = `${API}${tpl.endpoint}?year=${year}`;
     if(zones) url += `&zones=${encodeURIComponent(zones)}`;
     if(months) url += `&months=${encodeURIComponent(months)}`;
@@ -5831,6 +5972,7 @@ async function generateReport(templateId) {
     const generated = new Date().toLocaleDateString('en-GB',{day:'numeric',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'});
     content.innerHTML = _rcRender(templateId, data, narrative, {year, zones, months, scope, generated});
     printBtn.style.display = ''; exportBtn.style.display = '';
+    _rcPushRecent(templateId, {year, zones, months});
   } catch(e) {
     content.innerHTML = DOMPurify.sanitize(`<div class="ro-error"><strong>Failed to generate report</strong><br><span style="font-size:12px;color:var(--ds-text-muted)">${e.message}</span></div>`);
   }
