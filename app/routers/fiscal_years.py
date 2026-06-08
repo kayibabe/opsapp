@@ -175,10 +175,10 @@ def update_fiscal_year(
              dependencies=[Depends(require_admin)])
 def upsert_budget_lines(
     year: int,
-    lines: list[dict] = Body(..., example=[
+    lines: list[dict] = Body(..., examples=[[
         {"category": "water_sales", "value": 16_719_582_000, "unit": "MWK"},
         {"category": "vol_produced", "value": 15_883_399, "unit": "m3"},
-    ]),
+    ]]),
     db: Session = Depends(get_db),
 ):
     """
@@ -217,10 +217,10 @@ def upsert_budget_lines(
              dependencies=[Depends(require_admin)])
 def upsert_zone_shares(
     year: int,
-    shares: list[dict] = Body(..., example=[
+    shares: list[dict] = Body(..., examples=[[
         {"zone": "Zomba",    "rev_share": 0.5651, "vol_share": 0.5111, "conn_share": 0.3558},
         {"zone": "Mangochi", "rev_share": 0.2115, "vol_share": 0.2077, "conn_share": 0.2881},
-    ]),
+    ]]),
     db: Session = Depends(get_db),
 ):
     if not db.query(FiscalYear).filter(FiscalYear.year == year).first():
@@ -257,10 +257,10 @@ def upsert_zone_shares(
              dependencies=[Depends(require_admin)])
 def upsert_spc_limits(
     year: int,
-    limits: list[dict] = Body(..., example=[
+    limits: list[dict] = Body(..., examples=[[
         {"metric": "nrw_pct", "mean": 31.28, "std": 1.12,
          "ucl2": 33.52, "lcl2": 29.03, "ucl3": 34.65, "lcl3": 27.91},
-    ]),
+    ]]),
     db: Session = Depends(get_db),
 ):
     if not db.query(FiscalYear).filter(FiscalYear.year == year).first():
