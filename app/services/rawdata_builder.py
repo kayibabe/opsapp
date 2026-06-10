@@ -100,7 +100,12 @@ def zone_files_status() -> list[dict]:
     return statuses
 
 
-def build_rawdata(*, test_mode: bool = False, force_overwrite: bool = False) -> dict:
+def build_rawdata(
+    *,
+    test_mode: bool = False,
+    force_overwrite: bool = False,
+    fiscal_year: str | None = None,
+) -> dict:
     """Run the smart-diff build and return a JSON-serialisable summary.
 
     Parameters
@@ -109,17 +114,23 @@ def build_rawdata(*, test_mode: bool = False, force_overwrite: bool = False) -> 
         Dry-run — compute changes but write nothing.
     force_overwrite:
         Full refresh — overwrite existing values, not just fill missing/zero.
+    fiscal_year:
+        Which fiscal year the zone workbooks belong to (e.g. ``"FY2026/27"``).
+        The source files carry no year, so this is required to load a brand-new
+        fiscal year. ``None`` → auto-detect from the existing master.
     """
     module = _load_script()
 
     with _BUILD_LOCK:
         exit_code, summary, log_lines = module.run_update(
-            test_mode=test_mode, force_overwrite=force_overwrite
+            test_mode=test_mode,
+            force_overwrite=force_overwrite,
+            fiscal_year=fiscal_year,
         )
 
     out_path = output_file_path()
     summary_dict = asdict(summary)
-    # ``filled_records`` holds tuples (zone, scheme, month_no) — make them JSON-safe.
+    # ``filled_records`` holds tuples (zone, scheme, year, month_no) — make them JSON-safe.
     summary_dict["filled_records"] = [
         list(rec) for rec in summary_dict.get("filled_records", [])
     ]
