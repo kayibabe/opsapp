@@ -219,6 +219,17 @@
           </div>
         </div>
 
+        <!-- Target fiscal year (optional — only needed to load a brand-new FY) -->
+        <div style="display:flex;flex-direction:column;gap:6px;margin:12px 0 6px">
+          <div class="um-mode-label">Fiscal year <span style="font-weight:500;color:var(--ds-text-muted)">(optional)</span>:</div>
+          <input id="um-fiscal-year" type="text" autocomplete="off"
+                 placeholder="Auto-detect (current cycle)"
+                 style="padding:8px 10px;border:1px solid var(--ds-border,#e2e8f0);border-radius:8px;font-size:12px;font-family:inherit;color:var(--ds-text,#0f172a);background:var(--ds-surface,#fff)">
+          <div style="font-size:11px;color:var(--ds-text-muted);line-height:1.4">
+            Leave blank for the normal monthly top-up. Set this (e.g. <code>FY2026/27</code>) only when loading a brand-new fiscal year.
+          </div>
+        </div>
+
         <!-- Build result summary (shown after building) -->
         <div id="um-build-result" style="display:none;margin-top:14px">
           <div class="um-preview-hdr">

@@ -3491,6 +3491,8 @@ function umReset(){
   document.querySelectorAll('input[name="um-bmode"]').forEach(r=>{ r.checked = r.value === 'fill'; });
   document.getElementById('um-bmode-fill').classList.add('selected');
   document.getElementById('um-bmode-force').classList.remove('selected');
+  const fyEl = document.getElementById('um-fiscal-year');
+  if(fyEl) fyEl.value = '';
 
   // Reset import mode radio to "replace"
   document.querySelectorAll('input[name="um-mode"]').forEach(r=>{
@@ -3552,10 +3554,14 @@ async function umBuildRawData(){
   umShowProgress('Reading zone workbooks…', 30);
   try{
     umShowProgress('Running smart-diff update…', 65);
+    const fyEl = document.getElementById('um-fiscal-year');
+    const fiscalYear = fyEl && fyEl.value ? fyEl.value.trim() : '';
+    const payload = { force: UM.buildMode==='force', test: false };
+    if(fiscalYear) payload.fiscal_year = fiscalYear;
     const data = await fetchJsonSafe(`${API}/api/upload/build-rawdata`,{
       method:'POST',
       headers:{ 'Content-Type':'application/json' },
-      body: JSON.stringify({ force: UM.buildMode==='force', test: false }),
+      body: JSON.stringify(payload),
       label:'/api/upload/build-rawdata',
     });
     umShowProgress('Build complete', 100);

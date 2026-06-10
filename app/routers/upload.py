@@ -79,6 +79,9 @@ class BuildRequest(BaseModel):
     force: bool = False
     # Dry-run: compute changes but write nothing to disk.
     test: bool = False
+    # Fiscal year the zone workbooks belong to (e.g. "FY2026/27").
+    # None / blank -> auto-detect from the existing master (normal monthly run).
+    fiscal_year: str | None = None
 
 
 def _save_preview(data: dict) -> str:
@@ -212,8 +215,11 @@ def build_rawdata_endpoint(
     current_user=Depends(get_current_user),
 ):
     """Run the smart-diff updater against the zone workbooks → RawData_updated.xlsx."""
+    fiscal_year = (body.fiscal_year or "").strip() or None
     try:
-        result = build_rawdata(test_mode=body.test, force_overwrite=body.force)
+        result = build_rawdata(
+            test_mode=body.test, force_overwrite=body.force, fiscal_year=fiscal_year
+        )
     except BuildError as exc:
         raise HTTPException(status_code=500, detail=str(exc))
     except FileNotFoundError as exc:
@@ -235,6 +241,8 @@ def build_rawdata_endpoint(
         },
     )
     mode = "force-refresh" if body.force else "smart-diff"
+    if fiscal_year:
+        mode += f", {fiscal_year}"
     if body.test:
         mode += " (dry-run)"
     log_event(

@@ -199,6 +199,59 @@ def quarter(m):
     if m in (10,11,12): return "Q3"
     return "Q4"
 
+def norm_year(v):
+    """Coerce a master 'Year' cell to int, or None when blank/unparseable."""
+    if v is None:
+        return None
+    if isinstance(v, str) and v.strip() == "":
+        return None
+    try:
+        return int(float(v))
+    except (TypeError, ValueError):
+        return None
+
+def year_for_month(start_year, month_no):
+    """SRWB fiscal year runs April->March: Apr-Dec belong to ``start_year``,
+    Jan-Mar to ``start_year + 1``."""
+    return start_year if month_no >= 4 else start_year + 1
+
+def fiscal_year_label(start_year):
+    """2025 -> 'FY2025/26' (matches the format already stored in the master)."""
+    return f"FY{start_year}/{str(start_year + 1)[-2:]}"
+
+def parse_fiscal_start_year(fy):
+    """Pull the start year out of a fiscal-year label.
+    'FY2025/26' -> 2025 ; '2025/26' -> 2025 ; '2025' -> 2025 ; junk -> None."""
+    import re
+    m = re.search(r"(\d{4})", str(fy or ""))
+    return int(m.group(1)) if m else None
+
+def infer_start_year_from_master(master_df):
+    """Most common fiscal-year start year already present in the master,
+    derived from the (Year, Month No.) pair so it does not depend on the
+    'Fiscal Year' string format. Returns None when the master has no usable
+    year data."""
+    from collections import Counter
+    starts = []
+    for _, r in master_df.iterrows():
+        y = norm_year(r.get("Year"))
+        if y is None:
+            continue
+        try:
+            mn = int(r["Month No."])
+        except (TypeError, ValueError, KeyError):
+            continue
+        starts.append(y if mn >= 4 else y - 1)
+    if not starts:
+        return None
+    return Counter(starts).most_common(1)[0][0]
+
+def current_start_year():
+    """Fiscal-year start year for today's date (April->March cycle)."""
+    import datetime
+    today = datetime.date.today()
+    return today.year if today.month >= 4 else today.year - 1
+
 def ensure(path, label):
     if not os.path.exists(path):
         raise FileNotFoundError(f"{label} not found: {path}")
@@ -211,13 +264,25 @@ def read_master_df(path):
         raise ValueError(f"Expected sheet '{MASTER_SHEET_NAME}' in {path}") from e
 
 
-def build_index(master_df, summary):
+def build_index(master_df, summary, fallback_start_year):
+    """Index master rows by (Zone, Scheme, Year, Month No.).
+
+    Including the year in the key is what lets a brand-new fiscal year be
+    appended instead of being skipped as "already complete" because the same
+    (Zone, Scheme, Month) existed in a prior year. When a master row has no
+    Year cell, the year is derived from ``fallback_start_year`` so legacy
+    masters still index cleanly.
+    """
     for col in KEY_COLUMNS:
         if col not in master_df.columns:
             raise KeyError(f"Master missing key column: {col}")
     index = {}
     for i, row in master_df.iterrows():
-        key = (norm_text(row["Zone"]), norm_text(row["Scheme"]), int(row["Month No."]))
+        month_no = int(row["Month No."])
+        year = norm_year(row.get("Year"))
+        if year is None:
+            year = year_for_month(fallback_start_year, month_no)
+        key = (norm_text(row["Zone"]), norm_text(row["Scheme"]), year, month_no)
         excel_row = i + FIRST_DATA_ROW
         if key in index:
             summary.duplicate_keys_master += 1
@@ -244,15 +309,27 @@ def build_filled_set(master_index, ws, master_columns, force_overwrite):
     return filled
 
 
-def build_new_row(zone, scheme, month_name, source_df, master_columns):
+def build_new_row(zone, scheme, month_name, source_df, master_columns,
+                  start_year, fy_label, summary=None):
     month_no = MONTH_NAME_TO_NUMBER[month_name]
     row = {c: None for c in master_columns}
-    row.update({"Zone": zone, "Scheme": scheme, "Month No.": month_no,
+    # Year / Fiscal Year are required by the Step-2 importer; without them the
+    # appended record fails validation and is silently dropped on import.
+    row.update({"Zone": zone, "Scheme": scheme,
+                "Fiscal Year": fy_label, "Year": year_for_month(start_year, month_no),
+                "Month No.": month_no,
                 "Month": month_name, "Quarter": quarter(month_no)})
     src_col = MONTH_SOURCE_COLUMN[month_name]
     for sr, dc in SOURCE_TO_RAWDATA_COL_MAP:
         if dc < len(master_columns):
-            row[master_columns[dc]] = norm_num(source_df.iloc[sr, src_col])
+            # Mirror the fill path: a single unparseable source cell must not
+            # abort the whole build — record the error and leave that cell blank.
+            try:
+                row[master_columns[dc]] = norm_num(source_df.iloc[sr, src_col])
+            except Exception as e:
+                if summary is not None:
+                    summary.errors += 1
+                log(f"  ERROR type at '{scheme}'/{month_name}/row {sr}: {e}")
     return row
 
 
@@ -260,7 +337,7 @@ def build_new_row(zone, scheme, month_name, source_df, master_columns):
 # MAIN
 # =============================================================================
 
-def run_update(test_mode=TEST_MODE, force_overwrite=False):
+def run_update(test_mode=TEST_MODE, force_overwrite=False, fiscal_year=None):
     """Programmatic entry point.
 
     Runs the smart-diff update and returns a tuple:
@@ -268,6 +345,12 @@ def run_update(test_mode=TEST_MODE, force_overwrite=False):
 
     Behaves identically to the CLI but never calls sys.exit, so it is safe
     to import and call from the web Upload tool.
+
+    ``fiscal_year`` selects which fiscal year the zone workbooks belong to
+    (e.g. ``"FY2026/27"`` or ``"2026"``). The source files carry no year of
+    their own, so this is how a brand-new fiscal year is loaded. When omitted
+    it defaults to the fiscal year already present in the master (i.e. the
+    normal monthly top-up), falling back to the current calendar fiscal year.
     """
     global _CAPTURE, _LOG_LINES
     _CAPTURE = True
@@ -309,8 +392,20 @@ def run_update(test_mode=TEST_MODE, force_overwrite=False):
         master_columns = list(master_df.columns)
         log(f"  {len(master_df)} rows  |  {len(master_columns)} columns")
 
+        # ── Resolve the target fiscal year for the source workbooks ──────────
+        target_start_year = parse_fiscal_start_year(fiscal_year)
+        if target_start_year is None:
+            if fiscal_year:
+                log(f"  WARNING: Could not parse fiscal year '{fiscal_year}' – auto-detecting instead")
+            target_start_year = infer_start_year_from_master(master_df)
+        if target_start_year is None:
+            target_start_year = current_start_year()
+        target_fy_label = fiscal_year_label(target_start_year)
+        log(f"Target fiscal yr : {target_fy_label}  (Apr {target_start_year} - Mar {target_start_year + 1})")
+        log("")
+
         log("Building key index...")
-        master_index = build_index(master_df, s)
+        master_index = build_index(master_df, s, target_start_year)
 
         log("Scanning for already-complete records...")
         filled_keys = build_filled_set(master_index, ws, master_columns, force_overwrite)
@@ -343,7 +438,8 @@ def run_update(test_mode=TEST_MODE, force_overwrite=False):
                 for month_name, src_col in MONTH_SOURCE_COLUMN.items():
                     s.source_records_seen += 1
                     month_no = MONTH_NAME_TO_NUMBER[month_name]
-                    key = (zone_name, sheet_name, month_no)
+                    row_year = year_for_month(target_start_year, month_no)
+                    key = (zone_name, sheet_name, row_year, month_no)
 
                     if key in seen:
                         s.duplicate_keys_source += 1; continue
@@ -393,7 +489,8 @@ def run_update(test_mode=TEST_MODE, force_overwrite=False):
                             s.skipped_append_disabled += 1; s.warnings += 1
                             log(f"    SKIPPED  {key}  (append disabled)"); continue
 
-                        new_row = build_new_row(zone_name, sheet_name, month_name, src_df, master_columns)
+                        new_row = build_new_row(zone_name, sheet_name, month_name, src_df, master_columns,
+                                                target_start_year, target_fy_label, summary=s)
                         new_er  = ws.max_row + 1
                         for ci, cn in enumerate(master_columns, 1):
                             ws.cell(row=new_er, column=ci).value = new_row.get(cn)
@@ -456,9 +553,11 @@ def run_update(test_mode=TEST_MODE, force_overwrite=False):
         _CAPTURE = False
 
 
-def main(test_mode=TEST_MODE, force_overwrite=False):
+def main(test_mode=TEST_MODE, force_overwrite=False, fiscal_year=None):
     """CLI wrapper – returns just the integer exit code."""
-    code, _summary, _log = run_update(test_mode=test_mode, force_overwrite=force_overwrite)
+    code, _summary, _log = run_update(
+        test_mode=test_mode, force_overwrite=force_overwrite, fiscal_year=fiscal_year
+    )
     return code
 
 
@@ -467,5 +566,8 @@ if __name__ == "__main__":
         description="Smart-diff update: fills only missing/zero records in RawData.xlsx.")
     p.add_argument("--test",  action="store_true", help="Dry-run – show changes without saving.")
     p.add_argument("--force", action="store_true", help="Overwrite existing values too (full refresh).")
+    p.add_argument("--fiscal-year", default=None,
+                   help="Fiscal year the zone workbooks belong to, e.g. FY2026/27 "
+                        "(default: auto-detect from the master).")
     a = p.parse_args()
-    sys.exit(main(test_mode=a.test, force_overwrite=a.force))
+    sys.exit(main(test_mode=a.test, force_overwrite=a.force, fiscal_year=a.fiscal_year))
