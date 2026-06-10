@@ -217,6 +217,13 @@ def build_index(master_df, summary):
             raise KeyError(f"Master missing key column: {col}")
     index = {}
     for i, row in master_df.iterrows():
+        # Handle NaN values in Month No. – skip rows with missing month numbers
+        if pd.isna(row["Month No."]):
+            summary.warnings += 1
+            excel_row = i + FIRST_DATA_ROW
+            log(f"  WARNING: Skipping row {excel_row} with missing 'Month No.' value")
+            continue
+        
         key = (norm_text(row["Zone"]), norm_text(row["Scheme"]), int(row["Month No."]))
         excel_row = i + FIRST_DATA_ROW
         if key in index:
@@ -404,7 +411,7 @@ def run_update(test_mode=TEST_MODE, force_overwrite=False):
                         s.filled_records.append(key)
                         log(f"    ADDED    {key}  ({added_cells} cells)")
 
-        # ── Save ──────────────────────────────────────────────────────────────
+        # ── Save ─────────────────────────────────────────────────────────
         log("")
         log("=" * 72)
         total = s.rows_updated + s.rows_added
@@ -419,7 +426,7 @@ def run_update(test_mode=TEST_MODE, force_overwrite=False):
             wb.save(save_path)
             log("Saved successfully.")
 
-        # ── Summary ───────────────────────────────────────────────────────────
+        # ── Summary ────────────────────────────────────────────────────────
         log("")
         log("SUMMARY")
         log("-" * 72)
