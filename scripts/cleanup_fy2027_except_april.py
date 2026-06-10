@@ -2,8 +2,12 @@
 """
 cleanup_fy2027_except_april.py
 
-Deletes all data for FY2026/27 (year=2027) EXCEPT April (month_no=4).
-This ensures only April data is retained after the upload.
+Deletes all data for FY2026/27 (April 2026 → March 2027) EXCEPT April 2026.
+
+FY2026/27 spans:
+  April 2026     (month_no=4, year=2026)  ← KEEP THIS
+  May-Dec 2026   (month_no=5-12, year=2026)  ← DELETE
+  Jan-Mar 2027   (month_no=1-3, year=2027)   ← DELETE
 
 Usage:
   python cleanup_fy2027_except_april.py --test      # dry-run, show what would be deleted
@@ -17,12 +21,18 @@ from pathlib import Path
 # Add parent directory to path to import app modules
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from app.database import SessionLocal, Record, engine, create_tables
+from app.database import SessionLocal, Record
+from sqlalchemy import and_, or_
 
 
 def cleanup_fy2027_except_april(test_mode: bool = True):
     """
-    Delete all records for FY2026/27 (year=2027) except April (month_no=4).
+    Delete all records for FY2026/27 except April 2026.
+    
+    FY2026/27 runs April 2026 → March 2027:
+      - Keep: April 2026 (year=2026, month_no=4)
+      - Delete: May-Dec 2026 (year=2026, month_no=5-12)
+      - Delete: Jan-Mar 2027 (year=2027, month_no=1-3)
     
     Args:
         test_mode: If True, show what would be deleted without actually deleting.
@@ -33,10 +43,13 @@ def cleanup_fy2027_except_april(test_mode: bool = True):
     db = SessionLocal()
     
     try:
-        # Find all records to delete: year=2027 AND month_no != 4
+        # Records to delete:
+        #   (year=2026 AND month_no IN [5,6,7,8,9,10,11,12])  OR  (year=2027 AND month_no IN [1,2,3])
         records_to_delete = db.query(Record).filter(
-            Record.year == 2027,
-            Record.month_no != 4
+            or_(
+                and_(Record.year == 2026, Record.month_no.in_([5, 6, 7, 8, 9, 10, 11, 12])),
+                and_(Record.year == 2027, Record.month_no.in_([1, 2, 3]))
+            )
         ).all()
         
         affected_zones = set()
@@ -46,39 +59,50 @@ def cleanup_fy2027_except_april(test_mode: bool = True):
         for rec in records_to_delete:
             affected_zones.add(rec.zone)
             affected_schemes.add(rec.scheme)
-            months_affected.add(rec.month)
+            months_affected.add(f"{rec.month} {rec.year}")
         
         print("=" * 72)
-        print("FY2026/27 Cleanup – Delete all months except April")
+        print("FY2026/27 Cleanup – Delete all months except April 2026")
         print("=" * 72)
         print(f"Mode          : {'TEST / DRY-RUN' if test_mode else 'PRODUCTION - WILL DELETE'}")
-        print(f"Fiscal Year   : 2026/27 (year=2027)")
-        print(f"Keep          : April (month_no=4)")
-        print(f"Delete        : All other months")
+        print(f"Fiscal Year   : 2026/27 (April 2026 → March 2027)")
+        print(f"Keep          : April 2026 (year=2026, month_no=4)")
+        print(f"Delete        : May-Dec 2026 (year=2026, month_no=5-12)")
+        print(f"              : Jan-Mar 2027 (year=2027, month_no=1-3)")
         print("")
         print(f"Records to delete      : {len(records_to_delete)}")
-        print(f"Affected zones         : {len(affected_zones)} – {', '.join(sorted(affected_zones))}")
+        print(f"Affected zones         : {len(affected_zones)} – {', '.join(sorted(affected_zones)) if affected_zones else 'none'}")
         print(f"Affected schemes       : {len(affected_schemes)}")
-        print(f"Months affected        : {', '.join(sorted(months_affected))}")
+        print(f"Periods affected       : {', '.join(sorted(months_affected)) if months_affected else 'none'}")
         print("")
         
-        if test_mode:
+        if len(records_to_delete) == 0:
+            print("⚠️  No records found to delete.")
+            print("   Possible reasons:")
+            print("   - Data may have already been deleted")
+            print("   - Data hasn't been imported yet for FY2026/27")
+            print("   - Check fiscal year and month values in database")
+            print("")
+        elif test_mode:
             print("TEST MODE – showing sample records to be deleted:")
             print("-" * 72)
             for i, rec in enumerate(records_to_delete[:10]):
-                print(f"  {rec.zone} / {rec.scheme} / {rec.month} (month_no={rec.month_no})")
+                print(f"  {rec.zone} / {rec.scheme} / {rec.month} {rec.year} (year={rec.year}, month_no={rec.month_no})")
             if len(records_to_delete) > 10:
                 print(f"  ... and {len(records_to_delete) - 10} more")
             print("")
             print("TEST MODE – No data was deleted. Run with --delete to confirm.")
         else:
             # Actually delete the records
-            db.query(Record).filter(
-                Record.year == 2027,
-                Record.month_no != 4
+            delete_count = db.query(Record).filter(
+                or_(
+                    and_(Record.year == 2026, Record.month_no.in_([5, 6, 7, 8, 9, 10, 11, 12])),
+                    and_(Record.year == 2027, Record.month_no.in_([1, 2, 3]))
+                )
             ).delete(synchronize_session='fetch')
             db.commit()
-            print(f"✓ DELETED {len(records_to_delete)} records from FY2026/27 (kept April data)")
+            print(f"✓ DELETED {delete_count} records from FY2026/27")
+            print(f"✓ Kept April 2026 data (year=2026, month_no=4)")
             print("")
         
         print("=" * 72)
@@ -109,7 +133,7 @@ if __name__ == "__main__":
     
     if test_mode:
         print("\nTo delete this data, run:")
-        print("  python cleanup_fy2027_except_april.py --delete")
+        print("  python scripts/cleanup_fy2027_except_april.py --delete")
         sys.exit(0)
     else:
         print("\n✓ Cleanup complete!")
