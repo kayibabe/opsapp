@@ -6765,35 +6765,32 @@ function _bgtZoneLeague(zones) {
    ═══════════════════════════════════════════════════════════════════════════ */
 
 const REPORT_TEMPLATES = {
-  'board-pack':            { title:'Board Pack',              endpoint:'/api/reports/board-pack',        landscape:false, ai:true  },
-  'management-dashboard':  { title:'Management Dashboard',    endpoint:'/api/reports/operations',        landscape:false, ai:true  },
-  'annual-performance':    { title:'Annual Performance',      endpoint:'/api/reports/zone-comparison',   landscape:false, ai:true  },
-  'water-production':      { title:'Water Production & NRW',  endpoint:'/api/reports/operations',        landscape:false, ai:true  },
-  'infrastructure-status': { title:'Infrastructure Status',   endpoint:'/api/reports/infrastructure',    landscape:false, ai:true  },
-  'service-delivery':      { title:'Service Delivery',        endpoint:'/api/reports/operations',        landscape:false, ai:true  },
-  'revenue-collections':   { title:'Revenue & Collections',   endpoint:'/api/reports/financial',         landscape:false, ai:true  },
-  'budget-performance':    { title:'Budget Performance',      endpoint:'/api/budget/variance',           landscape:false, ai:true  },
-  'cost-analysis':         { title:'Operating Cost Analysis', endpoint:'/api/reports/financial',         landscape:false, ai:true  },
-  'workforce-fleet':       { title:'Workforce & Fleet',       endpoint:'/api/reports/hra',               landscape:false, ai:true  },
-  'staff-productivity':    { title:'Staff Productivity',      endpoint:'/api/reports/hra',               landscape:false, ai:true  },
-  'network-infrastructure':{ title:'Network Infrastructure',  endpoint:'/api/reports/infrastructure',    landscape:false, ai:true  },
-  'nrw-deep-dive':         { title:'NRW Deep Dive',           endpoint:'/api/reports/nrw-analysis',      landscape:false, ai:true  },
-  'zone-comparison':       { title:'Zone Comparison',         endpoint:'/api/reports/zone-comparison',   landscape:false, ai:true  },
-  'scheme-performance':    { title:'Scheme Performance',      endpoint:'/api/reports/scheme-performance',landscape:false, ai:true  },
-  'monthly-digest':        { title:'Monthly Digest',          endpoint:'/api/reports/board-pack',        landscape:false, ai:true  },
-  'strategic-plan':        { title:'Strategic Plan Progress', endpoint:'/api/strategic/scorecard',       landscape:false, ai:true  },
-  'budget-variance':       { title:'Budget vs Actuals',       endpoint:'/api/budget/variance',           landscape:false, ai:true  },
-  'customer-connections':  { title:'Customer & Connections',  endpoint:'/api/analytics/customers',       landscape:false, ai:true  },
-  'ai-scorecard':          { title:'AI Performance Scorecard',endpoint:'/api/reports/scorecard',         landscape:false, ai:true  },
-  'ai-recommendations':    { title:'AI Recommendations Brief',endpoint:'/api/reports/recommendations',   landscape:false, ai:true  },
-  'treatment-energy':      { title:'Treatment & Energy',       endpoint:'/api/reports/operations',        landscape:false, ai:true  },
-  'water-quality':         { title:'Water Quality & Compliance',endpoint:'/api/reports/operations',       landscape:false, ai:true  },
-  'supply-continuity':     { title:'Supply Continuity',        endpoint:'/api/reports/operations',        landscape:false, ai:true  },
-  'meter-management':      { title:'Meter Management',         endpoint:'/api/analytics/customers',       landscape:false, ai:true  },
-  'disconnections':        { title:'Disconnections & Reconnections', endpoint:'/api/analytics/customers', landscape:false, ai:true  },
-  'segment-revenue':       { title:'Customer Segment Revenue', endpoint:'/api/analytics/customers',       landscape:false, ai:true  },
-  'ancillary-charges':     { title:'Service Charges & Ancillary Revenue', endpoint:'/api/reports/financial', landscape:false, ai:true },
-  'profitability':         { title:'Profitability Analysis',   endpoint:'/api/reports/financial',         landscape:false, ai:true  },
+  'board-pack':            { title:'Board Pack',                        endpoint:'/api/reports/board-pack',        landscape:false, ai:true  },
+  'management-dashboard':  { title:'Management Dashboard',              endpoint:'/api/reports/operations',        landscape:false, ai:true  },
+  'water-production':      { title:'Water Production & NRW',            endpoint:'/api/reports/operations',        landscape:false, ai:true  },
+  'treatment-energy':      { title:'Treatment & Energy',                endpoint:'/api/reports/operations',        landscape:false, ai:true  },
+  'water-quality':         { title:'Water Quality & Compliance',        endpoint:'/api/reports/operations',        landscape:false, ai:true  },
+  'supply-continuity':     { title:'Supply Continuity',                 endpoint:'/api/reports/operations',        landscape:false, ai:true  },
+  'service-delivery':      { title:'Service Delivery',                  endpoint:'/api/reports/operations',        landscape:false, ai:true  },
+  'infrastructure-status': { title:'Infrastructure Status',             endpoint:'/api/reports/infrastructure',    landscape:false, ai:true  },
+  'nrw-deep-dive':         { title:'NRW Deep Dive',                     endpoint:'/api/reports/nrw-analysis',      landscape:false, ai:true  },
+  'scheme-performance':    { title:'Scheme Performance',                endpoint:'/api/reports/scheme-performance',landscape:false, ai:true  },
+  'revenue-collections':   { title:'Revenue & Collections',             endpoint:'/api/reports/financial',         landscape:false, ai:true  },
+  'cost-analysis':         { title:'Operating Cost Analysis',           endpoint:'/api/reports/financial',         landscape:false, ai:true  },
+  'ancillary-charges':     { title:'Service Charges & Ancillary Revenue',endpoint:'/api/reports/financial',        landscape:false, ai:true  },
+  'profitability':         { title:'Profitability Analysis',            endpoint:'/api/reports/financial',         landscape:false, ai:true  },
+  'budget-variance':       { title:'Budget vs Actuals',                 endpoint:'/api/budget/variance',           landscape:false, ai:true  },
+  'customer-connections':  { title:'Customer & Connections',            endpoint:'/api/analytics/customers',       landscape:false, ai:true  },
+  'segment-revenue':       { title:'Customer Segment Revenue',          endpoint:'/api/analytics/customers',       landscape:false, ai:true  },
+  'meter-management':      { title:'Meter Management',                  endpoint:'/api/analytics/customers',       landscape:false, ai:true  },
+  'disconnections':        { title:'Disconnections & Reconnections',    endpoint:'/api/analytics/customers',       landscape:false, ai:true  },
+  'workforce-fleet':       { title:'Workforce & Fleet',                 endpoint:'/api/reports/hra',               landscape:false, ai:true  },
+  'staff-productivity':    { title:'Staff Productivity',                endpoint:'/api/reports/hra',               landscape:false, ai:true  },
+  'zone-comparison':       { title:'Zone Comparison',                   endpoint:'/api/reports/zone-comparison',   landscape:false, ai:true  },
+  'monthly-digest':        { title:'Monthly Digest',                    endpoint:'/api/reports/board-pack',        landscape:false, ai:true  },
+  'strategic-plan':        { title:'Strategic Plan Progress',           endpoint:'/api/strategic/scorecard',       landscape:false, ai:true  },
+  'ai-scorecard':          { title:'AI Performance Scorecard',          endpoint:'/api/reports/scorecard',         landscape:false, ai:true  },
+  'ai-recommendations':    { title:'AI Recommendations Brief',          endpoint:'/api/reports/recommendations',   landscape:false, ai:true  },
 };
 
 let _rcCurrentTemplate = null;
@@ -7367,30 +7364,44 @@ function _rcRender(templateId, data, narrative, {scope,generated,alerts=[]}={}){
       return hdr+nar+_rcManagementDashboard(data,null,alerts);
     case 'monthly-digest':
       return hdr+nar+_rcMonthlyDigest(data,null,alerts);
-    case 'annual-performance': case 'zone-comparison':
+    case 'zone-comparison':
       return hdr+nar+_rcZoneComparison(data,null,alerts);
-    case 'water-production': case 'treatment-energy': case 'water-quality': case 'supply-continuity':
+    case 'water-production':
       return hdr+nar+_rcOperations(data,null,alerts);
+    case 'treatment-energy':
+      return hdr+nar+_rcTreatmentEnergy(data,null,alerts);
+    case 'water-quality':
+      return hdr+nar+_rcWaterQuality(data,null,alerts);
+    case 'supply-continuity':
+      return hdr+nar+_rcSupplyContinuity(data,null,alerts);
     case 'service-delivery':
       return hdr+nar+_rcServiceDelivery(data,null,alerts);
-    case 'infrastructure-status': case 'network-infrastructure':
+    case 'infrastructure-status':
       return hdr+nar+_rcInfrastructure(data,null,alerts);
-    case 'revenue-collections': case 'ancillary-charges': case 'profitability':
+    case 'revenue-collections':
       return hdr+nar+_rcFinancial(data,null,alerts);
-    case 'budget-performance': case 'budget-variance':
+    case 'ancillary-charges':
+      return hdr+nar+_rcAncillaryCharges(data,null,alerts);
+    case 'profitability':
+      return hdr+nar+_rcProfitability(data,null,alerts);
+    case 'budget-variance':
       return hdr+nar+_rcBudgetVariance(data,null,alerts);
     case 'cost-analysis':
       return hdr+nar+_rcCostAnalysis(data,null,alerts);
-    case 'workforce-fleet': case 'staff-productivity':
+    case 'workforce-fleet':
       return hdr+nar+_rcHRA(data,null,alerts);
+    case 'staff-productivity':
+      return hdr+nar+_rcStaffProductivity(data,null,alerts);
     case 'nrw-deep-dive':
       return hdr+nar+_rcNRWAnalysis(data,null,alerts);
     case 'scheme-performance':
       return hdr+nar+_rcSchemePerf(data,null,alerts);
     case 'strategic-plan':
       return hdr+nar+_rcStrategicPlan(data,null,alerts);
-    case 'customer-connections': case 'segment-revenue':
+    case 'customer-connections':
       return hdr+nar+_rcCustomerConnections(data,null,alerts);
+    case 'segment-revenue':
+      return hdr+nar+_rcSegmentRevenue(data,null,alerts);
     case 'meter-management':
       return hdr+nar+_rcMeterManagement(data,null,alerts);
     case 'disconnections':
@@ -7793,6 +7804,327 @@ function _rcInfrastructure(d,narrative,alerts){
   h+=_rcAlertsPanel(alerts);
   h+=_rcNarrative(narrative);
   return h;
+}
+
+/* ── Treatment & Energy ──────────────────────────────────────────────────── */
+function _rcTreatmentEnergy(d,narrative,alerts){
+  const prod=d.production_summary||{};
+  let h=_rcSectionHdr('Treatment & Energy Overview');
+  h+=_rcKpiRow([
+    {val:_rcFmt(prod.energy_intensity_kwh_m3,3)+' kWh/m³',lbl:'Energy Intensity',sub:'IWA ≤0.5 kWh/m³',tone:_rcTone(prod.energy_intensity_kwh_m3,0.5,0.8,true)},
+    {val:_rcFmt(prod.power_kwh,0)+' kWh',lbl:'Total Power Used',sub:'YTD'},
+    {val:_rcMK(prod.power_cost),lbl:'Power Cost',sub:'YTD'},
+    {val:_rcMK(prod.chem_cost),lbl:'Chemical Cost',sub:'YTD'},
+    {val:_rcFmt(prod.chem_cost_per_m3,3)+' MWK/m³',lbl:'Chemical Cost/m³'},
+    {val:_rcFmt(prod.power_fail_hours,0)+' hrs',lbl:'Power Failure Hours',sub:'YTD total'},
+  ]);
+  if(prod.power_kwh) h+=_rcInsight(`Total power consumption of ${_rcFmt(prod.power_kwh,0)} kWh YTD translates to an energy intensity of ${_rcFmt(prod.energy_intensity_kwh_m3,3)} kWh/m³ (IWA benchmark ≤0.5 kWh/m³ for surface water). Power failures totalled ${_rcFmt(prod.power_fail_hours,0)} hours YTD. Chemical dosing cost ${_rcMK(prod.chem_cost)} YTD at ${_rcFmt(prod.chem_cost_per_m3,3)} MWK/m³ produced.`);
+  const ei=d.energy_intensity_by_zone||[];
+  if(ei.length){
+    const worstEi=ei.reduce((a,b)=>(b.energy_intensity_kwh_m3||0)>(a.energy_intensity_kwh_m3||0)?b:a,ei[0]);
+    h+=_rcSectionHdr('Energy & Chemical Intensity by Zone');
+    h+=_rcTable(['Zone','Power (kWh)','Power Cost','kWh/m³','Chem Cost','Chlorine (kg/m³)','Alum (kg/m³)'],
+      ei.map(z=>[z.zone,_rcFmt(z.power_kwh,0),_rcMK(z.power_cost),_rcFmt(z.energy_intensity_kwh_m3,3),_rcMK(z.chem_cost),_rcFmt(z.chlorine_kg_per_m3,4),_rcFmt(z.alum_kg_per_m3,4)]),'Energy by Zone');
+    h+=_rcInsight(`${worstEi.zone} has the highest energy intensity at ${_rcFmt(worstEi.energy_intensity_kwh_m3,3)} kWh/m³. Efficient pump maintenance, power factor correction and solar co-generation are primary levers for energy cost reduction.`);
+    h+=_rcChart('bar',ei.map(z=>z.zone),[
+      {label:'Energy Intensity (kWh/m³)',data:ei.map(z=>z.energy_intensity_kwh_m3||0),backgroundColor:RC_C[2],borderRadius:4},
+      {label:'IWA 0.5 benchmark',type:'line',data:ei.map(()=>0.5),borderColor:'#94a3b8',borderDash:[5,5],pointRadius:0,fill:false},
+    ],{height:200,chartOptions:{scales:{y:{title:{display:true,text:'kWh/m³',font:{size:10}}}}}});
+    h+=_rcSectionHdr('Chemical Dosing Rates by Zone');
+    h+=_rcChart('bar',ei.map(z=>z.zone),[
+      {label:'Chlorine (kg/m³)',data:ei.map(z=>z.chlorine_kg_per_m3||0),backgroundColor:RC_C[3],borderRadius:4},
+      {label:'Alum (kg/m³)',data:ei.map(z=>z.alum_kg_per_m3||0),backgroundColor:RC_C[0],borderRadius:4},
+    ],{height:190,chartOptions:{scales:{y:{title:{display:true,text:'kg/m³',font:{size:10}}}}}});
+  }
+  const trend=d.production_trend||[];
+  if(trend.length){
+    h+=_rcSectionHdr('Monthly Supply Hours Trend');
+    h+=_rcTable(['Month','Supply Hrs/Day','Vol Produced (m³)'],
+      trend.map(t=>[t.month,_rcFmt(t.supply_hours,1),_rcFmt(t.vol_produced)]),'Supply Trend');
+    h+=_rcChart('line',trend.map(t=>t.month),[
+      {label:'Supply Hours/Day',data:trend.map(t=>t.supply_hours||0),borderColor:RC_C[0],backgroundColor:'rgba(59,130,246,.08)',tension:.4,fill:true},
+    ],{height:190,chartOptions:{scales:{y:{title:{display:true,text:'Hours/Day',font:{size:10}},min:0,suggestedMax:24}}}});
+  }
+  h+=_rcAlertsPanel(alerts);h+=_rcNarrative(narrative);return h;
+}
+
+/* ── Water Quality ───────────────────────────────────────────────────────── */
+function _rcWaterQuality(d,narrative,alerts){
+  const prod=d.production_summary||{};
+  let h=_rcSectionHdr('Water Treatment Quality Overview');
+  h+=_rcKpiRow([
+    {val:_rcMK(prod.chem_cost),lbl:'Chemical Spend',sub:'YTD'},
+    {val:_rcFmt(prod.chem_cost_per_m3,3)+' MWK/m³',lbl:'Chemical Cost/m³',sub:'Treatment efficiency'},
+    {val:_rcFmt((prod.total_vol_produced||0)/1e6,2)+'M m³',lbl:'Volume Treated',sub:'YTD'},
+    {val:_rcFmt(prod.supply_hours_avg_daily,1)+'h/day',lbl:'Avg Supply Hours',sub:'≥20h target',tone:_rcTone(prod.supply_hours_avg_daily,20,16)},
+    {val:_rcFmt(prod.pipe_breakdowns),lbl:'Pipe Breakdowns',sub:'YTD — contamination risk'},
+    {val:_rcFmt(prod.power_fail_hours,0)+' hrs',lbl:'Power Failure',sub:'YTD — treatment continuity'},
+  ]);
+  h+=`<div class="rpt-note" style="margin:8px 0 16px;font-size:12px;color:var(--ds-text-muted);line-height:1.5"><strong>Data scope:</strong> Direct water quality parameters (turbidity, pH, residual chlorine, bacteriological counts) are not yet captured in the monthly returns database. The indicators below use treatment chemical dosing rates and infrastructure reliability as operational proxies for treatment quality.</div>`;
+  const ei=d.energy_intensity_by_zone||[];
+  if(ei.length){
+    const highC=ei.reduce((a,b)=>(b.chlorine_kg_per_m3||0)>(a.chlorine_kg_per_m3||0)?b:a,ei[0]);
+    const lowC=ei.reduce((a,b)=>(b.chlorine_kg_per_m3||0)<(a.chlorine_kg_per_m3||0)?b:a,ei[0]);
+    h+=_rcSectionHdr('Chemical Dosing by Zone — Treatment Quality Proxy');
+    h+=_rcTable(['Zone','Chem Cost','Chlorine Rate (kg/m³)','Alum Rate (kg/m³)','Power kWh'],
+      ei.map(z=>[z.zone,_rcMK(z.chem_cost),_rcFmt(z.chlorine_kg_per_m3,4),_rcFmt(z.alum_kg_per_m3,4),_rcFmt(z.power_kwh,0)]),'Chemical Dosing by Zone');
+    h+=_rcInsight(`Chlorine dosing rates range from ${_rcFmt(lowC.chlorine_kg_per_m3,4)} kg/m³ (${lowC.zone}) to ${_rcFmt(highC.chlorine_kg_per_m3,4)} kg/m³ (${highC.zone}). Significant variation across zones may indicate differences in source water quality or treatment calibration — field verification is recommended where rates fall below 0.001 kg/m³.`);
+    h+=_rcChart('bar',ei.map(z=>z.zone),[
+      {label:'Chlorine Rate (kg/m³)',data:ei.map(z=>z.chlorine_kg_per_m3||0),backgroundColor:RC_C[0],borderRadius:4},
+      {label:'Alum Rate (kg/m³)',data:ei.map(z=>z.alum_kg_per_m3||0),backgroundColor:RC_C[2],borderRadius:4},
+    ],{height:200,chartOptions:{scales:{y:{title:{display:true,text:'kg/m³',font:{size:10}}}}}});
+  }
+  const pbz=d.production_by_zone||[];
+  if(pbz.length){
+    h+=_rcSectionHdr('Supply Continuity — Contamination Risk Indicator');
+    h+=_rcInsight('Intermittent supply (< 20h/day) increases the risk of back-siphonage and network contamination. Zones with low supply hours require heightened water quality surveillance.');
+    h+=_rcTable(['Zone','Avg Supply Hours/Day','Contamination Risk'],
+      pbz.map(z=>[z.zone,_rcFmt(z.supply_hours_avg,1),(z.supply_hours_avg||0)>=20?'✓ Low risk':(z.supply_hours_avg||0)>=16?'⚠ Moderate risk':'⛔ High risk']),'Supply Risk by Zone');
+    h+=_rcChart('bar',pbz.map(z=>z.zone),[
+      {label:'Supply Hours/Day',data:pbz.map(z=>z.supply_hours_avg||0),backgroundColor:pbz.map(z=>(z.supply_hours_avg||0)>=20?RC_C[1]:(z.supply_hours_avg||0)>=16?RC_C[2]:RC_C[3]),borderRadius:4},
+      {label:'20h Target',type:'line',data:pbz.map(()=>20),borderColor:'#94a3b8',borderDash:[5,5],pointRadius:0,fill:false},
+    ],{height:200,chartOptions:{scales:{y:{title:{display:true,text:'Hours/Day',font:{size:10}},min:0,suggestedMax:24}}}});
+  }
+  const bd=d.breakdowns_by_zone||[];
+  if(bd.length){
+    h+=_rcSectionHdr('Pipeline Failures — Contamination Risk Events');
+    h+=_rcTable(['Zone','Pipe Breaks','Pump Breaks','Total Events','Pump Hours Lost'],
+      bd.map(z=>[z.zone,_rcFmt(z.pipe_breakdowns),_rcFmt(z.pump_breakdowns),_rcFmt(z.total),_rcFmt(z.pump_hours_lost)]),'Breakdown Risk');
+  }
+  h+=_rcAlertsPanel(alerts);h+=_rcNarrative(narrative);return h;
+}
+
+/* ── Supply Continuity ───────────────────────────────────────────────────── */
+function _rcSupplyContinuity(d,narrative,alerts){
+  const prod=d.production_summary||{};
+  let h=_rcSectionHdr('Supply Continuity Overview');
+  h+=_rcKpiRow([
+    {val:_rcFmt(prod.supply_hours_avg_daily,1)+'h/day',lbl:'Avg Supply Hours',sub:'≥20h/day target',tone:_rcTone(prod.supply_hours_avg_daily,20,16)},
+    {val:_rcFmt(prod.power_fail_hours,0)+' hrs',lbl:'Power Failure Hours',sub:'YTD disruption'},
+    {val:_rcFmt(prod.pipe_breakdowns),lbl:'Pipe Breakdowns',sub:'YTD'},
+    {val:_rcFmt(prod.pump_breakdowns),lbl:'Pump Breakdowns',sub:'YTD'},
+    {val:_rcFmt(prod.dev_lines_total)+' m',lbl:'Pipeline Extensions',sub:'YTD (metres)'},
+    {val:_rcFmt((prod.total_vol_produced||0)/1e6,2)+'M m³',lbl:'Vol Produced',sub:'YTD'},
+  ]);
+  const pbz=d.production_by_zone||[];
+  if(pbz.length){
+    const lowSupply=pbz.reduce((a,b)=>(b.supply_hours_avg||0)<(a.supply_hours_avg||0)?b:a,pbz[0]);
+    h+=_rcSectionHdr('Supply Hours by Zone');
+    h+=_rcTable(['Zone','Avg Supply Hours/Day','vs 20h Target'],
+      pbz.map(z=>[z.zone,_rcFmt(z.supply_hours_avg,1),(z.supply_hours_avg||0)>=20?'✓ On target':`▼ ${(20-(z.supply_hours_avg||0)).toFixed(1)}h shortfall`]),'Supply by Zone');
+    h+=_rcInsight(`${lowSupply.zone} records the lowest average daily supply at ${_rcFmt(lowSupply.supply_hours_avg,1)} hours/day. Total power failure hours stand at ${_rcFmt(prod.power_fail_hours,0)} YTD — the primary cause of supply interruptions. Redundant power supply (generators, solar backup) at key pumping stations would materially improve continuity scores.`);
+    h+=_rcChart('bar',pbz.map(z=>z.zone),[
+      {label:'Supply Hours/Day',data:pbz.map(z=>z.supply_hours_avg||0),backgroundColor:pbz.map(z=>(z.supply_hours_avg||0)>=20?RC_C[1]:(z.supply_hours_avg||0)>=16?RC_C[2]:RC_C[3]),borderRadius:4},
+      {label:'20h Target',type:'line',data:pbz.map(()=>20),borderColor:'#94a3b8',borderDash:[5,5],pointRadius:0,fill:false},
+    ],{height:200,chartOptions:{scales:{y:{title:{display:true,text:'Hours/Day',font:{size:10}},min:0,suggestedMax:24}}}});
+  }
+  const trend=d.production_trend||[];
+  if(trend.length){
+    h+=_rcSectionHdr('Monthly Supply Hours Trend');
+    h+=_rcTable(['Month','Supply Hrs/Day','Vol Produced (m³)','NRW %'],
+      trend.map(t=>[t.month,_rcFmt(t.supply_hours,1),_rcFmt(t.vol_produced),_rcPct(t.nrw_pct)]),'Supply Trend');
+    h+=_rcChart('line',trend.map(t=>t.month),[
+      {label:'Supply Hours/Day',data:trend.map(t=>t.supply_hours||0),borderColor:RC_C[0],backgroundColor:'rgba(59,130,246,.08)',tension:.4,fill:true},
+      {label:'20h Target',type:'line',data:trend.map(()=>20),borderColor:'#94a3b8',borderDash:[5,5],pointRadius:0,fill:false},
+    ],{height:200,chartOptions:{scales:{y:{title:{display:true,text:'Hours/Day',font:{size:10}},min:0,suggestedMax:24}}}});
+  }
+  const bd=d.breakdowns_by_zone||[];
+  if(bd.length){
+    h+=_rcSectionHdr('Breakdown Incidents by Zone');
+    h+=_rcTable(['Zone','Pipe Breaks','Pump Breaks','Total','Pump Hours Lost'],
+      bd.map(z=>[z.zone,_rcFmt(z.pipe_breakdowns),_rcFmt(z.pump_breakdowns),_rcFmt(z.total),_rcFmt(z.pump_hours_lost)]),'Breakdowns');
+    h+=_rcChart('bar',bd.map(z=>z.zone),[
+      {label:'Pipe Breaks',data:bd.map(z=>z.pipe_breakdowns||0),backgroundColor:RC_C[2],borderRadius:4},
+      {label:'Pump Breaks',data:bd.map(z=>z.pump_breakdowns||0),backgroundColor:RC_C[3],borderRadius:4},
+    ],{height:190,chartOptions:{scales:{y:{title:{display:true,text:'Incidents',font:{size:10}}}}}});
+  }
+  const pe=d.pipe_extensions||{};
+  if(pe.dev_lines_total){
+    h+=_rcSectionHdr('Pipeline Extensions by Pipe Size');
+    const sizes=[['32mm',pe.dev_lines_32mm],['50mm',pe.dev_lines_50mm],['63mm',pe.dev_lines_63mm],['90mm',pe.dev_lines_90mm],['110mm',pe.dev_lines_110mm]].filter(r=>(r[1]||0)>0);
+    sizes.push(['<strong>Total</strong>',pe.dev_lines_total]);
+    h+=_rcTable(['Pipe Size','Length Laid (m)'],sizes.map((r,i)=>i<sizes.length-1?[r[0],_rcFmt(r[1])]:[r[0],`<strong>${_rcFmt(r[1])}</strong>`]),'Pipeline Extensions');
+  }
+  h+=_rcAlertsPanel(alerts);h+=_rcNarrative(narrative);return h;
+}
+
+/* ── Staff Productivity ──────────────────────────────────────────────────── */
+function _rcStaffProductivity(d,narrative,alerts){
+  const s=d.summary||{};
+  let h=_rcSectionHdr('Staff Productivity Overview');
+  h+=_rcKpiRow([
+    {val:_rcFmt(s.m3_per_staff,0)+' m³',lbl:'m³ per Staff',sub:'Higher = better'},
+    {val:_rcFmt(s.staff_per_1000_conn,1),lbl:'Staff/1k Connections',sub:'IBNET <5',tone:_rcTone(s.staff_per_1000_conn,5,8,true)},
+    {val:_rcMK(s.wages_per_staff),lbl:'Wages per Staff',sub:'Average'},
+    {val:_rcPct(s.payroll_cost_ratio),lbl:'Payroll Cost Ratio',sub:'% of revenue'},
+    {val:_rcFmt(s.total_staff),lbl:'Total Staff',sub:`${_rcFmt(s.perm_staff)} perm + ${_rcFmt(s.temp_staff)} temp`},
+    {val:_rcMK(s.total_payroll),lbl:'Total Payroll',sub:'Staff costs + wages YTD'},
+  ]);
+  if(s.m3_per_staff) h+=_rcInsight(`Each SRWB staff member is responsible for ${_rcFmt(s.m3_per_staff,0)} m³ of production YTD. The staff-to-connections ratio of ${_rcFmt(s.staff_per_1000_conn,1)} per 1,000 connections is ${(s.staff_per_1000_conn||0)<=5?'within':'above'} the IBNET benchmark of <5. Payroll (${_rcMK(s.total_payroll)}) represents ${_rcPct(s.payroll_cost_ratio)} of operating revenue.`);
+  const bz=d.staff_by_zone||[];
+  if(bz.length){
+    const mostP=bz.reduce((a,b)=>(b.m3_per_staff||0)>(a.m3_per_staff||0)?b:a,bz[0]);
+    const leastP=bz.reduce((a,b)=>(b.m3_per_staff||0)<(a.m3_per_staff||0)?b:a,bz[0]);
+    h+=_rcSectionHdr('Productivity by Zone');
+    h+=_rcTable(['Zone','Total Staff','Perm','Temp','m³/Staff','Wages/Staff','Total Payroll'],
+      bz.map(z=>{
+        const tot=(z.perm_staff||0)+(z.temp_staff||0)||1;
+        return [z.zone,_rcFmt((z.perm_staff||0)+(z.temp_staff||0)),_rcFmt(z.perm_staff),_rcFmt(z.temp_staff),_rcFmt(z.m3_per_staff,0),_rcMK(z.wages?Math.round(z.wages/tot):0),_rcMK((z.wages||0)+(z.staff_costs||0))];
+      }),'Productivity by Zone');
+    h+=_rcInsight(`${mostP.zone} is the most productive zone at ${_rcFmt(mostP.m3_per_staff,0)} m³ per staff member. ${leastP.zone} is the least productive at ${_rcFmt(leastP.m3_per_staff,0)} m³/staff — a ${_rcFmt((mostP.m3_per_staff-leastP.m3_per_staff)/(leastP.m3_per_staff||1)*100,0)}% productivity gap.`);
+    h+=_rcChart('bar',bz.map(z=>z.zone),[
+      {label:'m³ per Staff',data:bz.map(z=>z.m3_per_staff||0),backgroundColor:RC_C[0],borderRadius:4},
+    ],{height:190,chartOptions:{scales:{y:{title:{display:true,text:'m³/Staff',font:{size:10}}}}}});
+  }
+  const st=d.staff_trend||[];
+  if(st.length){
+    h+=_rcSectionHdr('Staffing & Payroll Trend');
+    h+=_rcTable(['Month','Perm Staff','Temp Staff','Total','Wages','Staff Costs'],
+      st.map(t=>[t.month,_rcFmt(t.perm_staff),_rcFmt(t.temp_staff),_rcFmt((t.perm_staff||0)+(t.temp_staff||0)),_rcMK(t.wages),_rcMK(t.staff_costs)]),'Staff Trend');
+    h+=_rcChart('line',st.map(t=>t.month),[
+      {label:'Permanent',data:st.map(t=>t.perm_staff||0),borderColor:RC_C[0],tension:.4},
+      {label:'Temporary',data:st.map(t=>t.temp_staff||0),borderColor:RC_C[2],tension:.4,borderDash:[4,3]},
+    ],{height:180,chartOptions:{scales:{y:{title:{display:true,text:'Staff Count',font:{size:10}},beginAtZero:true}}}});
+  }
+  h+=_rcAlertsPanel(alerts);h+=_rcNarrative(narrative);return h;
+}
+
+/* ── Ancillary Charges ───────────────────────────────────────────────────── */
+function _rcAncillaryCharges(d,narrative,alerts){
+  const s=d.summary||{};
+  const waterRev=Math.max(0,(s.total_revenue||0)-(s.service_charge||0)-(s.meter_rental||0));
+  const totalAnc=(s.service_charge||0)+(s.meter_rental||0);
+  const ancPct=s.total_revenue?totalAnc/s.total_revenue*100:0;
+  let h=_rcSectionHdr('Service Charges & Ancillary Revenue Overview');
+  h+=_rcKpiRow([
+    {val:_rcMK(s.total_revenue),lbl:'Total Revenue',sub:'YTD'},
+    {val:_rcMK(s.service_charge),lbl:'Service Charges',sub:'YTD'},
+    {val:_rcMK(s.meter_rental),lbl:'Meter Rental',sub:'YTD'},
+    {val:_rcMK(totalAnc),lbl:'Total Ancillary',sub:'Service + Meter rental'},
+    {val:_rcPct(ancPct),lbl:'Ancillary % of Revenue',sub:'Diversification indicator'},
+    {val:_rcPct(s.collection_rate),lbl:'Collection Rate',sub:'IBNET >90%',tone:_rcTone(s.collection_rate,90,75)},
+  ]);
+  h+=_rcInsight(`Ancillary revenue (service charges ${_rcMK(s.service_charge)} + meter rental ${_rcMK(s.meter_rental)}) contributes ${_rcPct(ancPct)} of total revenue. Core water sales (estimated ${_rcMK(waterRev)}) remain the primary income stream. Diversifying ancillary income through reconnection fees, application charges and meter rental rate reviews can reduce reliance on volumetric billing.`);
+  h+=_rcSectionHdr('Revenue Composition');
+  h+=_rcTable(['Revenue Stream','Amount (YTD)','% of Total'],[
+    ['Water Sales (billed)',_rcMK(waterRev),_rcPct(s.total_revenue?waterRev/s.total_revenue*100:0)],
+    ['Service Charges',_rcMK(s.service_charge),_rcPct(s.total_revenue?(s.service_charge||0)/s.total_revenue*100:0)],
+    ['Meter Rental',_rcMK(s.meter_rental),_rcPct(s.total_revenue?(s.meter_rental||0)/s.total_revenue*100:0)],
+    ['<strong>Total Revenue</strong>',`<strong>${_rcMK(s.total_revenue)}</strong>`,'<strong>100%</strong>'],
+  ],'Revenue Composition');
+  if((s.service_charge||0)+(s.meter_rental||0)>0)
+    h+=_rcChart('doughnut',['Water Sales','Service Charges','Meter Rental'],
+      [{data:[waterRev,s.service_charge||0,s.meter_rental||0],backgroundColor:[RC_C[0],RC_C[2],RC_C[4]],borderWidth:2,borderColor:'#fff'}],
+      {height:200,chartOptions:{plugins:{legend:{position:'right'}}}});
+  const bz=d.by_zone||[];
+  if(bz.length){
+    h+=_rcSectionHdr('Revenue & Collections by Zone');
+    h+=_rcTable(['Zone','Amt Billed','Collected','Collection Rate','Op Cost','Debtors'],
+      bz.map(z=>[z.zone,_rcMK(z.amt_billed),_rcMK(z.cash_collected),_rcPct(z.collection_rate),_rcMK(z.op_cost),_rcMK(z.total_debtors)]),'Revenue by Zone');
+  }
+  h+=_rcAlertsPanel(alerts);h+=_rcNarrative(narrative);return h;
+}
+
+/* ── Profitability ───────────────────────────────────────────────────────── */
+function _rcProfitability(d,narrative,alerts){
+  const s=d.summary||{};
+  const netSurplus=(s.total_revenue||0)-(s.op_costs||0);
+  let h=_rcSectionHdr('Profitability Analysis Overview');
+  h+=_rcKpiRow([
+    {val:_rcMK(s.total_revenue),lbl:'Total Revenue',sub:'YTD'},
+    {val:_rcMK(s.op_costs),lbl:'Operating Costs',sub:'YTD'},
+    {val:_rcMK(Math.abs(netSurplus)),lbl:netSurplus>=0?'Net Surplus':'Net Deficit',sub:netSurplus>=0?'Revenue exceeds OpEx':'OpEx exceeds revenue'},
+    {val:_rcFmt(s.op_ratio,2),lbl:'Operating Ratio',sub:'W.Bank <1.0',tone:_rcTone(s.op_ratio,1.0,1.2,true)},
+    {val:_rcPct(s.collection_rate),lbl:'Collection Rate',sub:'IBNET >90%',tone:_rcTone(s.collection_rate,90,75)},
+    {val:_rcFmt(s.dso)+'d',lbl:'DSO',sub:'IBNET <90d',tone:_rcTone(s.dso,90,120,true)},
+  ]);
+  h+=_rcInsight(`${netSurplus>=0?'SRWB generated a net surplus':'SRWB recorded a net deficit'} of ${_rcMK(Math.abs(netSurplus))} YTD (operating ratio: ${_rcFmt(s.op_ratio,2)}). The World Bank benchmark for a financially sustainable utility is an operating ratio <1.0 — ${(s.op_ratio||0)<1?'SRWB meets this standard':'cost reduction or revenue growth is required'}. Collection rate of ${_rcPct(s.collection_rate)} ${(s.collection_rate||0)>=90?'meets':'is below'} the IBNET 90% standard.`);
+  const bz=d.by_zone||[];
+  if(bz.length){
+    const zp=bz.map(z=>({...z,net_surplus:(z.amt_billed||0)-(z.op_cost||0),op_ratio:z.amt_billed?(z.op_cost||0)/z.amt_billed:0}));
+    const best=zp.reduce((a,b)=>b.op_ratio<a.op_ratio?b:a,zp[0]);
+    const worst=zp.reduce((a,b)=>b.op_ratio>a.op_ratio?b:a,zp[0]);
+    h+=_rcSectionHdr('Profitability by Zone');
+    h+=_rcTable(['Zone','Revenue','Op Cost','Net Surplus / (Deficit)','Op Ratio'],
+      zp.map(z=>[
+        z.zone,_rcMK(z.amt_billed),_rcMK(z.op_cost),
+        `<span style="color:${z.net_surplus>=0?'#10b981':'#ef4444'}">${_rcMK(z.net_surplus)}</span>`,
+        `<span style="color:${z.op_ratio<1?'#10b981':z.op_ratio<1.2?'#f59e0b':'#ef4444'}">${_rcFmt(z.op_ratio,2)}</span>`,
+      ]),'Zone Profitability');
+    h+=_rcInsight(`${best.zone} is the most cost-efficient zone (operating ratio ${_rcFmt(best.op_ratio,2)}), while ${worst.zone} is the least efficient (${_rcFmt(worst.op_ratio,2)}). Zones with operating ratios above 1.0 are spending more than they earn in revenue.`);
+    h+=_rcChart('bar',zp.map(z=>z.zone),[
+      {label:'Revenue',data:zp.map(z=>(z.amt_billed||0)/1e6),backgroundColor:RC_C[0],borderRadius:4},
+      {label:'Op Cost',data:zp.map(z=>(z.op_cost||0)/1e6),backgroundColor:RC_C[3],borderRadius:4},
+    ],{height:200,chartOptions:{scales:{y:{title:{display:true,text:'MK Millions',font:{size:10}}}}}});
+  }
+  const cb=d.cost_breakdown||{};
+  if(cb.op_cost){
+    const ci=[{lbl:'Staff Costs',v:cb.staff_costs},{lbl:'Wages',v:cb.wages},{lbl:'Power',v:cb.power_cost},{lbl:'Chemicals',v:cb.chem_cost},{lbl:'Fuel',v:cb.fuel_cost},{lbl:'Maintenance',v:cb.maintenance},{lbl:'Other',v:cb.other_overhead}].filter(x=>(x.v||0)>0);
+    if(ci.length){
+      h+=_rcSectionHdr('Cost Composition');
+      h+=_rcChart('doughnut',ci.map(x=>x.lbl),
+        [{data:ci.map(x=>x.v),backgroundColor:RC_C.slice(0,ci.length),borderWidth:2,borderColor:'#fff'}],
+        {height:200,chartOptions:{plugins:{legend:{position:'right'}}}});
+    }
+  }
+  const trend=d.billed_collected_trend||[];
+  if(trend.length){
+    h+=_rcSectionHdr('Revenue vs Collections — Monthly Trend');
+    h+=_rcTable(['Month','Billed','Collected','Collection Rate'],
+      trend.map(t=>[t.month,_rcMK(t.amt_billed),_rcMK(t.cash_collected),_rcPct(t.collection_rate)]),'Revenue Trend');
+    h+=_rcChart('line',trend.map(t=>t.month),[
+      {label:'Billed (MK M)',data:trend.map(t=>(t.amt_billed||0)/1e6),borderColor:RC_C[0],backgroundColor:'rgba(59,130,246,.08)',tension:.4,fill:true},
+      {label:'Collected (MK M)',data:trend.map(t=>(t.cash_collected||0)/1e6),borderColor:RC_C[1],backgroundColor:'rgba(22,163,74,.08)',tension:.4,fill:true},
+    ],{height:200,chartOptions:{scales:{y:{title:{display:true,text:'MK Millions',font:{size:10}}}}}});
+  }
+  h+=_rcAlertsPanel(alerts);h+=_rcNarrative(narrative);return h;
+}
+
+/* ── Customer Segment Revenue ────────────────────────────────────────────── */
+function _rcSegmentRevenue(arr,narrative,alerts){
+  if(!Array.isArray(arr)) arr=[];
+  const withData=arr.filter(m=>m.has_data);
+  if(!withData.length) return `<p style="padding:20px;text-align:center;color:var(--ds-text-muted)">No data for the selected period.</p>`;
+  const latest=withData[withData.length-1];
+  const totalBilled=withData.reduce((s,m)=>s+(m.amt_billed||0),0);
+  const totalCash=withData.reduce((s,m)=>s+(m.cash_collected||0),0);
+  const totalSvcCharge=withData.reduce((s,m)=>s+(m.service_charge||0),0);
+  const totalMeterRental=withData.reduce((s,m)=>s+(m.meter_rental||0),0);
+  const collRate=totalBilled?totalCash/totalBilled*100:0;
+  let h=_rcSectionHdr('Customer Segment Revenue Overview');
+  h+=_rcKpiRow([
+    {val:_rcMK(totalBilled),lbl:'Total Billed',sub:'YTD'},
+    {val:_rcMK(totalCash),lbl:'Cash Collected',sub:'YTD'},
+    {val:_rcPct(collRate),lbl:'Collection Rate',sub:'IBNET >90%',tone:_rcTone(collRate,90,75)},
+    {val:_rcMK(totalSvcCharge),lbl:'Service Charges',sub:'YTD'},
+    {val:_rcMK(totalMeterRental),lbl:'Meter Rental',sub:'YTD'},
+    {val:_rcFmt(latest.active_customers),lbl:'Active Customers',sub:'Latest month'},
+  ]);
+  const revPerCust=latest.active_customers?totalBilled/latest.active_customers:0;
+  const cashPerCust=latest.active_customers?totalCash/latest.active_customers:0;
+  h+=_rcInsight(`Total billings of ${_rcMK(totalBilled)} YTD yielded cash collections of ${_rcMK(totalCash)} — a collection rate of ${_rcPct(collRate)}. The postpaid customer segment (${_rcPct(latest.postpaid_pct)} of the base) drives the majority of revenue. Service charges (${_rcMK(totalSvcCharge)}) and meter rental (${_rcMK(totalMeterRental)}) provide ancillary income streams alongside core water billing.`);
+  h+=_rcSectionHdr('Revenue Efficiency Metrics');
+  h+=_rcTable(['Metric','Value','Note'],[
+    ['Active Customers',_rcFmt(latest.active_customers),'Latest month'],
+    ['Postpaid Customers',_rcFmt(latest.active_postpaid),_rcPct(latest.postpaid_pct)+' of base'],
+    ['Prepaid Customers',_rcFmt(latest.active_prepaid),_rcPct(latest.prepaid_pct)+' of base'],
+    ['Revenue per Customer (YTD)',_rcMK(Math.round(revPerCust)),'Billed ÷ active customers'],
+    ['Cash per Customer (YTD)',_rcMK(Math.round(cashPerCust)),'Collected ÷ active customers'],
+    ['Service Charges (YTD)',_rcMK(totalSvcCharge),'Ancillary billing'],
+    ['Meter Rental (YTD)',_rcMK(totalMeterRental),'Ancillary billing'],
+  ],'Revenue Metrics');
+  h+=_rcSectionHdr('Customer Mix — Postpaid vs Prepaid');
+  h+=_rcChart('doughnut',['Postpaid Customers','Prepaid Customers'],
+    [{data:[latest.active_postpaid||0,latest.active_prepaid||0],backgroundColor:[RC_C[0],RC_C[4]],borderWidth:2,borderColor:'#fff'}],
+    {height:190,chartOptions:{plugins:{legend:{position:'right'}}}});
+  h+=_rcSectionHdr('Monthly Billing & Collection Trend');
+  h+=_rcTable(['Month','Active Customers','Billed','Collected','Coll. Rate'],
+    withData.map(m=>[m.month,_rcFmt(m.active_customers),_rcMK(m.amt_billed),_rcMK(m.cash_collected),_rcPct(m.amt_billed?m.cash_collected/m.amt_billed*100:0)]),'Billing Trend');
+  h+=_rcChart('line',withData.map(m=>m.month),[
+    {label:'Billed (MK M)',data:withData.map(m=>(m.amt_billed||0)/1e6),borderColor:RC_C[0],backgroundColor:'rgba(59,130,246,.08)',tension:.4,fill:true},
+    {label:'Collected (MK M)',data:withData.map(m=>(m.cash_collected||0)/1e6),borderColor:RC_C[1],backgroundColor:'rgba(22,163,74,.08)',tension:.4,fill:true},
+  ],{height:200,chartOptions:{scales:{y:{title:{display:true,text:'MK Millions',font:{size:10}}}}}});
+  h+=_rcAlertsPanel(alerts);h+=_rcNarrative(narrative);return h;
 }
 
 /* ── NRW Analysis ────────────────────────────────────────────────────────── */
