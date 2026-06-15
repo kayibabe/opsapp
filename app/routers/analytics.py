@@ -394,12 +394,12 @@ def customer_pivot(
                 latest[k] = r
         lv = list(latest.values())
 
-        active   = sum(r.active_customers for r in lv)
-        if active == 0 and sum(r.vol_produced for r in mrows) == 0:
+        active   = sum((r.active_customers or 0) for r in lv)
+        if active == 0 and sum((r.vol_produced or 0) for r in mrows) == 0:
             result.append({"month": month, "has_data": False})
             continue
-        postpaid = sum(r.active_postpaid  for r in lv)
-        prepaid  = sum(r.active_prepaid   for r in lv)
+        postpaid = sum((r.active_postpaid  or 0) for r in lv)
+        prepaid  = sum((r.active_prepaid   or 0) for r in lv)
 
         result.append({
             "month":            month,
@@ -409,8 +409,8 @@ def customer_pivot(
             "active_prepaid":   round(prepaid),
             "postpaid_pct":     round(postpaid / active * 100, 1) if active else 0,
             "prepaid_pct":      round(prepaid  / active * 100, 1) if active else 0,
-            "new_connections":  round(sum(r.new_connections for r in mrows)),
-            "pop_supplied":     round(sum(r.pop_supplied    for r in lv)),
+            "new_connections":  round(sum((r.new_connections or 0) for r in mrows)),
+            "pop_supplied":     round(sum((r.pop_supplied    or 0) for r in lv)),
         })
 
     return result

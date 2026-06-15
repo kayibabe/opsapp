@@ -14,13 +14,12 @@ the real commit path without touching the file system.
 from __future__ import annotations
 
 import io
-import json
 import sqlite3
 import unittest
 
 import openpyxl
 
-from services.excel_parser import (
+from app.services.excel_parser import (
     ANOMALY_METRICS,
     ExcelParser,
     ParseResult,
@@ -29,51 +28,62 @@ from services.excel_parser import (
 
 # ── Helpers ────────────────────────────────────────────────────────────────
 
+# Mirror of the production `records` columns the tests actually exercise.
+# Column names and types match the Record ORM in app/database.py:
+#   - month is the TEXT month name ("January"…) used by conflict detection
+#   - month_no is the INTEGER (1–12) used by anomaly detection and the
+#     commit exists-check
+#   - metric columns use the canonical DB names, NOT the parser's aliases
 SCHEMA_SQL = """
 CREATE TABLE records (
     id              INTEGER PRIMARY KEY AUTOINCREMENT,
     zone            TEXT    NOT NULL,
     scheme          TEXT    NOT NULL,
-    month           INTEGER NOT NULL,
+    fiscal_year     TEXT,
     year            INTEGER NOT NULL,
-    -- customers
-    cust_metered    REAL,
-    cust_active     REAL,
-    cust_disconnected REAL,
-    cust_postpaid   REAL,
-    cust_prepaid    REAL,
-    -- production
-    vol_produced    REAL,
-    vol_rw          REAL,
-    vol_nrw         REAL,
-    nrw_pct         REAL,
-    -- financial
-    total_billed    REAL,
-    total_collections REAL,
-    -- nwc
-    nwc_done        REAL,
+    month_no        INTEGER NOT NULL,
+    month           TEXT,
+    quarter         TEXT,
+    -- metrics (canonical DB column names) --
+    vol_produced     REAL,
+    active_customers REAL,
+    pct_nrw          REAL,
+    amt_billed       REAL,
+    cash_collected   REAL,
+    new_connections  REAL,
     CONSTRAINT uq_zone_scheme_month_year
-        UNIQUE (zone, scheme, month, year)
+        UNIQUE (zone, scheme, month_no, year)
 );
 """
 
+MONTH_INT_TO_NAME = {
+    1: "January", 2: "February", 3: "March", 4: "April",
+    5: "May", 6: "June", 7: "July", 8: "August",
+    9: "September", 10: "October", 11: "November", 12: "December",
+}
+
 
 def make_db(seed_rows: list[dict] | None = None) -> sqlite3.Connection:
-    """Create a fresh in-memory DB, optionally seeded with existing records."""
+    """
+    Create a fresh in-memory DB, optionally seeded with existing records.
+
+    Seed dicts use canonical DB column names. If a row supplies `month_no`
+    but no `month`, the textual month name is derived automatically so that
+    both the integer (anomaly/commit) and string (conflict) lookups work.
+    """
     db = sqlite3.connect(":memory:")
     db.executescript(SCHEMA_SQL)
-    if seed_rows:
-        for row in seed_rows:
-            db.execute(
-                """INSERT INTO records
-                   (zone, scheme, month, year, cust_active, vol_produced,
-                    nrw_pct, total_billed, total_collections, nwc_done)
-                   VALUES (:zone, :scheme, :month, :year, :cust_active,
-                           :vol_produced, :nrw_pct, :total_billed,
-                           :total_collections, :nwc_done)""",
-                row,
-            )
-        db.commit()
+    for row in (seed_rows or []):
+        data = dict(row)
+        if "month" not in data and "month_no" in data:
+            data["month"] = MONTH_INT_TO_NAME.get(int(data["month_no"]))
+        cols = list(data.keys())
+        db.execute(
+            f"INSERT INTO records ({', '.join(cols)}) "
+            f"VALUES ({', '.join('?' for _ in cols)})",
+            [data[c] for c in cols],
+        )
+    db.commit()
     return db
 
 
@@ -81,15 +91,20 @@ def build_xlsx(rows: list[dict], headers: list[str] | None = None) -> io.BytesIO
     """
     Build a minimal in-memory Excel workbook with the given rows.
     'rows' is a list of dicts; keys become headers if not provided explicitly.
+
+    The DataEntry template has TWO header rows — a section-group row (row 1)
+    and the actual column names (row 2) — with data starting on row 3. The
+    parser reads headers from row 2, so we emit a blank group row first.
     """
     wb = openpyxl.Workbook()
     ws = wb.active
-    ws.title = "RawData"
+    ws.title = "DataEntry"
 
     if headers is None:
         headers = list(rows[0].keys()) if rows else []
 
-    ws.append(headers)
+    ws.append([None] * len(headers))   # row 1: section group labels (ignored)
+    ws.append(headers)                 # row 2: column names
     for row in rows:
         ws.append([row.get(h) for h in headers])
 
@@ -100,18 +115,22 @@ def build_xlsx(rows: list[dict], headers: list[str] | None = None) -> io.BytesIO
 
 
 def make_row(**overrides) -> dict:
-    """Return a minimal valid RawData row."""
+    """
+    Return a minimal valid RawData row keyed by Excel header strings.
+    Headers are chosen so they normalise to the canonical DB columns via
+    COLUMN_MAP (e.g. "Total Active Customers" → active_customers).
+    """
     base = {
-        "Zone":             "Blantyre North",
-        "Scheme":           "Ndirande",
-        "Month":            1,
-        "Year":             2024,
-        "Active Customers": 18000,
-        "Vol. Produced":    310000,
-        "NRW %":            29,
-        "Total Billed":     340000000,
-        "Total Collections":360000000,
-        "NWCs Done":        120,
+        "Zone":                    "Blantyre North",
+        "Scheme":                  "Ndirande",
+        "Month":                   1,
+        "Year":                    2024,
+        "Total Active Customers":  18000,
+        "Vol. Produced":           310000,
+        "NRW %":                   29,
+        "Total Amount Billed":     340000000,
+        "Total Cash Collected":    360000000,
+        "ALL Conn TOTAL Done":     120,
     }
     base.update(overrides)
     return base
@@ -197,10 +216,12 @@ class TestParserHappyPath(unittest.TestCase):
     def test_blank_rows_skipped(self):
         wb = openpyxl.Workbook()
         ws = wb.active
-        ws.title = "RawData"
-        ws.append(list(make_row().keys()))
-        ws.append(list(make_row().values()))
-        ws.append([None] * len(make_row()))   # blank row
+        ws.title = "DataEntry"
+        headers = list(make_row().keys())
+        ws.append([None] * len(headers))            # row 1: group labels
+        ws.append(headers)                          # row 2: column names
+        ws.append(list(make_row().values()))        # row 3: data
+        ws.append([None] * len(headers))            # row 4: blank row
         ws.append(list(make_row(Scheme="Chilomoni").values()))
         buf = io.BytesIO(); wb.save(buf); buf.seek(0)
         result = ExcelParser().parse(buf, make_db())
@@ -219,8 +240,10 @@ class TestParserHappyPath(unittest.TestCase):
         ws = wb.active
         ws.title = "MonthlyData"
         row = make_row()
-        ws.append(list(row.keys()))
-        ws.append(list(row.values()))
+        headers = list(row.keys())
+        ws.append([None] * len(headers))   # row 1: group labels
+        ws.append(headers)                 # row 2: column names
+        ws.append(list(row.values()))      # row 3: data
         buf = io.BytesIO(); wb.save(buf); buf.seek(0)
         result = ExcelParser().parse(buf, make_db())
         self.assertEqual(len(result.rows), 1)
@@ -256,7 +279,7 @@ class TestValidationErrors(unittest.TestCase):
 
     def test_non_numeric_metric_is_warning_not_error(self):
         row = make_row()
-        row["Total Billed"] = "not-a-number"
+        row["Total Amount Billed"] = "not-a-number"
         xlsx = build_xlsx([row])
         result = ExcelParser().parse(xlsx, make_db())
         # Row is still importable — warning only
@@ -277,9 +300,9 @@ class TestAnomalyDetection(unittest.TestCase):
     def _seed(self, zone, scheme, val):
         """Seed 3 historical months with the same vol_produced value."""
         return [
-            {"zone": zone, "scheme": scheme, "month": m, "year": 2023,
-             "cust_active": 18000, "vol_produced": val, "nrw_pct": 30,
-             "total_billed": 340e6, "total_collections": 360e6, "nwc_done": 120}
+            {"zone": zone, "scheme": scheme, "month_no": m, "year": 2023,
+             "active_customers": 18000, "vol_produced": val, "pct_nrw": 30,
+             "amt_billed": 340e6, "cash_collected": 360e6, "new_connections": 120}
             for m in (9, 10, 11)
         ]
 
@@ -336,10 +359,10 @@ class TestConflictDetection(unittest.TestCase):
     def test_conflict_detected_for_existing_record(self):
         seed = [{
             "zone": "Blantyre North", "scheme": "Ndirande",
-            "month": 1, "year": 2024,
-            "cust_active": 17000, "vol_produced": 300_000,
-            "nrw_pct": 31, "total_billed": 330e6,
-            "total_collections": 350e6, "nwc_done": 115,
+            "month_no": 1, "year": 2024,
+            "active_customers": 17000, "vol_produced": 300_000,
+            "pct_nrw": 31, "amt_billed": 330e6,
+            "cash_collected": 350e6, "new_connections": 115,
         }]
         db = make_db(seed)
         result = ExcelParser().parse(build_xlsx([make_row()]), db)
@@ -348,15 +371,15 @@ class TestConflictDetection(unittest.TestCase):
         conflict = result.conflict_rows[0].conflict
         self.assertIn("existing", conflict)
         self.assertIn("incoming", conflict)
-        self.assertEqual(conflict["existing"]["cust_active"], 17000)
+        self.assertEqual(conflict["existing"]["active_customers"], 17000)
 
     def test_no_conflict_for_different_period(self):
         seed = [{
             "zone": "Blantyre North", "scheme": "Ndirande",
-            "month": 12, "year": 2023,   # ← different month/year
-            "cust_active": 17000, "vol_produced": 300_000,
-            "nrw_pct": 31, "total_billed": 330e6,
-            "total_collections": 350e6, "nwc_done": 115,
+            "month_no": 12, "year": 2023,   # ← different month/year
+            "active_customers": 17000, "vol_produced": 300_000,
+            "pct_nrw": 31, "amt_billed": 330e6,
+            "cash_collected": 350e6, "new_connections": 115,
         }]
         db = make_db(seed)
         result = ExcelParser().parse(build_xlsx([make_row()]), db)
@@ -365,10 +388,10 @@ class TestConflictDetection(unittest.TestCase):
     def test_conflict_only_on_matching_zone_scheme(self):
         seed = [{
             "zone": "Zomba", "scheme": "Mitengo",  # ← different zone/scheme
-            "month": 1, "year": 2024,
-            "cust_active": 5000, "vol_produced": 80_000,
-            "nrw_pct": 35, "total_billed": 100e6,
-            "total_collections": 110e6, "nwc_done": 40,
+            "month_no": 1, "year": 2024,
+            "active_customers": 5000, "vol_produced": 80_000,
+            "pct_nrw": 35, "amt_billed": 100e6,
+            "cash_collected": 110e6, "new_connections": 40,
         }]
         db = make_db(seed)
         result = ExcelParser().parse(build_xlsx([make_row()]), db)
@@ -394,8 +417,9 @@ class TestPeriodInference(unittest.TestCase):
 
 class TestCommitLogic(unittest.TestCase):
     """
-    Tests for _execute_commit without going through Flask — imports the
-    function directly.
+    Tests for _execute_commit without going through FastAPI — imports the
+    function directly. The current signature is positional:
+        _execute_commit(conn, preview_data, global_mode, per_row_res)
     """
 
     def setUp(self):
@@ -413,10 +437,10 @@ class TestCommitLogic(unittest.TestCase):
     def _run(self, db, rows, global_mode="replace", per_row_res=None):
         preview = self._make_preview(rows)
         return self._execute_commit(
-            db=db,
-            preview_data=preview,
-            global_mode=global_mode,
-            per_row_res=per_row_res or {},
+            db,
+            preview,
+            global_mode,
+            per_row_res or {},
         )
 
     def _importable_row(self, **kw) -> dict:
@@ -426,9 +450,9 @@ class TestCommitLogic(unittest.TestCase):
             "status": "ok",
             "conflict": None,
             "metrics": {
-                "cust_active": 18000, "vol_produced": 310000,
-                "nrw_pct": 29, "total_billed": 340e6,
-                "total_collections": 360e6, "nwc_done": 120,
+                "active_customers": 18000, "vol_produced": 310000,
+                "pct_nrw": 29, "amt_billed": 340e6,
+                "cash_collected": 360e6, "new_connections": 120,
             },
         }
         base.update(kw)
@@ -443,40 +467,42 @@ class TestCommitLogic(unittest.TestCase):
         self.assertIsNotNone(row)
 
     def test_error_rows_excluded(self):
+        """Rows flagged status=error are excluded from the importable set."""
         row = self._importable_row(status="error")
         stats = self._run(make_db(), [row])
         self.assertEqual(stats["rows_inserted"], 0)
-        self.assertEqual(stats["rows_errored"],  1)
+        self.assertEqual(stats["rows_importable"], 0)
+        self.assertEqual(stats["rows_total"], 1)
 
     def test_replace_conflict(self):
         db = make_db([{
             "zone": "Blantyre North", "scheme": "Ndirande",
-            "month": 1, "year": 2024,
-            "cust_active": 17000, "vol_produced": 300_000,
-            "nrw_pct": 31, "total_billed": 330e6,
-            "total_collections": 350e6, "nwc_done": 115,
+            "month_no": 1, "year": 2024,
+            "active_customers": 17000, "vol_produced": 300_000,
+            "pct_nrw": 31, "amt_billed": 330e6,
+            "cash_collected": 350e6, "new_connections": 115,
         }])
         row = self._importable_row(conflict={"existing": {}, "incoming": {}})
         stats = self._run(db, [row], global_mode="replace")
         self.assertEqual(stats["rows_replaced"], 1)
         updated = db.execute(
-            "SELECT cust_active FROM records WHERE zone='Blantyre North'"
+            "SELECT active_customers FROM records WHERE zone='Blantyre North'"
         ).fetchone()
         self.assertEqual(updated[0], 18000)   # new value, not old 17000
 
     def test_skip_conflict(self):
         db = make_db([{
             "zone": "Blantyre North", "scheme": "Ndirande",
-            "month": 1, "year": 2024,
-            "cust_active": 17000, "vol_produced": 300_000,
-            "nrw_pct": 31, "total_billed": 330e6,
-            "total_collections": 350e6, "nwc_done": 115,
+            "month_no": 1, "year": 2024,
+            "active_customers": 17000, "vol_produced": 300_000,
+            "pct_nrw": 31, "amt_billed": 330e6,
+            "cash_collected": 350e6, "new_connections": 115,
         }])
         row = self._importable_row(conflict={"existing": {}, "incoming": {}})
         stats = self._run(db, [row], global_mode="skip")
         self.assertEqual(stats["rows_skipped"], 1)
         unchanged = db.execute(
-            "SELECT cust_active FROM records WHERE zone='Blantyre North'"
+            "SELECT active_customers FROM records WHERE zone='Blantyre North'"
         ).fetchone()
         self.assertEqual(unchanged[0], 17000)   # not overwritten
 
@@ -484,35 +510,32 @@ class TestCommitLogic(unittest.TestCase):
         """global=replace but per-row says skip for this specific row."""
         db = make_db([{
             "zone": "Blantyre North", "scheme": "Ndirande",
-            "month": 1, "year": 2024,
-            "cust_active": 17000, "vol_produced": 300_000,
-            "nrw_pct": 31, "total_billed": 330e6,
-            "total_collections": 350e6, "nwc_done": 115,
+            "month_no": 1, "year": 2024,
+            "active_customers": 17000, "vol_produced": 300_000,
+            "pct_nrw": 31, "amt_billed": 330e6,
+            "cash_collected": 350e6, "new_connections": 115,
         }])
         row = self._importable_row(conflict={"existing": {}, "incoming": {}})
-        per_row = {"Blantyre North__Ndirande__1__2024": "skip"}
+        # _row_resolution_key format: "{zone}|{scheme}|{year}|{month}"
+        per_row = {"Blantyre North|Ndirande|2024|1": "skip"}
         stats = self._run(db, [row], global_mode="replace", per_row_res=per_row)
         self.assertEqual(stats["rows_skipped"], 1)
 
-    def test_rollback_on_db_error(self):
-        """A bad column name should cause a full rollback."""
+    def test_bad_column_row_errored(self):
+        """A corrupt metric column name errors that row without inserting it."""
         db = make_db()
-        # Inject a corrupt column name into metrics
         row = self._importable_row()
+        # Inject a corrupt column name into metrics
         row["metrics"]["__bad column__"] = 999
-        # Should raise, DB should be empty
-        from app.routers.upload import _execute_commit
-        with self.assertRaises(Exception):
-            _execute_commit(db, self._make_preview([row]), "replace", {})
+        stats = self._execute_commit(db, self._make_preview([row]), "replace", {})
+        self.assertEqual(stats["rows_errored"], 1)
+        self.assertEqual(stats["rows_inserted"], 0)
         count = db.execute("SELECT COUNT(*) FROM records").fetchone()[0]
         self.assertEqual(count, 0)
 
     def test_atomic_all_or_nothing(self):
         """
-        Mix of a valid row and a row that will trigger a constraint violation
-        (duplicate key already in DB without replace mode). Both should be
-        committed/rolled back together.
-        This test verifies BEGIN EXCLUSIVE wraps the whole batch.
+        Two valid rows with distinct schemes commit together.
         """
         db = make_db()
         rows = [

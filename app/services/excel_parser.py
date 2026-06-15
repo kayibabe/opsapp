@@ -89,6 +89,20 @@ COLUMN_MAP: dict[str, str] = {
     "sud_floc_per_m":                    "sud_floc_per_m3",
     "kmno4_per_m":                       "kmno4_per_m3",
 
+    # ── WATER-QUALITY COMPLIANCE (monthly lab sampling) ───────────────────
+    "water_quality_samples_taken":       "wq_samples_taken",
+    "wq_samples_taken":                  "wq_samples_taken",
+    "residual_chlorine_samples":         "wq_cl_samples",
+    "residual_chlorine_compliant":       "wq_cl_compliant",
+    "residual_chlorine_mg_l":            "wq_residual_cl_mg_l",
+    "turbidity_samples":                 "wq_turbidity_samples",
+    "turbidity_compliant":               "wq_turbidity_compliant",
+    "turbidity_ntu":                     "wq_turbidity_ntu",
+    "bacteriological_samples":           "wq_bact_samples",
+    "bacteriological_compliant":         "wq_bact_compliant",
+    "ph_samples":                        "wq_ph_samples",
+    "ph_compliant":                      "wq_ph_compliant",
+
     # ── POWER ─────────────────────────────────────────────────────────────
     # "Power Usage kWh"  →  "power_usage_kwh"
     "power_usage_kwh":                   "power_kwh",
@@ -348,6 +362,45 @@ COLUMN_MAP: dict[str, str] = {
     # "Time to Resolve Queries"  →  "time_to_resolve_queries"
     "time_to_resolve_queries":           "time_to_resolve",
     "response_time_avg":                 "response_time_avg",
+
+    # ── WATER QUALITY / STATUTORY COMPLIANCE ──────────────────────────────
+    # Fields are already in the records schema; add these mappings so that
+    # once the monthly return template carries lab-sample columns, the data
+    # imports automatically and the Water Quality page + WHO/MBS Strategic
+    # Plan KPI go live. Multiple header synonyms are accepted.
+    "wq_samples_taken":                  "wq_samples_taken",
+    "water_quality_samples_taken":       "wq_samples_taken",
+    "total_wq_samples":                  "wq_samples_taken",
+    "samples_taken":                     "wq_samples_taken",
+    # Residual chlorine
+    "residual_chlorine_samples":         "wq_cl_samples",
+    "chlorine_samples":                  "wq_cl_samples",
+    "wq_cl_samples":                     "wq_cl_samples",
+    "residual_chlorine_compliant":       "wq_cl_compliant",
+    "chlorine_compliant":                "wq_cl_compliant",
+    "wq_cl_compliant":                   "wq_cl_compliant",
+    "residual_chlorine_mgl":             "wq_residual_cl_mg_l",
+    "residual_chlorine_mg_l":            "wq_residual_cl_mg_l",
+    "residual_chlorine":                 "wq_residual_cl_mg_l",
+    # Turbidity
+    "turbidity_samples":                 "wq_turbidity_samples",
+    "wq_turbidity_samples":              "wq_turbidity_samples",
+    "turbidity_compliant":               "wq_turbidity_compliant",
+    "wq_turbidity_compliant":            "wq_turbidity_compliant",
+    "turbidity_ntu":                     "wq_turbidity_ntu",
+    "turbidity":                         "wq_turbidity_ntu",
+    # Bacteriological
+    "bacteriological_samples":           "wq_bact_samples",
+    "bacteria_samples":                  "wq_bact_samples",
+    "wq_bact_samples":                   "wq_bact_samples",
+    "bacteriological_compliant":         "wq_bact_compliant",
+    "bacteria_compliant":                "wq_bact_compliant",
+    "wq_bact_compliant":                 "wq_bact_compliant",
+    # pH
+    "ph_samples":                        "wq_ph_samples",
+    "wq_ph_samples":                     "wq_ph_samples",
+    "ph_compliant":                      "wq_ph_compliant",
+    "wq_ph_compliant":                   "wq_ph_compliant",
 }
 
 # Columns that must be present and non-null on every row
@@ -725,6 +778,132 @@ class ExcelParser:
             metrics['pipe_di'] = di_total
         if hdpe_ac_total or 'pipe_hdpe_ac' not in metrics or metrics.get('pipe_hdpe_ac') is None:
             metrics['pipe_hdpe_ac'] = hdpe_ac_total
+
+        # Derive pipe_breakdowns from material sub-totals when the TOTAL cell is blank.
+        # Prevents data where per-size fields are filled but total row is empty from
+        # storing 0 in the DB and making the breakdowns panel show no pipe incidents.
+        if not metrics.get('pipe_breakdowns'):
+            computed = pvc_total + gi_total + di_total + hdpe_ac_total
+            if computed:
+                metrics['pipe_breakdowns'] = computed
+
+        # ── Rollup: totals from sub-components when TOTAL cell is blank ─────
+        # Service charge & meter rental
+        if not metrics.get('service_charge'):
+            computed = _sum(['service_charge_individual','service_charge_cwp',
+                             'service_charge_institutions','service_charge_commercial'])
+            if computed:
+                metrics['service_charge'] = computed
+        if not metrics.get('meter_rental'):
+            computed = _sum(['meter_rental_individual','meter_rental_cwp',
+                             'meter_rental_institutions','meter_rental_commercial'])
+            if computed:
+                metrics['meter_rental'] = computed
+
+        # Dev lines total
+        if not metrics.get('dev_lines_total'):
+            computed = _sum(['dev_lines_32mm','dev_lines_50mm','dev_lines_63mm',
+                             'dev_lines_90mm','dev_lines_110mm'])
+            if computed:
+                metrics['dev_lines_total'] = computed
+
+        # Connection totals done (PP + prepaid per category)
+        for cat in ('indiv','inst','comm','cwp'):
+            key = f'conn_{cat}_total_done'
+            if not metrics.get(key):
+                computed = _sum([f'conn_{cat}_done_pp', f'conn_{cat}_done_prepaid'])
+                if computed:
+                    metrics[key] = computed
+        # new_connections = ALL Conn TOTAL Done (sum across all categories)
+        if not metrics.get('new_connections'):
+            computed = _sum(['conn_indiv_total_done','conn_inst_total_done',
+                             'conn_comm_total_done','conn_cwp_total_done'])
+            if computed:
+                metrics['new_connections'] = computed
+        # ALL connections applied (sum of category PP applied)
+        if not metrics.get('all_conn_applied'):
+            computed = _sum(['conn_indiv_applied_pp','conn_inst_applied_pp',
+                             'conn_comm_applied_pp','conn_cwp_applied_pp'])
+            if computed:
+                metrics['all_conn_applied'] = computed
+
+        # Total disconnected
+        if not metrics.get('total_disconnected'):
+            computed = _sum(['disconnected_individual','disconnected_inst',
+                             'disconnected_commercial','disconnected_cwp'])
+            if computed:
+                metrics['total_disconnected'] = computed
+
+        # Stuck meter aggregates from per-category fields
+        if not metrics.get('stuck_meters'):   # ALL stuck BroughtFwd
+            computed = _sum(['stuck_indiv_bfwd','stuck_inst_bfwd',
+                             'stuck_comm_bfwd','stuck_cwp_bfwd'])
+            if computed:
+                metrics['stuck_meters'] = computed
+        if not metrics.get('stuck_new'):
+            computed = _sum(['stuck_indiv_new','stuck_inst_new',
+                             'stuck_comm_new','stuck_cwp_new'])
+            if computed:
+                metrics['stuck_new'] = computed
+        if not metrics.get('stuck_repaired'):
+            computed = _sum(['stuck_indiv_repaired','stuck_inst_repaired',
+                             'stuck_comm_repaired','stuck_cwp_repaired'])
+            if computed:
+                metrics['stuck_repaired'] = computed
+        if not metrics.get('stuck_replaced'):
+            computed = _sum(['stuck_indiv_replaced','stuck_inst_replaced',
+                             'stuck_comm_replaced','stuck_cwp_replaced'])
+            if computed:
+                metrics['stuck_replaced'] = computed
+
+        # ── Rollup: per-unit ratios when ratio cell is blank ──────────────
+        vol = metrics.get('vol_produced') or 0.0
+
+        # NRW %
+        if not metrics.get('pct_nrw') and vol:
+            nrw_m3 = metrics.get('nrw')
+            if nrw_m3:
+                metrics['pct_nrw'] = round(nrw_m3 / vol * 100, 2)
+
+        if vol:
+            # Chemical intensities per m³
+            _per_m3 = [
+                ('chem_cost_per_m3',    'chem_cost'),
+                ('chlorine_kg_per_m3',  'chlorine_kg'),
+                ('alum_kg_per_m3',      'alum_kg'),
+                ('soda_ash_kg_per_m3',  'soda_ash_kg'),
+                ('algae_floc_per_m3',   'algae_floc_litres'),
+                ('sud_floc_per_m3',     'sud_floc_litres'),
+                ('kmno4_per_m3',        'kmno4_kg'),
+                ('power_kwh_per_m3',    'power_kwh'),
+                ('power_cost_per_m3',   'power_cost'),
+                ('op_cost_per_m3_produced', 'op_cost'),
+            ]
+            for ratio_col, src_col in _per_m3:
+                if not metrics.get(ratio_col):
+                    src = metrics.get(src_col)
+                    if src:
+                        metrics[ratio_col] = round(src / vol, 4)
+
+        # OpCost per m³ billed
+        rev_water = metrics.get('revenue_water') or 0.0
+        if not metrics.get('op_cost_per_m3_billed') and rev_water:
+            op = metrics.get('op_cost')
+            if op:
+                metrics['op_cost_per_m3_billed'] = round(op / rev_water, 4)
+
+        # OpCost per sales
+        sales = metrics.get('total_sales') or 0.0
+        if not metrics.get('op_cost_per_sales') and sales:
+            op = metrics.get('op_cost')
+            if op:
+                metrics['op_cost_per_sales'] = round(op / sales, 4)
+
+        # Staff per 1000 m³
+        if not metrics.get('staff_per_1000m3_12h') and vol:
+            staff = (metrics.get('perm_staff') or 0) + (metrics.get('temp_staff') or 0)
+            if staff:
+                metrics['staff_per_1000m3_12h'] = round(staff / (vol / 1000), 4)
 
 
     # ── Type coercion helpers ─────────────────────────────────────────────

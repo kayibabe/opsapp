@@ -66,6 +66,20 @@ class Record(Base):
     algae_floc_per_m3        = Column(Float, default=0.0)
     sud_floc_per_m3          = Column(Float, default=0.0)
     kmno4_per_m3             = Column(Float, default=0.0)
+    # Water-quality compliance (monthly sampling — samples vs compliant counts).
+    # Compliance % is derived (compliant / samples). All default 0 = "no samples
+    # entered", which the Compliance page treats as N/A (falls back to proxies).
+    wq_samples_taken         = Column(Integer, default=0)   # total samples analysed
+    wq_cl_samples            = Column(Integer, default=0)   # free/residual chlorine
+    wq_cl_compliant          = Column(Integer, default=0)
+    wq_residual_cl_mg_l      = Column(Float,   default=0.0) # avg measured residual
+    wq_turbidity_samples     = Column(Integer, default=0)   # turbidity < 5 NTU
+    wq_turbidity_compliant   = Column(Integer, default=0)
+    wq_turbidity_ntu         = Column(Float,   default=0.0) # avg measured
+    wq_bact_samples          = Column(Integer, default=0)   # E. coli / coliform (0 CFU/100mL)
+    wq_bact_compliant        = Column(Integer, default=0)
+    wq_ph_samples            = Column(Integer, default=0)   # pH 6.5–8.5
+    wq_ph_compliant          = Column(Integer, default=0)
     # Power
     power_kwh                = Column(Float, default=0.0)
     power_cost               = Column(Numeric(15, 2, asdecimal=False), default=0.0)  # MWK
@@ -397,6 +411,52 @@ class SpcLimit(Base):
     )
 
 
+# ── Organisation profile (singleton row, id always = 1) ──────
+class OrgProfile(Base):
+    __tablename__ = "org_profile"
+
+    id                 = Column(Integer, primary_key=True, default=1)
+    org_name           = Column(String(120),  default="Southern Region Water Board")
+    short_name         = Column(String(20),   default="SRWB")
+    registration_no    = Column(String(60),   nullable=True)
+    regulator          = Column(String(120),  nullable=True)
+    country            = Column(String(60),   default="Malawi")
+    reporting_currency = Column(String(10),   default="MWK")
+    service_area_km2   = Column(Float,        nullable=True)
+    population_served  = Column(Integer,      nullable=True)
+    contact_email      = Column(String(120),  nullable=True)
+    contact_phone      = Column(String(40),   nullable=True)
+    website            = Column(String(200),  nullable=True)
+    updated_at         = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+# ── Activity log ──────────────────────────────────────────────
+class ActivityLog(Base):
+    __tablename__ = "activity_log"
+
+    id         = Column(Integer, primary_key=True, autoincrement=True)
+    username   = Column(String(60),  nullable=False, index=True)
+    action     = Column(String(60),  nullable=False)
+    detail     = Column(String(500), nullable=True)
+    ip_address = Column(String(60),  nullable=True)
+    logged_at  = Column(DateTime, default=datetime.utcnow, index=True)
+
+
+# ── Upload history log ────────────────────────────────────────
+class UploadLog(Base):
+    __tablename__ = "upload_log"
+
+    id            = Column(Integer, primary_key=True, autoincrement=True)
+    uploaded_by   = Column(String(60),  nullable=False)
+    filename      = Column(String(200), nullable=True)
+    period        = Column(String(30),  nullable=True)   # e.g. "Apr 2026 – Mar 2027"
+    rows_inserted = Column(Integer, default=0)
+    rows_updated  = Column(Integer, default=0)
+    rows_skipped  = Column(Integer, default=0)
+    rows_errored  = Column(Integer, default=0)
+    logged_at     = Column(DateTime, default=datetime.utcnow, index=True)
+
+
 # ── User model (authentication & RBAC) ───────────────────────
 class User(Base):
     """
@@ -430,6 +490,9 @@ def get_db():
 def create_tables():
     Base.metadata.create_all(bind=engine)
     _ensure_record_columns()
+    _ensure_table_columns(UploadLog)
+    _ensure_table_columns(ActivityLog)
+    _ensure_table_columns(OrgProfile)
 
 def recreate_tables():
     Base.metadata.drop_all(bind=engine)
@@ -438,13 +501,32 @@ def recreate_tables():
 
 def _default_sql(column):
     default = getattr(column.default, "arg", None)
-    if default is None:
+    if default is None or callable(default):
         return ""
     if isinstance(default, str):
         return f" DEFAULT '{default}'"
     if isinstance(default, bool):
         return f" DEFAULT {1 if default else 0}"
     return f" DEFAULT {default}"
+
+
+def _ensure_table_columns(model):
+    """Add any columns present in `model` that are missing from the live DB table."""
+    table_name = model.__tablename__
+    inspector = inspect(engine)
+    if table_name not in inspector.get_table_names():
+        return
+    existing = {col["name"] for col in inspector.get_columns(table_name)}
+    with engine.begin() as conn:
+        for column in model.__table__.columns:
+            if column.name in existing or column.primary_key:
+                continue
+            col_type = column.type.compile(dialect=engine.dialect)
+            nullable = "" if column.nullable else " NOT NULL"
+            default_sql = _default_sql(column)
+            conn.execute(text(
+                f"ALTER TABLE {table_name} ADD COLUMN {column.name} {col_type}{nullable}{default_sql}"
+            ))
 
 
 def _ensure_record_columns():

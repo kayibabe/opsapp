@@ -29,7 +29,7 @@ from app.auth import ensure_default_admin, get_current_user, require_admin
 from app.core.config import settings
 from app.core.logging import REQUEST_ID_CTX, logger as app_logger
 from app.database import SessionLocal, create_tables
-from app.routers import analytics, benchmarking, budget, catalogue, fiscal_years, panels, records, report_generator, reports, upload, insights
+from app.routers import analytics, benchmarking, budget, catalogue, compliance, fiscal_years, panels, records, report_generator, reports, strategic, upload, insights
 from app.routers.users import admin_router, auth_router
 from app.core.limiter import limiter as _limiter
 from slowapi import _rate_limit_exceeded_handler
@@ -259,10 +259,12 @@ app.include_router(budget.router,       dependencies=[Depends(get_current_user)]
 app.include_router(catalogue.router,    dependencies=[Depends(get_current_user)])
 app.include_router(fiscal_years.router, dependencies=[Depends(get_current_user)])
 app.include_router(panels.router,       dependencies=[Depends(get_current_user)])
+app.include_router(compliance.router,   dependencies=[Depends(get_current_user)])
 app.include_router(benchmarking.router, dependencies=[Depends(get_current_user)])
 app.include_router(reports.router,          dependencies=[Depends(get_current_user)])
 app.include_router(report_generator.router, dependencies=[Depends(get_current_user)])
 app.include_router(insights.router,     dependencies=[Depends(get_current_user)])
+app.include_router(strategic.router,    dependencies=[Depends(get_current_user)])
 
 # ── Upload (admin only) ───────────────────────────────────────
 app.include_router(upload.router, dependencies=[Depends(require_admin)])
@@ -336,7 +338,7 @@ def health():
 
 @app.get("/api/debug/db-status", tags=["System"], dependencies=[Depends(require_admin)])
 def db_status():
-    """Public diagnostic endpoint — shows record counts per year/month."""
+    """Admin-only diagnostic endpoint — shows record counts per year/month."""
     from app.database import Record
     db = SessionLocal()
     try:

@@ -118,7 +118,7 @@ def _load_budget(year: int, db: Session) -> dict:
             .filter(BudgetLine.year == year)
             .all())
 
-    bud: dict[str, float] = {r.category: r.value for r in rows}
+    bud: dict[str, float] = {r.category: (r.value if r.value is not None else 0.0) for r in rows}
 
     # --- Derived composites (mirror the old constant relationships) ----------
     bud.setdefault("plant_veh_field",
@@ -170,6 +170,50 @@ def _load_tariff(year: int, bud: dict, db: Session) -> float:
 
 # ── Main variance endpoint ─────────────────────────────────────────────────────
 
+def _cs(col):
+    """SUM(col) coalesced to 0, so a group whose values are all NULL yields 0
+    instead of None (which would crash the downstream round() calls)."""
+    return func.coalesce(func.sum(col), 0)
+
+
+def _latest_active_customers(scope_filters, db, fy_filters=None):
+    """Active customers is a stock snapshot recorded in only one month and
+    left blank/zero afterwards. Sum each (zone, scheme)'s latest NON-ZERO
+    value so the balance is not lost when the most recent month carries no
+    fresh snapshot (which previously yielded 0 — or NULL, crashing round()).
+
+    ``fy_filters`` (full fiscal-year scope, same zone/scheme but no month
+    filter) lets a month-filtered window that excludes the snapshot month
+    fall back to the latest non-zero balance from the whole FY, so e.g.
+    filtering to March doesn't drop the customer base to 0.
+    Returns (per_zone: dict, per_scheme: dict, total: float)."""
+    def _scan(filters):
+        rows = (db.query(Record.zone, Record.scheme, Record.year,
+                         Record.month_no, Record.active_customers)
+                .filter(*filters)
+                .filter(Record.active_customers.isnot(None),
+                        Record.active_customers > 0)
+                .all())
+        best = {}  # (zone, scheme) -> ((year, month_no), value)
+        for r in rows:
+            k = (r.zone, r.scheme)
+            key = (r.year, r.month_no)
+            if k not in best or key > best[k][0]:
+                best[k] = (key, r.active_customers or 0)
+        return best
+
+    best = _scan(scope_filters)
+    if fy_filters is not None:
+        for k, v in _scan(fy_filters).items():
+            best.setdefault(k, v)  # carry FY balance only where the window has none
+    per_zone, per_scheme, total = {}, {}, 0.0
+    for (zone, scheme), (_key, val) in best.items():
+        per_zone[zone] = per_zone.get(zone, 0) + val
+        per_scheme[scheme] = per_scheme.get(scheme, 0) + val
+        total += val
+    return per_zone, per_scheme, total
+
+
 @router.get("/variance")
 def get_variance(
     year: int = Query(default=2026, description="FY end year, e.g. 2026 = FY2025/26"),
@@ -210,6 +254,20 @@ def get_variance(
         comparison_scope_filters.append(Record.zone.in_(zone_items))
     if scheme_items:
         scope_filters.append(Record.scheme.in_(scheme_items))
+
+    # Full fiscal-year scope (same zone/scheme, no month filter) — used to
+    # carry stock-snapshot balances (active customers) into a month window
+    # that excludes the month they were recorded. Only needed when months
+    # are actually selected.
+    fy_scope_filters = fy_comparison_filters = None
+    if selected_months:
+        fy_scope_filters = [_fy_scope_expr(year, None)]
+        fy_comparison_filters = [_fy_scope_expr(year, None)]
+        if zone_items:
+            fy_scope_filters.append(Record.zone.in_(zone_items))
+            fy_comparison_filters.append(Record.zone.in_(zone_items))
+        if scheme_items:
+            fy_scope_filters.append(Record.scheme.in_(scheme_items))
 
     q = (db.query(
             Record.year, Record.month_no,
@@ -275,8 +333,7 @@ def get_variance(
         latest_scope_filters.append(Record.scheme.in_(scheme_items))
         latest_cmp_filters.append(Record.scheme.in_(scheme_items))
 
-    act_active  = (db.query(func.sum(Record.active_customers))
-                   .filter(*latest_scope_filters).scalar() or 0)
+    zone_active_map, scheme_active_map, act_active = _latest_active_customers(scope_filters, db, fy_scope_filters)
     act_sup_hrs = (db.query(func.avg(Record.supply_hours))
                    .filter(*latest_scope_filters).scalar() or 0)
 
@@ -300,8 +357,7 @@ def get_variance(
                        .filter(*comparison_scope_filters).scalar() or 0)
         base_conn   = (db.query(func.sum(Record.new_connections))
                        .filter(*comparison_scope_filters).scalar() or 0)
-        base_active = (db.query(func.sum(Record.active_customers))
-                       .filter(*latest_cmp_filters).scalar() or 0)
+        _bz_active, _bs_active, base_active = _latest_active_customers(comparison_scope_filters, db, fy_comparison_filters)
         revenue_share_factor    = (act_sales  / base_sales)  if base_sales  else 0
         volume_share_factor     = (act_vp     / base_vp)     if base_vp     else 0
         connection_share_factor = (act_conn   / base_conn)   if base_conn   else 0
@@ -452,27 +508,24 @@ def get_variance(
     # ── Zone-level actuals + proportional budgets ─────────────────────────────
     zone_q = (db.query(
             Record.zone,
-            func.sum(Record.total_sales).label("sales"),
-            func.sum(Record.amt_billed).label("billed"),
-            func.sum(Record.cash_collected).label("collected"),
-            func.sum(Record.service_charge).label("svc"),
-            func.sum(Record.op_cost).label("opex"),
-            func.sum(Record.chem_cost).label("chems"),
-            func.sum(Record.power_cost).label("power"),
-            func.sum(Record.vol_produced).label("vp"),
-            func.sum(Record.revenue_water).label("rw"),
-            func.sum(Record.nrw).label("nrw_vol"),
-            func.sum(Record.new_connections).label("conn"),
-            func.sum(Record.dev_lines_total).label("pipelines"),
+            _cs(Record.total_sales).label("sales"),
+            _cs(Record.amt_billed).label("billed"),
+            _cs(Record.cash_collected).label("collected"),
+            _cs(Record.service_charge).label("svc"),
+            _cs(Record.op_cost).label("opex"),
+            _cs(Record.chem_cost).label("chems"),
+            _cs(Record.power_cost).label("power"),
+            _cs(Record.vol_produced).label("vp"),
+            _cs(Record.revenue_water).label("rw"),
+            _cs(Record.nrw).label("nrw_vol"),
+            _cs(Record.new_connections).label("conn"),
+            _cs(Record.dev_lines_total).label("pipelines"),
             func.count(func.distinct(Record.scheme)).label("schemes"),
          )
          .filter(*scope_filters, or_(Record.vol_produced > 0))
          .group_by(Record.zone).all())
 
-    latest_cust = (db.query(Record.zone, func.sum(Record.active_customers).label("cust"))
-                   .filter(*latest_scope_filters)
-                   .group_by(Record.zone).all())
-    cust_map = {r.zone: r.cust for r in latest_cust}
+    cust_map = zone_active_map
 
     zone_rows = []
     for r in sorted(zone_q, key=lambda x: x.zone):
@@ -483,7 +536,7 @@ def get_variance(
         nrw_pct  = r.nrw_vol / r.vp * 100 if r.vp else 0
         coll_rt  = r.collected / r.billed * 100 if r.billed else 0
         rev_m3   = r.sales / r.rw if r.rw else 0
-        cust     = cust_map.get(z, 0)
+        cust     = cust_map.get(z, 0) or 0
         bud_sales_z = B("water_sales") * rs * f
         bud_vp_z    = B("vol_produced") * vs * f
         bud_conn_z  = B("new_customers") * cs * f
@@ -544,26 +597,22 @@ def get_variance(
     scheme_q = (db.query(
             Record.zone, Record.scheme,
             func.count().label("n"),
-            func.sum(Record.vol_produced).label("vp"),
-            func.sum(Record.revenue_water).label("rw"),
-            func.sum(Record.nrw).label("nrw_vol"),
-            func.sum(Record.total_sales).label("sales"),
-            func.sum(Record.amt_billed).label("billed"),
-            func.sum(Record.cash_collected).label("collected"),
-            func.sum(Record.chem_cost).label("chems"),
-            func.sum(Record.power_cost).label("power"),
-            func.sum(Record.new_connections).label("conn"),
+            _cs(Record.vol_produced).label("vp"),
+            _cs(Record.revenue_water).label("rw"),
+            _cs(Record.nrw).label("nrw_vol"),
+            _cs(Record.total_sales).label("sales"),
+            _cs(Record.amt_billed).label("billed"),
+            _cs(Record.cash_collected).label("collected"),
+            _cs(Record.chem_cost).label("chems"),
+            _cs(Record.power_cost).label("power"),
+            _cs(Record.new_connections).label("conn"),
             func.avg(Record.supply_hours).label("sup_hrs"),
-            func.sum(Record.pipe_breakdowns).label("pipe_bkdn"),
+            _cs(Record.pipe_breakdowns).label("pipe_bkdn"),
          )
          .filter(*scope_filters, Record.vol_produced > 0)
          .group_by(Record.zone, Record.scheme).all())
 
-    latest_cust_sch = (db.query(Record.scheme,
-                                func.sum(Record.active_customers).label("cust"))
-                       .filter(*latest_scope_filters)
-                       .group_by(Record.scheme).all())
-    cust_sch_map = {r.scheme: r.cust for r in latest_cust_sch}
+    cust_sch_map = scheme_active_map
 
     nrw_target = B("nrw_pct") or 27.0   # fallback if no budget loaded
     scheme_rows = []
@@ -573,7 +622,7 @@ def get_variance(
         rev_m3   = r.sales / r.rw if r.rw else 0
         chem_m3  = r.chems / r.vp if r.vp else 0
         pwr_m3   = r.power / r.vp if r.vp else 0
-        cust     = cust_sch_map.get(r.scheme, 0)
+        cust     = cust_sch_map.get(r.scheme, 0) or 0
         nrw_score  = max(0, min(100, (45 - nrw_pct) / (45 - 10) * 100)) if nrw_pct else 50
         coll_score = min(100, coll_rt) if coll_rt else 0
         rev_score  = min(100, rev_m3 / tariff * 100) if rev_m3 else 0

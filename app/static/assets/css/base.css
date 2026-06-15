@@ -148,11 +148,12 @@ html,body{height:100%;min-height:100%;font-family:var(--ds-font);font-weight:400
 
 /* Submit button */
 .btn-submit{
-  width:100%;height:46px;
+  width:auto;min-width:160px;height:46px;padding:0 36px;
+  margin:0 auto;display:flex;align-items:center;justify-content:center;
   background:linear-gradient(135deg,#1A8FD1 0%,#1577b4 100%);
   color:#fff;border:none;border-radius:12px;
   font-family:inherit;font-size:14px;font-weight:600;cursor:pointer;
-  letter-spacing:.01em;display:flex;align-items:center;justify-content:center;gap:10px;
+  letter-spacing:.01em;gap:10px;
   transition:transform .15s,box-shadow .15s,filter .15s;
   box-shadow:0 4px 16px rgba(26,143,209,.32),0 1px 3px rgba(0,0,0,.12);
   position:relative;overflow:hidden;
@@ -397,7 +398,7 @@ html,body{height:100%;min-height:100%;font-family:var(--ds-font);font-weight:400
 .remember{font-size:12px;color:var(--ds-text-secondary)}
 .remember input[type=checkbox]{accent-color:var(--ds-blue)}
 .btn-submit{
-  width:100%;
+  width:auto;
   height:46px;
   border-radius:13px;
   background:linear-gradient(135deg,var(--ds-blue) 0%,#1d4ed8 100%);
@@ -466,13 +467,18 @@ html,body{height:100%;min-height:100%;font-family:var(--ds-font);font-weight:400
   background:var(--ds-surface);
   border-right:1.5px solid var(--ds-border);
   display:flex;flex-direction:column;
+  overflow:hidden;
+}
+.nav-scroll{
+  flex:1;min-height:0;
   overflow-y:auto;overflow-x:hidden;
   scrollbar-width:thin;
   scrollbar-color:var(--ds-border) transparent;
 }
-#db-nav::-webkit-scrollbar{width:4px}
-#db-nav::-webkit-scrollbar-thumb{background:var(--ds-border);border-radius:2px}
-#db-nav::-webkit-scrollbar-track{background:transparent}
+.nav-scroll::-webkit-scrollbar{width:4px}
+.nav-scroll::-webkit-scrollbar-thumb{background:var(--ds-border);border-radius:2px}
+.nav-scroll::-webkit-scrollbar-track{background:transparent}
+#nav-admin-group{border-top:1.5px solid var(--ds-border);flex-shrink:0}
 
 /* Logo zone */
 #db-nav .nav-logo{
@@ -603,7 +609,7 @@ html,body{height:100%;min-height:100%;font-family:var(--ds-font);font-weight:400
 
 /* Bottom user panel */
 .nav-bottom{
-  margin-top:auto;padding:12px 12px 28px;
+  padding:12px 12px 28px;
   border-top:1.5px solid var(--ds-border);
   flex-shrink:0;background:var(--ds-surface);
 }
@@ -826,6 +832,8 @@ html,body{height:100%;min-height:100%;font-family:var(--ds-font);font-weight:400
 .kc-val{font-size:36px}
 .kc-lbl{margin-top:2px}
 .kc-sub{min-height:30px}
+.kc-nc-hint{margin-top:4px;font-size:10.5px;line-height:1.3;font-style:italic;color:#64748b;display:inline-flex;align-items:center;gap:5px;padding:2px 7px;border-radius:999px;background:rgba(59,130,246,.08);border:1px solid rgba(59,130,246,.18)}
+.kc-nc-hint::before{content:"";width:5px;height:5px;border-radius:50%;background:#3b82f6;flex:0 0 auto}
 .iwa-scorecard{grid-template-columns:repeat(5,minmax(0,1fr));align-items:stretch}
 .iwa-scorecard > *{min-width:0}
 .iwa-tile{min-height:138px;box-shadow:0 1px 2px rgba(15,23,42,.04)}
@@ -960,14 +968,6 @@ html,body{height:100%;min-height:100%;font-family:var(--ds-font);font-weight:400
 }
 
 
-.tb-viewmode{display:inline-flex;align-items:center;gap:4px;padding:4px;border:1px solid var(--ds-border);border-radius:14px;background:#fff;box-shadow:0 1px 2px rgba(15,23,42,.03)}
-.tb-viewmode.is-hidden{display:none}
-.tb-viewmode-btn{border:none;background:transparent;color:var(--ds-text-secondary);font-size:12px;font-weight:700;letter-spacing:.01em;padding:8px 12px;border-radius:10px;cursor:pointer;transition:background .18s ease,color .18s ease,box-shadow .18s ease}
-.tb-viewmode-btn:hover{background:var(--ds-blue-bg);color:var(--ds-blue)}
-.tb-viewmode-btn.active{background:#EFF6FF;color:#1D4ED8;box-shadow:inset 0 0 0 1px #BFDBFE}
-.tb-viewmode-btn:disabled{cursor:default;opacity:.45}
-@media(max-width:1100px){.tb-viewmode{order:8;width:100%;justify-content:flex-start}}
-@media(max-width:640px){.tb-viewmode{width:100%;overflow:auto}.tb-viewmode-btn{white-space:nowrap;flex:0 0 auto}}
 
 /* Toolbar "Export" control (report pages) */
 .tb-export{position:relative}
@@ -1313,3 +1313,35 @@ html,body{height:100%;min-height:100%;font-family:var(--ds-font);font-weight:400
 .nav-grp-toggle[aria-expanded="false"] .nav-grp-chevron{
   transform:rotate(-90deg);
 }
+
+/* ═══════════════════════════════════════════════════════════════════════
+   UX POLISH PASS (additive — no layout changes)
+   Tactility, accessibility focus rings, and a subtle page transition.
+   All guarded so mouse users and reduced-motion users are unaffected.
+   ═══════════════════════════════════════════════════════════════════════ */
+.kc{transition:box-shadow .18s ease, border-color .18s ease}
+.kc:hover{box-shadow:0 6px 18px rgba(15,23,42,.09); border-color:rgba(15,23,42,.12)}
+.chart-card{transition:box-shadow .18s ease, border-color .18s ease}
+.chart-card:hover{box-shadow:0 6px 18px rgba(15,23,42,.07)}
+
+/* Keyboard accessibility: a visible focus ring for keyboard users only
+   (focus-visible never triggers on plain mouse clicks). */
+button:focus-visible,
+a:focus-visible,
+select:focus-visible,
+input:focus-visible,
+.nav-item:focus-visible,
+.dept-tab:focus-visible{
+  outline:2px solid var(--ds-blue,#3b82f6);
+  outline-offset:2px;
+  border-radius:7px;
+}
+
+/* Gentle entrance when a page becomes active — opacity only, fast, and
+   disabled entirely for users who prefer reduced motion. */
+@media (prefers-reduced-motion: no-preference){
+  .db-page.active{animation:pg-fade-in .22s ease both}
+  @keyframes pg-fade-in{from{opacity:0}to{opacity:1}}
+}
+
+/* Slightly crisper KPI hint pill already added earlier inherits these. */

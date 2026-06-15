@@ -754,7 +754,7 @@ def _page_evidence_profile(page_key: str) -> dict[str, str]:
             "tone": "amber",
             "detail": "This page is governed primarily through thresholds or control bands rather than literal target lines.",
         }
-    if page_std and "context" in page_std.benchmark_rule.lower():
+    if page_std and "context" in page_std.get("benchmark_rule", "").lower():
         return {
             "status": "context_led",
             "label": "Context-led evidence",
@@ -794,7 +794,7 @@ def build_page_export_governance(db: Session, page_key: str | None = None) -> di
             for part in [
                 dq_label + ".",
                 evidence["label"] + ".",
-                page_std.print_rule if page_std else "Keep governance chips visible in board-pack output.",
+                page_std.get("print_rule") if page_std else "Keep governance chips visible in board-pack output.",
             ]
             if part
         )
@@ -815,7 +815,7 @@ def build_page_export_governance(db: Session, page_key: str | None = None) -> di
                 "key": "board_pack",
                 "label": "Board-pack governed",
                 "tone": "neutral",
-                "detail": page_std.print_rule if page_std else "Keep data-quality and evidence cues visible in report exports and print output.",
+                "detail": page_std.get("print_rule") if page_std else "Keep data-quality and evidence cues visible in report exports and print output.",
             },
         ]
         items.append(
@@ -830,9 +830,9 @@ def build_page_export_governance(db: Session, page_key: str | None = None) -> di
                 "evidence_label": evidence["label"],
                 "evidence_tone": evidence["tone"],
                 "evidence_detail": evidence["detail"],
-                "benchmark_rule": page_std.benchmark_rule if page_std else "Use the governance register before showing literal target lines.",
-                "legend_rule": page_std.legend_rule if page_std else "Keep legends compact and non-decorative in exports.",
-                "print_rule": page_std.print_rule if page_std else "Keep data-quality and evidence cues visible in board-pack output.",
+                "benchmark_rule": page_std.get("benchmark_rule", "") if page_std else "Use the governance register before showing literal target lines.",
+                "legend_rule": page_std.get("legend_rule") if page_std else "Keep legends compact and non-decorative in exports.",
+                "print_rule": page_std.get("print_rule") if page_std else "Keep data-quality and evidence cues visible in board-pack output.",
                 "export_note": export_note,
                 "chips": chips,
             }
@@ -994,8 +994,28 @@ def build_water_quality_module(db: Session) -> dict[str, Any]:
             "chem_cost_per_m3": round(float(r.chem_cost_per_m3 or 0.0), 4),
         })
 
+    # Real water-quality compliance — live once monthly samples are entered.
+    def _wq_sum(field):
+        return sum(int(getattr(r, field, 0) or 0) for r in rows)
+    def _wq_rate(s_field, c_field):
+        s = _wq_sum(s_field); c = _wq_sum(c_field)
+        return {"samples": s, "compliant": c, "pct": round(c / s * 100, 1) if s else None}
+    compliance = {
+        "samples_taken": _wq_sum("wq_samples_taken"),
+        "chlorine":        _wq_rate("wq_cl_samples", "wq_cl_compliant"),
+        "turbidity":       _wq_rate("wq_turbidity_samples", "wq_turbidity_compliant"),
+        "bacteriological": _wq_rate("wq_bact_samples", "wq_bact_compliant"),
+        "ph":              _wq_rate("wq_ph_samples", "wq_ph_compliant"),
+    }
+    _params = ("chlorine", "turbidity", "bacteriological", "ph")
+    _tot_s = sum(compliance[p]["samples"] for p in _params)
+    _tot_c = sum(compliance[p]["compliant"] for p in _params)
+    compliance["overall_pct"] = round(_tot_c / _tot_s * 100, 1) if _tot_s else None
+    has_wq = _tot_s > 0
+
     return {
-        "module_status": "partial",
+        "module_status": "live" if has_wq else "partial",
+        "compliance": compliance,
         "available_now": [
             "chlorine dosing proxy",
             "alum dosing proxy",

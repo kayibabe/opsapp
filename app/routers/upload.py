@@ -18,11 +18,12 @@ from app.auth import get_current_user
 from app.core.config import DATA_DIR, settings
 from app.core.limiter import limiter
 from app.core.logging import REQUEST_ID_CTX
-from app.database import engine, get_db
+from app.database import UploadLog, engine, get_db
 from app.services.audit_log import log_event
 from app.services.excel_parser import ExcelParser
 from app.services.rawdata_builder import (
     BuildError,
+    available_years,
     build_rawdata,
     output_file_path,
     zone_files_status,
@@ -75,6 +76,8 @@ class CommitRequest(BaseModel):
 
 
 class BuildRequest(BaseModel):
+    # Fiscal-year end-year to build (e.g. 2027 = FY2026/27). None = current FY.
+    year: int | None = None
     # Smart-diff fill (default) vs. full overwrite of existing values.
     force: bool = False
     # Dry-run: compute changes but write nothing to disk.
@@ -187,11 +190,20 @@ async def preview(request: Request, file: UploadFile = File(...), current_user=D
 
 # ── Step 1: Build RawData from the 5 zone workbooks (dataupdater) ──────────────
 
-@router.get("/zone-files")
-def zone_files(current_user=Depends(get_current_user)):
-    """Pre-flight: report which zone source workbooks are present on the server."""
+@router.get("/build-years")
+def build_years(current_user=Depends(get_current_user)):
+    """List the fiscal years the build tool can compile (per-year readiness)."""
     try:
-        files = zone_files_status()
+        return {"years": available_years()}
+    except BuildError as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@router.get("/zone-files")
+def zone_files(year: int | None = None, current_user=Depends(get_current_user)):
+    """Pre-flight: report which zone source workbooks are present for a fiscal year."""
+    try:
+        files = zone_files_status(year)
     except BuildError as exc:
         raise HTTPException(status_code=500, detail=str(exc))
     missing = [f["zone"] for f in files if not f["exists"]]
@@ -213,7 +225,7 @@ def build_rawdata_endpoint(
 ):
     """Run the smart-diff updater against the zone workbooks → RawData_updated.xlsx."""
     try:
-        result = build_rawdata(test_mode=body.test, force_overwrite=body.force)
+        result = build_rawdata(body.year, test_mode=body.test, force_overwrite=body.force)
     except BuildError as exc:
         raise HTTPException(status_code=500, detail=str(exc))
     except FileNotFoundError as exc:
@@ -332,7 +344,57 @@ def commit(
     )
     log_event(db, current_user.username, "upload_commit", f"Committed upload for {preview_data.get('filename')}", request_id=request_id)
 
+    # Persist to upload history
+    try:
+        _write_upload_log(db, current_user.username, preview_data, stats)
+    except Exception:
+        log.warning("upload_log_write_failed", exc_info=True)
+
     return stats
+
+
+def _write_upload_log(db: Any, username: str, preview_data: dict, stats: dict) -> None:
+    rows = preview_data.get("rows", [])
+    years  = sorted({int(r["year"])  for r in rows if r.get("year")})
+    months = sorted({int(r["month"]) for r in rows if r.get("month")})
+    if years and months:
+        min_m = min(months); max_m = max(months)
+        MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']
+        period = f"{MONTHS[min_m-1]} {min(years)} – {MONTHS[max_m-1]} {max(years)}"
+    else:
+        period = None
+    db.add(UploadLog(
+        uploaded_by=username,
+        filename=preview_data.get("filename"),
+        period=period,
+        rows_inserted=stats.get("rows_inserted", 0),
+        rows_updated=stats.get("rows_replaced", 0),
+        rows_skipped=stats.get("rows_skipped", 0),
+        rows_errored=stats.get("rows_errored", 0),
+    ))
+    db.commit()
+
+
+@router.get("/history")
+def upload_history(db: Session = Depends(get_db), current_user=Depends(get_current_user)):
+    """Return all committed upload records, newest first."""
+    rows = db.query(UploadLog).order_by(UploadLog.logged_at.desc()).limit(200).all()
+    return {
+        "uploads": [
+            {
+                "id":            r.id,
+                "uploaded_by":   r.uploaded_by,
+                "filename":      r.filename,
+                "period":        r.period,
+                "rows_inserted": r.rows_inserted,
+                "rows_updated":  r.rows_updated,
+                "rows_skipped":  r.rows_skipped,
+                "rows_errored":  r.rows_errored,
+                "logged_at":     r.logged_at.isoformat() if r.logged_at else None,
+            }
+            for r in rows
+        ]
+    }
 
 
 def _execute_commit(conn, preview_data: dict, global_mode: str, per_row_res: dict[str, str]) -> dict[str, Any]:

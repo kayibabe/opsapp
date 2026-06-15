@@ -25,7 +25,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
-from app.auth import get_current_user, require_export
+from app.auth import get_current_user, require_admin, require_export
 from app.core.limiter import limiter
 from app.database import Record, User, get_db
 from app.schemas import RecordIn, RecordOut
@@ -108,7 +108,7 @@ def get_record(record_id: int, db: Session = Depends(get_db)):
 # ── POST create ───────────────────────────────────────────────
 @router.post("/", response_model=RecordOut, status_code=201)
 @limiter.limit("60/minute")
-def create_record(request: Request, payload: RecordIn, db: Session = Depends(get_db)):
+def create_record(request: Request, payload: RecordIn, db: Session = Depends(get_db), _admin: User = Depends(require_admin)):
     # Prevent duplicate zone+scheme+month+year
     existing = (
         db.query(Record)
@@ -137,7 +137,7 @@ def create_record(request: Request, payload: RecordIn, db: Session = Depends(get
 # ── PUT update ────────────────────────────────────────────────
 @router.put("/{record_id}", response_model=RecordOut)
 @limiter.limit("60/minute")
-def update_record(request: Request, record_id: int, payload: RecordIn, db: Session = Depends(get_db)):
+def update_record(request: Request, record_id: int, payload: RecordIn, db: Session = Depends(get_db), _admin: User = Depends(require_admin)):
     r = db.query(Record).filter(Record.id == record_id).first()
     if not r:
         raise HTTPException(404, f"Record {record_id} not found")
@@ -151,7 +151,7 @@ def update_record(request: Request, record_id: int, payload: RecordIn, db: Sessi
 # ── DELETE ────────────────────────────────────────────────────
 @router.delete("/{record_id}", status_code=204)
 @limiter.limit("30/minute")
-def delete_record(request: Request, record_id: int, db: Session = Depends(get_db)):
+def delete_record(request: Request, record_id: int, db: Session = Depends(get_db), _admin: User = Depends(require_admin)):
     r = db.query(Record).filter(Record.id == record_id).first()
     if not r:
         raise HTTPException(404, f"Record {record_id} not found")

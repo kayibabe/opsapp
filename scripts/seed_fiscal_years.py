@@ -38,9 +38,14 @@ from app.utils import fy_label
 # FY RANGE CONFIGURATION
 # ─────────────────────────────────────────────────────────────────────────────
 # All years here are the FY *end* year (e.g. 2026 = FY2025/26).
-HISTORICAL_RANGE = range(2016, 2026)   # FY2015/16 → FY2024/25 (10 past years)
-CURRENT_YEAR     = 2026                # FY2025/26
-FUTURE_RANGE     = range(2027, 2031)   # FY2026/27 → FY2029/30
+HISTORICAL_RANGE = range(2016, 2027)   # FY2015/16 → FY2025/26 (11 past years)
+CURRENT_YEAR     = 2027                # FY2026/27
+FUTURE_RANGE     = range(2028, 2031)   # FY2027/28 → FY2029/30
+
+# The approved budget figures below belong to FY2025/26 (end-year 2026) and stay
+# attached to that year regardless of which FY is "current". FY2026/27 onward have
+# no approved budget yet (seed via the copy-year admin endpoint when available).
+BUDGET_YEAR      = 2026                # FY2025/26 — owns the seeded budget data
 
 
 def _fy_dates(year: int) -> tuple[str, str]:
@@ -141,9 +146,9 @@ def seed(refresh_fy: int | None = None):
     db = SessionLocal()
     try:
         _seed_fiscal_years(db)
-        _seed_fy2026_budget(db, refresh=refresh_fy == 2026)
-        _seed_fy2026_zone_shares(db, refresh=refresh_fy == 2026)
-        _seed_fy2026_spc(db, refresh=refresh_fy == 2026)
+        _seed_fy2026_budget(db, refresh=refresh_fy == BUDGET_YEAR)
+        _seed_fy2026_zone_shares(db, refresh=refresh_fy == BUDGET_YEAR)
+        _seed_fy2026_spc(db, refresh=refresh_fy == BUDGET_YEAR)
         db.commit()
         print("[OK] Seed complete.")
     except Exception as e:
@@ -171,7 +176,7 @@ def _seed_fiscal_years(db):
         year=CURRENT_YEAR, label=fy_label(CURRENT_YEAR),
         start_date=start, end_date=end,
         status="current", tariff_per_m3=1_450.0,
-        notes="Approved board budget in effect",
+        notes="Current FY — approved budget pending (seed via copy-year)",
     ))
 
     for y in FUTURE_RANGE:
@@ -196,58 +201,58 @@ def _seed_fiscal_years(db):
 def _seed_fy2026_budget(db, refresh: bool = False):
     """Seed FY2025/26 budget lines (exact values from former hardcoded constants)."""
     if refresh:
-        db.query(BudgetLine).filter(BudgetLine.year == CURRENT_YEAR).delete()
-        print(f"  budget_lines: cleared FY{CURRENT_YEAR} for refresh.")
+        db.query(BudgetLine).filter(BudgetLine.year == BUDGET_YEAR).delete()
+        print(f"  budget_lines: cleared FY{BUDGET_YEAR} for refresh.")
 
     added = 0
     for category, value, unit, notes in FY2026_BUDGET:
         existing = (db.query(BudgetLine)
-                    .filter(BudgetLine.year == CURRENT_YEAR,
+                    .filter(BudgetLine.year == BUDGET_YEAR,
                             BudgetLine.category == category)
                     .first())
         if not existing:
-            db.add(BudgetLine(year=CURRENT_YEAR, category=category,
+            db.add(BudgetLine(year=BUDGET_YEAR, category=category,
                               value=value, unit=unit, notes=notes))
             added += 1
 
-    print(f"  budget_lines (FY{CURRENT_YEAR}): {added} rows inserted.")
+    print(f"  budget_lines (FY{BUDGET_YEAR}): {added} rows inserted.")
 
 
 def _seed_fy2026_zone_shares(db, refresh: bool = False):
     if refresh:
-        db.query(BudgetZoneShare).filter(BudgetZoneShare.year == CURRENT_YEAR).delete()
+        db.query(BudgetZoneShare).filter(BudgetZoneShare.year == BUDGET_YEAR).delete()
 
     added = 0
     for zone, rev, vol, conn in FY2026_ZONE_SHARES:
         existing = (db.query(BudgetZoneShare)
-                    .filter(BudgetZoneShare.year == CURRENT_YEAR,
+                    .filter(BudgetZoneShare.year == BUDGET_YEAR,
                             BudgetZoneShare.zone == zone)
                     .first())
         if not existing:
-            db.add(BudgetZoneShare(year=CURRENT_YEAR, zone=zone,
+            db.add(BudgetZoneShare(year=BUDGET_YEAR, zone=zone,
                                    rev_share=rev, vol_share=vol, conn_share=conn))
             added += 1
 
-    print(f"  budget_zone_shares (FY{CURRENT_YEAR}): {added} rows inserted.")
+    print(f"  budget_zone_shares (FY{BUDGET_YEAR}): {added} rows inserted.")
 
 
 def _seed_fy2026_spc(db, refresh: bool = False):
     if refresh:
-        db.query(SpcLimit).filter(SpcLimit.year == CURRENT_YEAR).delete()
+        db.query(SpcLimit).filter(SpcLimit.year == BUDGET_YEAR).delete()
 
     added = 0
     for metric, mean, std, ucl2, lcl2, ucl3, lcl3 in FY2026_SPC:
         existing = (db.query(SpcLimit)
-                    .filter(SpcLimit.year == CURRENT_YEAR,
+                    .filter(SpcLimit.year == BUDGET_YEAR,
                             SpcLimit.metric == metric)
                     .first())
         if not existing:
-            db.add(SpcLimit(year=CURRENT_YEAR, metric=metric,
+            db.add(SpcLimit(year=BUDGET_YEAR, metric=metric,
                             mean=mean, std=std,
                             ucl2=ucl2, lcl2=lcl2, ucl3=ucl3, lcl3=lcl3))
             added += 1
 
-    print(f"  spc_limits (FY{CURRENT_YEAR}): {added} rows inserted.")
+    print(f"  spc_limits (FY{BUDGET_YEAR}): {added} rows inserted.")
 
 
 # ─────────────────────────────────────────────────────────────────────────────

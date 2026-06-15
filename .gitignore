@@ -31,3 +31,6 @@ logs/
 *.log
 *- Copy.*
 *.docx
+*.pdf
+*.ffs_db
+dataupdater/FY2627/A6D65900

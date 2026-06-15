@@ -27,6 +27,8 @@ from pydantic import BaseModel, field_validator
 from app.core.limiter import limiter as _limiter
 from sqlalchemy.orm import Session
 
+import secrets
+
 from app.auth import (
     VALID_ROLES,
     create_access_token,
@@ -35,7 +37,9 @@ from app.auth import (
     hash_password,
     verify_password,
 )
-from app.database import User, get_db
+from app.core.config import settings
+from app.database import ActivityLog, OrgProfile, UploadLog, User, get_db
+from app.services.audit_log import log_event
 
 # ── Two separate routers so auth and admin have distinct prefixes ──
 auth_router  = APIRouter(prefix="/api/auth",  tags=["Auth"])
@@ -165,6 +169,8 @@ def login(request: Request, payload: LoginIn, db: Session = Depends(get_db)):
 
     user.last_login = datetime.utcnow()
     db.commit()
+    ip = request.client.host if request.client else None
+    log_event(db, user.username, "login", f"Logged in as {user.role}", ip_address=ip)
     token = create_access_token(user.username, user.role, user.full_name)
     return TokenOut(
         access_token=token,
@@ -172,6 +178,45 @@ def login(request: Request, payload: LoginIn, db: Session = Depends(get_db)):
         role=user.role,
         full_name=user.full_name,
     )
+
+
+@auth_router.post("/dev-preview-token", response_model=TokenOut)
+def dev_preview_token(request: Request, db: Session = Depends(get_db)):
+    """
+    DEV-ONLY local preview login. Lets the headless preview/QA browser render
+    authenticated pages WITHOUT anyone typing a password. Hard-gated:
+
+      * Returns 404 when the app runs in production (SRWB_ENV=prod/production).
+      * Accepts ONLY same-machine (loopback) requests — remote callers get 403.
+
+    It authenticates a dedicated, clearly-named ``__preview__`` account so the
+    activity is obvious in audit logs and the account is trivially removable.
+    Do NOT run the app with a development env on a publicly reachable host while
+    this route exists.
+    """
+    if settings.is_production:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Not found")
+    client = (request.client.host if request.client else "") or ""
+    if client not in {"127.0.0.1", "::1", "localhost", "::ffff:127.0.0.1"}:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Local preview only.")
+
+    user = db.query(User).filter(User.username == "__preview__").first()
+    if not user:
+        user = User(
+            username="__preview__",
+            password_hash=hash_password(secrets.token_urlsafe(24)),  # unusable / random
+            role="admin",
+            full_name="Preview (local QA)",
+            created_by="dev-preview",
+            is_active=True,
+        )
+        db.add(user)
+        db.commit()
+        db.refresh(user)
+
+    token = create_access_token(user.username, user.role, user.full_name)
+    return TokenOut(access_token=token, username=user.username,
+                    role=user.role, full_name=user.full_name)
 
 
 @auth_router.get("/me", response_model=UserOut)
@@ -230,6 +275,7 @@ def create_user(
     db.add(user)
     db.commit()
     db.refresh(user)
+    log_event(db, current_user.username, "user_created", f"Created user '{payload.username}' with role '{payload.role}'")
     return user
 
 
@@ -252,12 +298,20 @@ def update_user(
         if payload.is_active is False:
             raise HTTPException(400, "You cannot deactivate your own account.")
 
+    old_role   = user.role
+    old_active = user.is_active
     if payload.full_name  is not None: user.full_name  = payload.full_name
     if payload.role      is not None: user.role      = payload.role
     if payload.is_active is not None: user.is_active = payload.is_active
 
     db.commit()
     db.refresh(user)
+    if payload.role is not None and payload.role != old_role:
+        log_event(db, current_user.username, "role_changed",
+                  f"Changed '{user.username}' role: {old_role} → {payload.role}")
+    if payload.is_active is not None and payload.is_active != old_active:
+        action = "user_activated" if payload.is_active else "user_deactivated"
+        log_event(db, current_user.username, action, f"User '{user.username}'")
     return user
 
 
@@ -278,6 +332,7 @@ def reset_password(
 
     user.password_hash = hash_password(payload.new_password)
     db.commit()
+    log_event(db, current_user.username, "password_reset", f"Reset password for '{user.username}'")
 
 
 @admin_router.delete("/users/{user_id}", status_code=204)
@@ -296,5 +351,151 @@ def delete_user(
     if user.id == current_user.id:
         raise HTTPException(400, "You cannot delete your own account.")
 
+    username_deleted = user.username
     db.delete(user)
     db.commit()
+    log_event(db, current_user.username, "user_deleted", f"Deleted user '{username_deleted}'")
+
+
+# ══════════════════════════════════════════════════════════════
+# ADMIN — SYSTEM INFO, ACTIVITY LOG, ORG PROFILE
+# ══════════════════════════════════════════════════════════════
+
+import os as _os
+from app.core.config import settings as _settings
+
+
+@admin_router.get("/system")
+def system_info(
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """System diagnostics — DB stats, upload summary, session."""
+    from sqlalchemy import func, text as sa_text
+    from app.database import Record, engine as _engine
+
+    # DB file size
+    db_path = _settings.database_url.replace("sqlite:///", "")
+    try:
+        size_mb = round(_os.path.getsize(db_path) / (1024 * 1024), 2)
+    except OSError:
+        size_mb = 0
+
+    record_count = db.query(func.count(Record.id)).scalar() or 0
+    zones   = db.query(func.count(func.distinct(Record.zone))).scalar()   or 0
+    schemes = db.query(func.count(func.distinct(Record.scheme))).scalar() or 0
+
+    # Upload history summary
+    total_uploads = db.query(func.count(UploadLog.id)).scalar() or 0
+    last_upload   = (db.query(UploadLog)
+                     .order_by(UploadLog.logged_at.desc())
+                     .first())
+
+    return {
+        "database": {
+            "size_mb":  size_mb,
+            "records":  record_count,
+            "zones":    zones,
+            "schemes":  schemes,
+            "last_backup": None,
+        },
+        "uploads": {
+            "total_uploads": total_uploads,
+            "last_upload": {
+                "by": last_upload.uploaded_by,
+                "at": last_upload.logged_at.isoformat() if last_upload.logged_at else None,
+                "file": last_upload.filename,
+            } if last_upload else None,
+        },
+    }
+
+
+@admin_router.get("/activity")
+def activity_log(
+    limit: int = 100,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Most recent audit activity events."""
+    rows = (db.query(ActivityLog)
+            .order_by(ActivityLog.logged_at.desc())
+            .limit(limit)
+            .all())
+    return [
+        {
+            "id":         r.id,
+            "username":   r.username,
+            "action":     r.action,
+            "detail":     r.detail,
+            "ip_address": r.ip_address,
+            "logged_at":  r.logged_at.isoformat() if r.logged_at else None,
+        }
+        for r in rows
+    ]
+
+
+class OrgProfileIn(BaseModel):
+    org_name:           Optional[str] = None
+    short_name:         Optional[str] = None
+    registration_no:    Optional[str] = None
+    regulator:          Optional[str] = None
+    country:            Optional[str] = None
+    reporting_currency: Optional[str] = None
+    service_area_km2:   Optional[float] = None
+    population_served:  Optional[int]   = None
+    contact_email:      Optional[str] = None
+    contact_phone:      Optional[str] = None
+    website:            Optional[str] = None
+
+
+def _org_to_dict(o: OrgProfile) -> dict:
+    return {
+        "org_name":           o.org_name,
+        "short_name":         o.short_name,
+        "registration_no":    o.registration_no,
+        "regulator":          o.regulator,
+        "country":            o.country,
+        "reporting_currency": o.reporting_currency,
+        "service_area_km2":   o.service_area_km2,
+        "population_served":  o.population_served,
+        "contact_email":      o.contact_email,
+        "contact_phone":      o.contact_phone,
+        "website":            o.website,
+        "updated_at":         o.updated_at.isoformat() if o.updated_at else None,
+    }
+
+
+@admin_router.get("/org-profile")
+def get_org_profile(
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Return the singleton organisation profile, creating defaults if absent."""
+    profile = db.query(OrgProfile).filter(OrgProfile.id == 1).first()
+    if not profile:
+        profile = OrgProfile(id=1)
+        db.add(profile)
+        db.commit()
+        db.refresh(profile)
+    return _org_to_dict(profile)
+
+
+@admin_router.put("/org-profile")
+def update_org_profile(
+    payload: OrgProfileIn,
+    current_user: User = Depends(require_admin),
+    db: Session = Depends(get_db),
+):
+    """Update the organisation profile."""
+    profile = db.query(OrgProfile).filter(OrgProfile.id == 1).first()
+    if not profile:
+        profile = OrgProfile(id=1)
+        db.add(profile)
+
+    for field, value in payload.model_dump(exclude_none=True).items():
+        setattr(profile, field, value)
+    profile.updated_at = datetime.utcnow()
+    db.commit()
+    db.refresh(profile)
+    log_event(db, current_user.username, "org_profile_updated", "Updated organisation profile")
+    return _org_to_dict(profile)

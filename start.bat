@@ -2,7 +2,7 @@
 setlocal EnableDelayedExpansion
 title SRWB Operations Dashboard — Starting
 
-cd /d "D:\WebApps\opsapp"
+cd /d "C:\WebApps\opsapp"
 
 echo.
 echo  =====================================================

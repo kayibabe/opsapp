@@ -4,7 +4,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>SRWB Operations &amp; Performance Dashboard</title>
+<title>SRWB Corporate Performance Hub</title>
 <link rel="icon"       type="image/x-icon"   href="/static/favicon.ico">
 <link rel="icon"       type="image/png" sizes="32x32" href="/static/favicon-32.png">
 <link rel="icon"       type="image/png" sizes="16x16" href="/static/favicon-16.png">
@@ -14,10 +14,11 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.1.6/purify.min.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/static/assets/css/base.css?v=20260529-1">
+<link rel="stylesheet" href="/static/assets/css/base.css?v=20260613-1">
 
-<link rel="stylesheet" href="/static/assets/css/reports.css?v=20260529-7">
+<link rel="stylesheet" href="/static/assets/css/reports.css?v=20260613-8">
 <link rel="stylesheet" href="/static/assets/css/print.css">
+<link rel="stylesheet" href="/static/assets/css/department-tabs.css?v=20260613-1">
 </head>
 <body>
 
@@ -39,18 +40,12 @@
       <img src="/static/logo.png" alt="Southern Region Water Board" class="login-form-logo">
     </div>
 
-    <!-- Card header -->
-    <div class="lc-header">
-      <div class="lc-header-copy">
-        <div class="lc-header-label">System access</div>
-        <div class="lc-brand-name">Sign in to continue</div>
-        <div class="lc-brand-sub">Southern Region Water Board · Malawi</div>
-      </div>
-      <div class="lc-status">Protected</div>
+    <div class="login-brand" style="text-align:center;margin:.25rem 0 .9rem">
+      <div class="login-brand-name" style="font-size:1.05rem;font-weight:700;letter-spacing:-.01em;color:var(--ds-text-primary,#0f172a)">SRWB Corporate Performance Hub</div>
+      <div class="login-brand-strap" style="font-size:.74rem;color:var(--muted,#64748b);margin-top:2px">Enterprise performance &amp; intelligence — IWA/IBNET aligned</div>
     </div>
 
-    <div class="login-title">Welcome back</div>
-    <div class="login-sub">Enter your credentials to access operations, analytics, and reporting.</div>
+    <div class="login-sub" style="text-align:center;margin-bottom:1rem">Sign in to continue</div>
 
     <form id="login-form" onsubmit="handleLogin(event)" novalidate>
 
@@ -145,7 +140,7 @@
 
     <!-- Footer -->
     <div class="login-footer">
-    SRWB Operations &amp; Performance Dashboard v2.0<br>
+    SRWB Corporate Performance Hub v2.0<br>
     Authorized personnel only<br>
     Contact Corporate Planning Division
     </div>
@@ -197,9 +192,19 @@
       <div id="um-stage-build">
         <div style="font-size:12px;color:var(--ds-text-muted);line-height:1.5;margin-bottom:12px">
           Builds <strong>RawData_updated.xlsx</strong> from the five zone workbooks
-          (Liwonde, Mangochi, Mulanje, Ngabu, Zomba) in the <code>dataupdater</code> folder.
-          Only missing/zero records are filled — existing data is never overwritten unless you choose a full refresh.
+          (Liwonde, Mangochi, Mulanje, Ngabu, Zomba) for the selected fiscal year —
+          each year has its own <code>dataupdater/FY&hellip;</code> sub-folder. The
+          chosen year's data is compiled with the correct year and full billing/customer totals.
         </div>
+
+        <!-- Fiscal year selector -->
+        <label style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+          <span style="font-size:12px;font-weight:650;color:var(--ds-text-secondary)">Fiscal year</span>
+          <select id="um-fy-select" onchange="umFyChange()" style="flex:1;max-width:240px;padding:7px 10px;border:1px solid var(--ds-border);border-radius:8px;font-family:var(--ds-font);font-size:13px;background:var(--ds-surface);color:var(--ds-text-primary)">
+            <option value="">Loading…</option>
+          </select>
+          <span id="um-fy-ready" style="font-size:11px;font-weight:600;color:var(--ds-text-muted);white-space:nowrap"></span>
+        </label>
 
         <!-- Zone source files status -->
         <div class="um-zone-status" id="um-zone-status" style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px"></div>
@@ -461,30 +466,68 @@
     <div class="nav-logo" onclick="goToRoleHome()" title="Open your default home">
       <img src="/static/logo.png" alt="SRWB">
       <div>
-        <div class="nlt">SRWB Operations & Performance</div>
+        <div class="nlt">SRWB Corporate Performance Hub</div>
         <div class="nls">Southern Region Water Board</div>
       </div>
     </div>
+
+    <!-- Scrollable nav body (compliance badge + dept menus) -->
+    <div class="nav-scroll">
 
     <!-- Compliance badge — green outlined pill -->
     <div class="nav-compliance">
       <svg width="10" height="10" viewBox="0 0 16 16" fill="none" style="flex-shrink:0"><path d="M8 1L2 4v4c0 3.5 2.5 6.8 6 7.5C11.5 14.8 14 11.5 14 8V4L8 1z" stroke="currentColor" stroke-width="1.8" fill="currentColor" opacity=".25"/><path d="M5.5 8l2 2 3-3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
       IWA · IBNET Aligned
     </div>
-    <!-- ══ OVERVIEW ══════════════════════════════════════════════════════ -->
-    <div class="nav-grp"><span class="nav-grp-label">Overview</span></div>
+    <!-- ══════════════════════════════════════════════════════════════════
+         PER-DEPARTMENT SIDEBAR MENUS
+         Only the active department's menu is shown — department-tabs.js
+         toggles `.is-active` on the matching .dept-menu when a tab changes.
+         ══════════════════════════════════════════════════════════════════ -->
 
-    <!-- Executive Dashboard -->
-    <div class="nav-item nav-item-standalone nav-item-top active" data-page="overview" data-section="Executive Dashboard" data-title="Executive Dashboard" onclick="navigate('overview')">
-      <span class="nav-item-main">
-        <svg class="nav-item-icon nav-item-icon-svg" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 19.5h16" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M7 16V10" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M12 16V6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M17 16v-3" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
-        <span class="nav-item-label">Executive Dashboard</span>
-      </span>
+    <!-- ── BOARD VIEW menu — strategic / oversight ─────────────────────── -->
+    <div class="dept-menu" data-dept-menu="board">
+
+      <!-- Board group — expanded by default -->
+      <div class="nav-item nav-item-grouphead nav-item-top collapsible" id="brdgrp-main" onclick="toggleSidebarSection('brdgrp-main','brdsec-main',event)">
+        <span class="nav-item-main"><svg class="nav-item-icon nav-item-icon-svg" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="3" y="3" width="8" height="8" rx="1.5" stroke="currentColor" stroke-width="1.8"/><rect x="13" y="3" width="8" height="5" rx="1.5" stroke="currentColor" stroke-width="1.8"/><rect x="13" y="10" width="8" height="11" rx="1.5" stroke="currentColor" stroke-width="1.8"/><rect x="3" y="13" width="8" height="8" rx="1.5" stroke="currentColor" stroke-width="1.8"/></svg><span class="nav-item-label">Board</span></span>
+        <button type="button" class="nav-grp-toggle" aria-expanded="true" aria-label="Toggle Board section" onclick="toggleSidebarSection('brdgrp-main','brdsec-main',event)"><svg class="nav-grp-chevron" viewBox="0 0 10 10" fill="none"><path d="M2 3.5l3 3 3-3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+      </div>
+      <div class="nav-section" id="brdsec-main">
+        <div class="nav-item nav-item-child" data-page="board" data-section="Board View" data-title="Consolidated Executive Summary" onclick="navigate('board')"><span class="nav-item-label">Consolidated Summary</span></div>
+        <div class="nav-item nav-item-child" data-page="overview" data-section="Executive Dashboard" data-title="Executive Dashboard" onclick="navigate('overview')"><span class="nav-item-label">Executive Dashboard</span></div>
+        <div class="nav-item nav-item-child" data-page="strategic" data-section="Board View" data-title="Strategic Plan 2023–2028 Scorecard" onclick="navigate('strategic')"><span class="nav-item-label">Strategic Plan Scorecard</span></div>
+        <div class="nav-item nav-item-child nav-item-soon"><span class="nav-item-label">Risk Dashboard</span><span class="nav-soon">Soon</span></div>
+        <div class="nav-item nav-item-child nav-item-soon"><span class="nav-item-label">Budget Performance</span><span class="nav-soon">Soon</span></div>
+      </div>
+
+      <!-- Insight & Assurance group — collapsed by default -->
+      <div class="nav-item nav-item-grouphead nav-item-top collapsible collapsed" id="brdgrp-insight" onclick="toggleSidebarSection('brdgrp-insight','brdsec-insight',event)">
+        <span class="nav-item-main"><svg class="nav-item-icon nav-item-icon-svg" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="3.5" stroke="currentColor" stroke-width="1.8"/><path d="M2.5 12C4.5 7 8 4.5 12 4.5S19.5 7 21.5 12c-2 5-5.5 7.5-9.5 7.5S4.5 17 2.5 12z" stroke="currentColor" stroke-width="1.8"/></svg><span class="nav-item-label">Insight &amp; Assurance</span></span>
+        <button type="button" class="nav-grp-toggle" aria-expanded="false" aria-label="Toggle Insight &amp; Assurance section" onclick="toggleSidebarSection('brdgrp-insight','brdsec-insight',event)"><svg class="nav-grp-chevron" viewBox="0 0 10 10" fill="none"><path d="M2 3.5l3 3 3-3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+      </div>
+      <div class="nav-section collapsed" id="brdsec-insight" style="max-height:0">
+        <div class="nav-item nav-item-child nav-item-soon"><span class="nav-item-label">Trend Analysis</span><span class="nav-soon">Soon</span></div>
+        <div class="nav-item nav-item-child nav-item-soon"><span class="nav-item-label">Variance Alerts</span><span class="nav-soon">Soon</span></div>
+        <div class="nav-item nav-item-child nav-item-soon"><span class="nav-item-label">AI Scorecard</span><span class="nav-soon">Soon</span></div>
+      </div>
+
+      <!-- Governance group — collapsed by default -->
+      <div class="nav-item nav-item-grouphead nav-item-top collapsible collapsed" id="brdgrp-governance" onclick="toggleSidebarSection('brdgrp-governance','brdsec-governance',event)">
+        <span class="nav-item-main"><svg class="nav-item-icon nav-item-icon-svg" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 3L4 7v5c0 4.4 3.4 8.5 8 9.5 4.6-1 8-5.1 8-9.5V7l-8-4z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M9 12l2 2 4-4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="nav-item-label">Governance</span></span>
+        <button type="button" class="nav-grp-toggle" aria-expanded="false" aria-label="Toggle Governance section" onclick="toggleSidebarSection('brdgrp-governance','brdsec-governance',event)"><svg class="nav-grp-chevron" viewBox="0 0 10 10" fill="none"><path d="M2 3.5l3 3 3-3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+      </div>
+      <div class="nav-section collapsed" id="brdsec-governance" style="max-height:0">
+        <div class="nav-item nav-item-child" data-page="compliance" data-section="Governance" data-title="Compliance &amp; Data Quality" data-admin-only="compliance" onclick="navigate('compliance')"><span class="nav-item-label">Compliance &amp; Data Quality</span></div>
+        <div class="nav-item nav-item-child nav-item-soon"><span class="nav-item-label">Audit Tracker</span><span class="nav-soon">Soon</span></div>
+        <div class="nav-item nav-item-child nav-item-soon"><span class="nav-item-label">Board Resolutions</span><span class="nav-soon">Soon</span></div>
+        <div class="nav-item nav-item-child nav-item-soon"><span class="nav-item-label">Regulatory Compliance</span><span class="nav-soon">Soon</span></div>
+      </div>
+
     </div>
 
-    <!-- ══ ANALYTICS ═════════════════════════════════════════════════════ -->
-    <div class="nav-grp"><span class="nav-grp-label">Analytics</span></div>
-
+    <!-- ── OPERATIONS menu — operational & commercial detail ───────────── -->
+    <div class="dept-menu" data-dept-menu="operations">
     <!-- Operations workspace -->
     <div class="nav-item nav-item-grouphead nav-item-top collapsible" id="grp-operations" data-page="operations" data-section="Operations" data-title="Operations Hub" data-default-page="production" onclick="handleSidebarHubClick('operations', event)">
       <span class="nav-item-main">
@@ -499,8 +542,15 @@
       <div class="nav-item nav-item-child" data-page="production" data-section="Operations" data-title="Water Production" onclick="navigate('production')">
         <span class="nav-item-label">Water Production</span>
       </div>
+      <div class="nav-item nav-item-child" data-page="nrw" data-section="Operations" data-title="Non-Revenue Water &amp; Water Balance" onclick="navigate('nrw')">
+        <span class="nav-item-label">Non-Revenue Water</span>
+      </div>
       <div class="nav-item nav-item-child" data-page="wt-ei" data-section="Operations" data-title="Treatment &amp; Energy" onclick="navigate('wt-ei')">
         <span class="nav-item-label">Treatment &amp; Energy</span>
+      </div>
+      <div class="nav-item nav-item-child" data-page="water-quality" data-section="Operations" data-title="Water Quality &amp; Compliance" onclick="navigate('water-quality')"><span class="nav-item-label">Water Quality &amp; Compliance</span></div>
+      <div class="nav-item nav-item-child" data-page="supply-continuity" data-section="Operations" data-title="Supply Continuity" onclick="navigate('supply-continuity')">
+        <span class="nav-item-label">Supply Continuity</span>
       </div>
       <div class="nav-item nav-item-child" data-page="pipelines" data-section="Operations" data-title="Network Extensions" onclick="navigate('pipelines')">
         <span class="nav-item-label">Network Extensions</span>
@@ -508,13 +558,13 @@
       <div class="nav-item nav-item-child" data-page="breakdowns" data-section="Operations" data-title="Infrastructure Breakdowns" onclick="navigate('breakdowns')">
         <span class="nav-item-label">Failures &amp; Reliability</span>
       </div>
-
-      <div class="nav-item nav-item-child" data-page="workforce" data-section="Operations" data-title="Workforce &amp; Fleet Efficiency" onclick="navigate('workforce')">
-        <span class="nav-item-label">Workforce &amp; Fleet</span>
-      </div>
       <div class="nav-item nav-item-child" data-page="pipe-materials" data-section="Operations" data-title="Pipe Failure by Material and Size" onclick="navigate('pipe-materials')">
         <span class="nav-item-label">Pipe Materials</span>
       </div>
+      <div class="nav-item nav-item-child" data-page="workforce" data-section="Operations" data-title="Workforce &amp; Fleet Efficiency" onclick="navigate('workforce')">
+        <span class="nav-item-label">Workforce &amp; Fleet</span>
+      </div>
+      <div class="nav-item nav-item-child nav-item-soon"><span class="nav-item-label">Capacity &amp; Utilisation</span><span class="nav-soon">Soon</span></div>
     </div>
 
     <!-- Commercial workspace -->
@@ -534,80 +584,128 @@
       <div class="nav-item nav-item-child" data-page="connections" data-section="Commercial" data-title="New Water Connections" onclick="navigate('connections')">
         <span class="nav-item-label">New Connections</span>
       </div>
+      <div class="nav-item nav-item-child" data-page="class-connections" data-section="Commercial" data-title="Connection Pipeline by Customer Class" onclick="navigate('class-connections')">
+        <span class="nav-item-label">Connections by Class</span>
+      </div>
       <div class="nav-item nav-item-child" data-page="connectivity" data-section="Commercial" data-title="Service Connectivity" onclick="navigate('connectivity')">
         <span class="nav-item-label">Service Delivery</span>
       </div>
       <div class="nav-item nav-item-child" data-page="stuck" data-section="Commercial" data-title="Meter Exceptions" onclick="navigate('stuck')">
         <span class="nav-item-label">Meter Exceptions</span>
       </div>
-      <div class="nav-item nav-item-child" data-page="billed" data-section="Commercial" data-title="Revenue Billing Overview" onclick="navigate('billed')">
-        <span class="nav-item-label">Revenue Billing</span>
-      </div>
-      <div class="nav-item nav-item-child" data-page="collections" data-section="Commercial" data-title="Billing &amp; Collections" onclick="navigate('collections')">
-        <span class="nav-item-label">Collections</span>
-      </div>
-      <div class="nav-item nav-item-child" data-page="charges" data-section="Commercial" data-title="Service Charges &amp; Meter Rental" onclick="navigate('charges')">
-        <span class="nav-item-label">Ancillary Charges</span>
-      </div>
-      <div class="nav-item nav-item-child" data-page="expenses" data-section="Commercial" data-title="Operating Cost Performance" onclick="navigate('expenses')">
-        <span class="nav-item-label">Operating Costs</span>
-      </div>
-      <div class="nav-item nav-item-child" data-page="debtors" data-section="Commercial" data-title="Outstanding Debtors" onclick="navigate('debtors')">
-        <span class="nav-item-label">Debtors</span>
-      </div>
-
-      <div class="nav-item nav-item-child" data-page="segment-revenue" data-section="Commercial" data-title="Customer Segment Revenue" onclick="navigate('segment-revenue')">
-        <span class="nav-item-label">Segment Revenue</span>
-      </div>
-      <div class="nav-item nav-item-child" data-page="class-connections" data-section="Commercial" data-title="Connection Pipeline by Customer Class" onclick="navigate('class-connections')">
-        <span class="nav-item-label">Connections by Class</span>
-      </div>
-      <div class="nav-item nav-item-child" data-page="stuck-classes" data-section="Commercial" data-title="Meter Exceptions by Customer Class" onclick="navigate('stuck-classes')">
-        <span class="nav-item-label">Meter Exceptions by Class</span>
+      <div class="nav-item nav-item-child" data-page="disconnections" data-section="Commercial" data-title="Disconnections &amp; Reconnections" onclick="navigate('disconnections')">
+        <span class="nav-item-label">Disconnections</span>
       </div>
     </div>
 
-    <!-- Reports workspace -->
-    <div class="nav-item nav-item-grouphead nav-item-top collapsible" id="grp-reporting" data-page="reporting" data-section="Reports" data-title="Reports Hub" data-default-page="report-centre" onclick="handleSidebarHubClick('reporting', event)">
-      <span class="nav-item-main">
-        <svg class="nav-item-icon nav-item-icon-svg" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M5 6.5A2.5 2.5 0 017.5 4H18a2 2 0 012 2v10a2 2 0 01-2 2H7.5A2.5 2.5 0 015 15.5v-9z" stroke="currentColor" stroke-width="1.8"/><path d="M8 8.5h8M8 12h8M8 15.5h5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
-        <span class="nav-item-label">Reports Hub</span>
-      </span>
-      <button type="button" class="nav-grp-toggle" aria-label="Open Reports" onclick="handleSidebarHubClick('reporting', event)">
-        <svg class="nav-grp-chevron" viewBox="0 0 10 10" fill="none"><path d="M2 3.5l3 3 3-3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
-      </button>
-    </div>
-    <div class="nav-section" id="sec-reporting">
-      <div class="nav-item nav-item-child" data-page="report-centre" data-section="Report Centre" data-title="Report Centre" onclick="navigate('report-centre')">
-        <span class="nav-item-label">Report Centre</span>
+    </div><!-- /dept-menu operations -->
+
+    <!-- ── FINANCE menu ──────────────────────────────────────────────────── -->
+    <div class="dept-menu" data-dept-menu="finance">
+
+      <!-- Finance group — expanded by default -->
+      <div class="nav-item nav-item-grouphead nav-item-top collapsible" id="fingrp-finance" onclick="toggleSidebarSection('fingrp-finance','finsec-finance',event)">
+        <span class="nav-item-main"><svg class="nav-item-icon nav-item-icon-svg" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 4v16M8 8h5.5a2.5 2.5 0 010 5H8m0-5v5m0 0h6a2.5 2.5 0 010 5H8m0-5v5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="nav-item-label">Finance</span></span>
+        <button type="button" class="nav-grp-toggle" aria-expanded="true" aria-label="Toggle Finance section" onclick="toggleSidebarSection('fingrp-finance','finsec-finance',event)"><svg class="nav-grp-chevron" viewBox="0 0 10 10" fill="none"><path d="M2 3.5l3 3 3-3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
       </div>
-      <div class="nav-item nav-item-child" data-page="benchmarking" data-section="Reports" data-title="Benchmarking Tool" onclick="navigate('benchmarking')">
-        <span class="nav-item-label">Benchmarking Tool</span>
+      <div class="nav-section" id="finsec-finance">
+        <div class="nav-item nav-item-child" data-page="finance" data-section="Finance" data-title="Finance" onclick="navigate('finance')"><span class="nav-item-label">Finance Dashboard</span></div>
+        <div class="nav-item nav-item-child" data-page="billed" data-section="Finance" data-title="Revenue Billing Overview" onclick="navigate('billed')"><span class="nav-item-label">Revenue Billing</span></div>
+        <div class="nav-item nav-item-child" data-page="collections" data-section="Finance" data-title="Billing &amp; Collections" onclick="navigate('collections')"><span class="nav-item-label">Collections</span></div>
+        <div class="nav-item nav-item-child" data-page="charges" data-section="Finance" data-title="Service Charges &amp; Meter Rental" onclick="navigate('charges')"><span class="nav-item-label">Ancillary Charges</span></div>
+        <div class="nav-item nav-item-child" data-page="expenses" data-section="Finance" data-title="Operating Cost Performance" onclick="navigate('expenses')"><span class="nav-item-label">Operating Costs</span></div>
+        <div class="nav-item nav-item-child" data-page="profitability" data-section="Finance" data-title="Profitability" onclick="navigate('profitability')"><span class="nav-item-label">Profitability</span></div>
+        <div class="nav-item nav-item-child" data-page="debtors" data-section="Finance" data-title="Outstanding Debtors" onclick="navigate('debtors')"><span class="nav-item-label">Outstanding Debtors</span></div>
+        <div class="nav-item nav-item-child" data-page="segment-revenue" data-section="Finance" data-title="Customer Segment Revenue" onclick="navigate('segment-revenue')"><span class="nav-item-label">Segment Revenue</span></div>
       </div>
+
+      <!-- Planning group — expanded by default -->
+      <div class="nav-item nav-item-grouphead nav-item-top collapsible" id="fingrp-planning" onclick="toggleSidebarSection('fingrp-planning','finsec-planning',event)">
+        <span class="nav-item-main"><svg class="nav-item-icon nav-item-icon-svg" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2" stroke="currentColor" stroke-width="1.8"/><path d="M3 10h18M8 3v4M16 3v4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M7 14h2m2 0h2m2 0h2M7 18h2m2 0h2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg><span class="nav-item-label">Planning</span></span>
+        <button type="button" class="nav-grp-toggle" aria-expanded="true" aria-label="Toggle Planning section" onclick="toggleSidebarSection('fingrp-planning','finsec-planning',event)"><svg class="nav-grp-chevron" viewBox="0 0 10 10" fill="none"><path d="M2 3.5l3 3 3-3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+      </div>
+      <div class="nav-section" id="finsec-planning">
+        <div class="nav-item nav-item-child" data-page="budget" data-section="Planning" data-title="Budget &amp; Forecast" onclick="navigate('budget')"><span class="nav-item-label">Budget &amp; Forecast</span></div>
+      </div>
+
+      <!-- Coming Soon group — collapsed by default -->
+      <div class="nav-item nav-item-grouphead nav-item-top collapsible collapsed" id="fingrp-soon" onclick="toggleSidebarSection('fingrp-soon','finsec-soon',event)">
+        <span class="nav-item-main"><svg class="nav-item-icon nav-item-icon-svg" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="12" cy="12" r="8.5" stroke="currentColor" stroke-width="1.8"/><path d="M12 7.5V12l3 2" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg><span class="nav-item-label">Coming Soon</span></span>
+        <button type="button" class="nav-grp-toggle" aria-expanded="false" aria-label="Toggle Coming Soon section" onclick="toggleSidebarSection('fingrp-soon','finsec-soon',event)"><svg class="nav-grp-chevron" viewBox="0 0 10 10" fill="none"><path d="M2 3.5l3 3 3-3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+      </div>
+      <div class="nav-section collapsed" id="finsec-soon" style="max-height:0">
+        <div class="nav-item nav-item-child nav-item-soon" onclick="openSoon('Cashflow &amp; Liquidity','Daily and monthly cash position, inflows/outflows and days-cash-on-hand.')"><span class="nav-item-label">Cashflow &amp; Liquidity</span><span class="nav-soon">Soon</span></div>
+        <div class="nav-item nav-item-child nav-item-soon" onclick="openSoon('Procurement &amp; Payables','Purchase orders, supplier ageing and commitment tracking.')"><span class="nav-item-label">Procurement &amp; Payables</span><span class="nav-soon">Soon</span></div>
+      </div>
+
     </div>
 
-    <!-- ══ PLANNING & GOVERNANCE ═════════════════════════════════════════ -->
-    <div class="nav-grp"><span class="nav-grp-label">Planning &amp; Governance</span></div>
+    <!-- ── HUMAN RESOURCE & ADMINISTRATION menu ─────────────────────────── -->
+    <div class="dept-menu" data-dept-menu="hr">
 
-    <!-- Planning -->
-    <div class="nav-item nav-item-standalone nav-item-top" data-page="budget" data-section="Planning" data-title="Budget &amp; Forecast" onclick="navigate('budget')">
-      <span class="nav-item-main">
-        <svg class="nav-item-icon nav-item-icon-svg" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="4" y="5" width="16" height="14" rx="2.5" stroke="currentColor" stroke-width="1.8"/><path d="M8 10h8M8 14h4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M9 5V3.5M15 5V3.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
-        <span class="nav-item-label">Budget &amp; Forecast</span>
-      </span>
+      <!-- Workforce group — expanded by default -->
+      <div class="nav-item nav-item-grouphead nav-item-top collapsible" id="hrgrp-workforce" onclick="toggleSidebarSection('hrgrp-workforce','hrsec-workforce',event)">
+        <span class="nav-item-main"><svg class="nav-item-icon nav-item-icon-svg" viewBox="0 0 24 24" fill="none" aria-hidden="true"><circle cx="9" cy="8" r="3" stroke="currentColor" stroke-width="1.8"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><circle cx="17" cy="8" r="2.5" stroke="currentColor" stroke-width="1.6"/><path d="M21 19.5c0-2.5-1.8-4.5-4-4.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg><span class="nav-item-label">Workforce</span></span>
+        <button type="button" class="nav-grp-toggle" aria-expanded="true" aria-label="Toggle Workforce section" onclick="toggleSidebarSection('hrgrp-workforce','hrsec-workforce',event)"><svg class="nav-grp-chevron" viewBox="0 0 10 10" fill="none"><path d="M2 3.5l3 3 3-3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+      </div>
+      <div class="nav-section" id="hrsec-workforce">
+        <div class="nav-item nav-item-child" data-page="hra" data-section="Human Resource &amp; Administration" data-title="Human Resource &amp; Administration" onclick="navigate('hra')"><span class="nav-item-label">Workforce &amp; Establishment</span></div>
+        <div class="nav-item nav-item-child" data-page="staff-productivity" data-section="Human Resource &amp; Administration" data-title="Staff Productivity" onclick="navigate('staff-productivity')"><span class="nav-item-label">Staff Productivity</span></div>
+        <div class="nav-item nav-item-child nav-item-soon"><span class="nav-item-label">Payroll Overview</span><span class="nav-soon">Soon</span></div>
+        <div class="nav-item nav-item-child nav-item-soon"><span class="nav-item-label">Leave &amp; Attendance</span><span class="nav-soon">Soon</span></div>
+        <div class="nav-item nav-item-child nav-item-soon"><span class="nav-item-label">Recruitment Pipeline</span><span class="nav-soon">Soon</span></div>
+        <div class="nav-item nav-item-child nav-item-soon"><span class="nav-item-label">Training &amp; Development</span><span class="nav-soon">Soon</span></div>
+      </div>
+
+      <!-- Administration group — collapsed by default -->
+      <div class="nav-item nav-item-grouphead nav-item-top collapsible collapsed" id="hrgrp-admin" onclick="toggleSidebarSection('hrgrp-admin','hrsec-admin',event)">
+        <span class="nav-item-main"><svg class="nav-item-icon nav-item-icon-svg" viewBox="0 0 24 24" fill="none" aria-hidden="true"><rect x="8" y="2" width="8" height="4" rx="1.5" stroke="currentColor" stroke-width="1.8"/><path d="M8 4H6a2 2 0 00-2 2v13a2 2 0 002 2h12a2 2 0 002-2V6a2 2 0 00-2-2h-2" stroke="currentColor" stroke-width="1.8"/><path d="M9 12h6M9 16h4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg><span class="nav-item-label">Administration</span></span>
+        <button type="button" class="nav-grp-toggle" aria-expanded="false" aria-label="Toggle Administration section" onclick="toggleSidebarSection('hrgrp-admin','hrsec-admin',event)"><svg class="nav-grp-chevron" viewBox="0 0 10 10" fill="none"><path d="M2 3.5l3 3 3-3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+      </div>
+      <div class="nav-section collapsed" id="hrsec-admin" style="max-height:0">
+        <div class="nav-item nav-item-child nav-item-soon"><span class="nav-item-label">Records &amp; Administration</span><span class="nav-soon">Soon</span></div>
+        <div class="nav-item nav-item-child nav-item-soon"><span class="nav-item-label">Fleet &amp; Logistics</span><span class="nav-soon">Soon</span></div>
+        <div class="nav-item nav-item-child nav-item-soon"><span class="nav-item-label">Facilities Management</span><span class="nav-soon">Soon</span></div>
+      </div>
+
     </div>
 
-    <!-- Governance -->
-    <div class="nav-item nav-item-standalone nav-item-top" data-page="compliance" data-section="Governance" data-title="Compliance &amp; Data Quality" data-admin-only="compliance" onclick="navigate('compliance')">
-      <span class="nav-item-main">
-        <svg class="nav-item-icon nav-item-icon-svg" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 3.5l6 2.5v4.6c0 4.1-2.6 7.1-6 8.9-3.4-1.8-6-4.8-6-8.9V6l6-2.5z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M9.2 11.8l1.8 1.8 3.8-3.8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
-        <span class="nav-item-label">Compliance &amp; Data Quality</span>
-      </span>
+    <!-- ── INFRASTRUCTURE menu ───────────────────────────── -->
+    <div class="dept-menu" data-dept-menu="infrastructure">
+
+      <!-- Infrastructure group — expanded by default -->
+      <div class="nav-item nav-item-grouphead nav-item-top collapsible" id="infragrp-main" onclick="toggleSidebarSection('infragrp-main','infrasec-main',event)">
+        <span class="nav-item-main"><svg class="nav-item-icon nav-item-icon-svg" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M3 21h18M5 21V10l7-7 7 7v11" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><rect x="9" y="14" width="6" height="7" rx="1" stroke="currentColor" stroke-width="1.8"/></svg><span class="nav-item-label">Infrastructure</span></span>
+        <button type="button" class="nav-grp-toggle" aria-expanded="true" aria-label="Toggle Infrastructure section" onclick="toggleSidebarSection('infragrp-main','infrasec-main',event)"><svg class="nav-grp-chevron" viewBox="0 0 10 10" fill="none"><path d="M2 3.5l3 3 3-3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+      </div>
+      <div class="nav-section" id="infrasec-main">
+        <div class="nav-item nav-item-child" data-page="infrastructure" data-section="Infrastructure" data-title="Infrastructure" onclick="navigate('infrastructure')"><span class="nav-item-label">Network &amp; Reliability</span></div>
+        <div class="nav-item nav-item-child nav-item-soon"><span class="nav-item-label">Asset Register</span><span class="nav-soon">Soon</span></div>
+        <div class="nav-item nav-item-child nav-item-soon"><span class="nav-item-label">Plant &amp; Equipment Health</span><span class="nav-soon">Soon</span></div>
+        <div class="nav-item nav-item-child nav-item-soon"><span class="nav-item-label">Capital Projects</span><span class="nav-soon">Soon</span></div>
+      </div>
+
     </div>
 
-    <!-- ══ ADMINISTRATION (admin only) ═══════════════════════════════════ -->
+    <!-- ── REPORTS menu — Report Centre and analytics ───────────────────── -->
+    <div class="dept-menu" data-dept-menu="reports">
+
+      <!-- Reports group — expanded by default -->
+      <div class="nav-item nav-item-grouphead nav-item-top collapsible" id="rptgrp-main" onclick="toggleSidebarSection('rptgrp-main','rptsec-main',event)">
+        <span class="nav-item-main"><svg class="nav-item-icon nav-item-icon-svg" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M6 3h8l5 5v13H6z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><path d="M14 3v5h5M9 13h6M9 17h6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg><span class="nav-item-label">Reports</span></span>
+        <button type="button" class="nav-grp-toggle" aria-expanded="true" aria-label="Toggle Reports section" onclick="toggleSidebarSection('rptgrp-main','rptsec-main',event)"><svg class="nav-grp-chevron" viewBox="0 0 10 10" fill="none"><path d="M2 3.5l3 3 3-3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+      </div>
+      <div class="nav-section" id="rptsec-main">
+        <div class="nav-item nav-item-child" data-page="report-centre" data-section="Report Centre" data-title="Report Centre" onclick="navigate('report-centre')"><span class="nav-item-label">Report Centre</span></div>
+        <div class="nav-item nav-item-child" data-page="benchmarking" data-section="Reports" data-title="Benchmarking Tool" onclick="navigate('benchmarking')"><span class="nav-item-label">Benchmarking Tool</span></div>
+      </div>
+
+    </div>
+
+    </div><!-- /.nav-scroll -->
+
+    <!-- ══ ADMINISTRATION (admin only) — universal across all department menus ═══ -->
     <div id="nav-admin-group">
-      <div class="nav-grp"><span class="nav-grp-label">Administration</span></div>
       <div class="nav-item nav-item-standalone nav-item-top" data-page="admin" data-section="Administration" data-title="Administration" onclick="navigate('admin')">
         <span class="nav-item-main">
           <svg class="nav-item-icon nav-item-icon-svg" viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M12 8.5A3.5 3.5 0 1112 15.5 3.5 3.5 0 0112 8.5z" stroke="currentColor" stroke-width="1.8"/><path d="M19 12a7 7 0 00-.1-1.2l1.7-1.3-1.6-2.8-2 .6a7.2 7.2 0 00-2.1-1.2l-.3-2.1h-3.2l-.3 2.1a7.2 7.2 0 00-2.1 1.2l-2-.6-1.6 2.8 1.7 1.3A7 7 0 005 12c0 .4 0 .8.1 1.2l-1.7 1.3 1.6 2.8 2-.6c.6.5 1.3.9 2.1 1.2l.3 2.1h3.2l.3-2.1c.8-.3 1.5-.7 2.1-1.2l2 .6 1.6-2.8-1.7-1.3c.1-.4.1-.8.1-1.2z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg>
@@ -800,6 +898,7 @@
 
 
 
+
     <!-- Refresh -->
     <button class="tb-btn" onclick="reloadPage(currentPage)" title="Refresh data">
       <svg width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M13.65 2.35A8 8 0 1014 8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M14 2v4h-4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
@@ -844,6 +943,208 @@
   </div>
   <div id="db-main">
 
+    <!-- Board View — Consolidated cross-department executive roll-up -->
+    <!-- Strategic Plan 2023-2028 Scorecard -->
+    <div id="page-strategic" class="db-page report-page-standard">
+      <div class="pg-hdr">
+        <div class="pg-hdr-left">
+          <div class="pg-title">Strategic Plan 2023–2028 Scorecard</div>
+          <div class="pg-meta" id="pg-meta-strategic">FY — · KPI tracking against approved targets</div>
+          <div class="pg-sub">Official SRWB Strategic Plan KPIs vs annual targets · live actuals are computed from captured returns; operational and gap measures flag where a data feed is still needed</div>
+        </div>
+        <div class="pg-hdr-right exp-bar">
+          <button class="exp-btn exp-xl" onclick="exportExcel('strategic')" title="Export scorecard to Excel"><svg width="13" height="13" viewBox="0 0 16 16" fill="none"><rect x="1" y="2" width="14" height="12" rx="2" stroke="currentColor" stroke-width="1.4"/><path d="M5 6l2.5 4L10 6" stroke="#16a34a" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M6 2v12M1 8h14" stroke="currentColor" stroke-width="1.2" opacity=".25"/></svg>Excel</button>
+          <button class="exp-btn exp-print" onclick="printSummaryFromRC('strategic')" title="Print this scorecard"><svg width="13" height="13" viewBox="0 0 16 16" fill="none"><rect x="3" y="5" width="10" height="7" rx="1" stroke="currentColor" stroke-width="1.4"/><path d="M5 5V3h6v2" stroke="currentColor" stroke-width="1.4"/><rect x="5" y="9" width="6" height="3" rx=".5" fill="currentColor" opacity=".2" stroke="currentColor" stroke-width="1.2"/></svg>Print Report</button>
+        </div>
+      </div>
+      <div class="ex-section">
+        <div class="ex-hdr"><span class="ex-dot" style="background:#6366F1"></span><span class="ex-title">Plan Implementation Summary</span><span class="ex-sub">— KPI coverage and on-track status for the selected fiscal year</span></div>
+        <div id="sp-summary" class="kpi-row kpi-g3"></div>
+        <div id="sp-legend" style="margin:.4rem .25rem 0;font-size:.76rem;color:var(--muted,#64748b);display:flex;gap:1rem;flex-wrap:wrap"></div>
+      </div>
+      <div id="sp-sections"></div>
+    </div>
+
+    <div id="page-board" class="db-page">
+      <div class="pg-hdr">
+        <div class="pg-hdr-left">
+          <div class="pg-title">Board View — Consolidated Executive Summary</div>
+          <div class="pg-meta" id="pg-meta-board">FY — · All Zones · All Months</div>
+          <div class="pg-sub">One board-level snapshot across every department · responds to the financial year, zone and period filters above</div>
+        </div>
+        <div class="pg-hdr-right exp-bar">
+          <button class="exp-btn exp-xl" onclick="exportExcel('board')" title="Export board summary to Excel"><svg width="13" height="13" viewBox="0 0 16 16" fill="none"><rect x="1" y="2" width="14" height="12" rx="2" stroke="currentColor" stroke-width="1.4"/><path d="M5 6l2.5 4L10 6" stroke="#16a34a" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M6 2v12M1 8h14" stroke="currentColor" stroke-width="1.2" opacity=".25"/></svg>Excel</button>
+          <button class="exp-btn exp-print" onclick="printSummaryFromRC('board')" title="Print this board summary"><svg width="13" height="13" viewBox="0 0 16 16" fill="none"><rect x="3" y="5" width="10" height="7" rx="1" stroke="currentColor" stroke-width="1.4"/><path d="M5 5V3h6v2" stroke="currentColor" stroke-width="1.4"/><rect x="5" y="9" width="6" height="3" rx=".5" fill="currentColor" opacity=".2" stroke="currentColor" stroke-width="1.2"/></svg>Print Report</button>
+        </div>
+      </div>
+
+      <div id="bv-health-strip" class="bv-health-strip"></div>
+      <div id="bv-narrative" class="bv-narrative"></div>
+
+      <!-- Department matrices -->
+      <div class="bv-dept-grid">
+
+        <!-- Operations -->
+        <section class="bv-panel" data-dept="operations">
+          <div class="bv-panel-hdr">
+            <div class="bv-panel-id">
+              <span class="bv-panel-ico"><svg viewBox="0 0 24 24" fill="none"><path d="M3 13h4l2-7 4 14 2-7h4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+              <div>
+                <div class="bv-panel-name">Operations</div>
+                <div class="bv-panel-note">Production, water balance and supply continuity</div>
+              </div>
+            </div>
+            <div class="bv-panel-actions">
+              <span class="bv-status bv-status-live">Live</span>
+              <button type="button" class="bv-open" onclick="switchDepartment('operations')">Open<svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M5 3l5 5-5 5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+            </div>
+          </div>
+          <div id="bv-ops-kpis" class="kpi-row kpi-g4 bv-panel-kpis"></div>
+        </section>
+
+        <!-- Finance -->
+        <section class="bv-panel" data-dept="finance">
+          <div class="bv-panel-hdr">
+            <div class="bv-panel-id">
+              <span class="bv-panel-ico"><svg viewBox="0 0 24 24" fill="none"><path d="M3 20h18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><rect x="5" y="11" width="3" height="6" rx="1" stroke="currentColor" stroke-width="1.7"/><rect x="10.5" y="7" width="3" height="10" rx="1" stroke="currentColor" stroke-width="1.7"/><rect x="16" y="4" width="3" height="13" rx="1" stroke="currentColor" stroke-width="1.7"/></svg></span>
+              <div>
+                <div class="bv-panel-name">Finance</div>
+                <div class="bv-panel-note">Billing, collections, cost efficiency and debtor cycle</div>
+              </div>
+            </div>
+            <div class="bv-panel-actions">
+              <span class="bv-status bv-status-live">Live</span>
+              <button type="button" class="bv-open" onclick="switchDepartment('finance')">Open<svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M5 3l5 5-5 5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+            </div>
+          </div>
+          <div id="bv-fin-kpis" class="kpi-row kpi-g4 bv-panel-kpis"></div>
+        </section>
+
+        <!-- Human Resource & Administration -->
+        <section class="bv-panel" data-dept="hr">
+          <div class="bv-panel-hdr">
+            <div class="bv-panel-id">
+              <span class="bv-panel-ico"><svg viewBox="0 0 24 24" fill="none"><circle cx="9" cy="8" r="3.2" stroke="currentColor" stroke-width="1.7"/><path d="M3.5 19c0-3 2.5-5 5.5-5s5.5 2 5.5 5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><path d="M16 4.5a3 3 0 010 6M17.5 14c2.4.3 4 2.3 4 5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg></span>
+              <div>
+                <div class="bv-panel-name">Human Resource &amp; Administration</div>
+                <div class="bv-panel-note">Establishment, workforce productivity and fleet/fuel</div>
+              </div>
+            </div>
+            <div class="bv-panel-actions">
+              <span class="bv-status bv-status-live">Live</span>
+              <button type="button" class="bv-open" onclick="switchDepartment('hr')">Open<svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M5 3l5 5-5 5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+            </div>
+          </div>
+          <div id="bv-hr-kpis" class="kpi-row kpi-g4 bv-panel-kpis"></div>
+        </section>
+
+        <!-- Infrastructure -->
+        <section class="bv-panel" data-dept="infrastructure">
+          <div class="bv-panel-hdr">
+            <div class="bv-panel-id">
+              <span class="bv-panel-ico"><svg viewBox="0 0 24 24" fill="none"><path d="M4 21V8l8-5 8 5v13" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M9 21v-6h6v6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 21h16" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg></span>
+              <div>
+                <div class="bv-panel-name">Infrastructure</div>
+                <div class="bv-panel-note">Network reliability, extensions and meter assets</div>
+              </div>
+            </div>
+            <div class="bv-panel-actions">
+              <span class="bv-status bv-status-live">Live</span>
+              <button type="button" class="bv-open" onclick="switchDepartment('infrastructure')">Open<svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M5 3l5 5-5 5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+            </div>
+          </div>
+          <div id="bv-infra-kpis" class="kpi-row kpi-g4 bv-panel-kpis"></div>
+        </section>
+
+      </div>
+
+      <div id="bv-zone-matrix"></div>
+
+      <!-- Cross-department footnote -->
+      <div class="bv-foot" id="bv-foot">Board View consolidates live data across Operations, Finance, Human Resource &amp; Administration and Infrastructure, sourced from validated monthly returns.</div>
+    </div>
+
+    <!-- Finance — department dashboard -->
+    <div id="page-finance" class="db-page">
+      <div class="pg-hdr">
+        <div class="pg-hdr-left">
+          <div class="pg-title">Finance</div>
+          <div class="pg-meta" id="pg-meta-finance">FY — · All Zones · All Months</div>
+          <div class="pg-sub">Billing, collections, cost efficiency and financial ratios · sourced from validated monthly returns</div>
+        </div>
+        <div class="pg-hdr-right exp-bar">
+          <button class="exp-btn exp-print" onclick="printSummaryFromRC('finance')" title="Print this report"><svg width="13" height="13" viewBox="0 0 16 16" fill="none"><rect x="3" y="5" width="10" height="7" rx="1" stroke="currentColor" stroke-width="1.4"/><path d="M5 5V3h6v2" stroke="currentColor" stroke-width="1.4"/><rect x="5" y="9" width="6" height="3" rx=".5" fill="currentColor" opacity=".2" stroke="currentColor" stroke-width="1.2"/></svg>Print Report</button>
+        </div>
+      </div>
+      <div id="fin-kpis" class="kpi-row kpi-g4"></div>
+      <div class="ov-main-grid">
+        <div class="chart-card"><div class="chart-title">Billed vs Collected</div><div class="chart-subtitle">Monthly revenue billed against cash collected.</div><div class="ch-wrap" style="height:260px"><canvas id="ch-fin-trend"></canvas></div></div>
+        <div class="chart-card"><div class="chart-title">Collection Rate by Zone</div><div class="chart-subtitle">Cash collected ÷ billed, against the IBNET &gt;90% benchmark.</div><div class="ch-wrap" style="height:260px"><canvas id="ch-fin-collzone"></canvas></div></div>
+      </div>
+      <div class="chart-card chart-full"><div class="chart-title">Debtor Days (DSO) by Zone</div><div class="chart-subtitle">Days sales outstanding per zone, against the IBNET &lt;60-day reference.</div><div class="ch-wrap" style="height:240px"><canvas id="ch-fin-dso"></canvas></div></div>
+    </div>
+
+    <!-- Generic "coming soon / awaiting data" placeholder page (live departments) -->
+    <div id="page-soon" class="db-page">
+      <div class="pg-hdr">
+        <div class="pg-hdr-left">
+          <div class="pg-title" id="soon-title">Coming soon</div>
+          <div class="pg-meta">Module on the roadmap</div>
+          <div class="pg-sub" id="soon-sub">This module is on the delivery roadmap.</div>
+        </div>
+      </div>
+      <div class="soon-panel">
+        <div class="soon-panel-ico"><svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.7"/><path d="M12 7v5l3 2" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+        <div class="soon-panel-eyebrow">Coming soon</div>
+        <h2 class="soon-panel-title" id="soon-panel-title">Module</h2>
+        <p class="soon-panel-msg" id="soon-panel-msg">Awaiting its data feed.</p>
+        <p class="soon-panel-note">The financial-year, zone and period filters above are already wired in — this view will respond to them as soon as the underlying data is collected.</p>
+      </div>
+    </div>
+
+    <!-- Human Resource & Administration — department dashboard -->
+    <div id="page-hra" class="db-page">
+      <div class="pg-hdr">
+        <div class="pg-hdr-left">
+          <div class="pg-title">Human Resource &amp; Administration</div>
+          <div class="pg-meta" id="pg-meta-hra">FY — · All Zones · All Months</div>
+          <div class="pg-sub">Establishment, workforce productivity, staff cost and fleet/fuel · sourced from validated monthly returns</div>
+        </div>
+        <div class="pg-hdr-right exp-bar">
+          <button class="exp-btn exp-print" onclick="printSummaryFromRC('hra')" title="Print this report"><svg width="13" height="13" viewBox="0 0 16 16" fill="none"><rect x="3" y="5" width="10" height="7" rx="1" stroke="currentColor" stroke-width="1.4"/><path d="M5 5V3h6v2" stroke="currentColor" stroke-width="1.4"/><rect x="5" y="9" width="6" height="3" rx=".5" fill="currentColor" opacity=".2" stroke="currentColor" stroke-width="1.2"/></svg>Print Report</button>
+        </div>
+      </div>
+      <div id="hra-kpis" class="kpi-row kpi-g4"></div>
+      <div class="ov-main-grid">
+        <div class="chart-card"><div class="chart-title">Staff by Zone</div><div class="chart-subtitle">Permanent and temporary establishment across zones.</div><div class="ch-wrap" style="height:260px"><canvas id="ch-hra-staff-zone"></canvas></div></div>
+        <div class="chart-card"><div class="chart-title">Workforce &amp; Cost Trend</div><div class="chart-subtitle">Staff headcount and staff cost over the period.</div><div class="ch-wrap" style="height:260px"><canvas id="ch-hra-trend"></canvas></div></div>
+      </div>
+      <div class="chart-card chart-full"><div class="chart-title">Fleet &amp; Fuel Trend</div><div class="chart-subtitle">Fuel used (litres), fuel cost and distance covered each month.</div><div class="ch-wrap" style="height:240px"><canvas id="ch-hra-fuel"></canvas></div></div>
+    </div>
+
+    <!-- Infrastructure — department dashboard -->
+    <div id="page-infrastructure" class="db-page">
+      <div class="pg-hdr">
+        <div class="pg-hdr-left">
+          <div class="pg-title">Infrastructure</div>
+          <div class="pg-meta" id="pg-meta-infrastructure">FY — · All Zones · All Months</div>
+          <div class="pg-sub">Network reliability, pipeline extensions and meter assets · sourced from validated monthly returns</div>
+        </div>
+        <div class="pg-hdr-right exp-bar">
+          <button class="exp-btn exp-print" onclick="printSummaryFromRC('infrastructure')" title="Print this report"><svg width="13" height="13" viewBox="0 0 16 16" fill="none"><rect x="3" y="5" width="10" height="7" rx="1" stroke="currentColor" stroke-width="1.4"/><path d="M5 5V3h6v2" stroke="currentColor" stroke-width="1.4"/><rect x="5" y="9" width="6" height="3" rx=".5" fill="currentColor" opacity=".2" stroke="currentColor" stroke-width="1.2"/></svg>Print Report</button>
+        </div>
+      </div>
+      <div id="infra-kpis" class="kpi-row kpi-g4"></div>
+      <div class="ov-main-grid">
+        <div class="chart-card"><div class="chart-title">Breakdowns by Zone</div><div class="chart-subtitle">Pipe and pump failures across zones.</div><div class="ch-wrap" style="height:260px"><canvas id="ch-infra-bd-zone"></canvas></div></div>
+        <div class="chart-card"><div class="chart-title">Reliability Trend</div><div class="chart-subtitle">Breakdowns and supply continuity over the period.</div><div class="ch-wrap" style="height:260px"><canvas id="ch-infra-trend"></canvas></div></div>
+      </div>
+      <div class="ov-main-grid">
+        <div class="chart-card"><div class="chart-title">Pipeline Extensions by Size</div><div class="chart-subtitle">New development lines installed, by pipe diameter.</div><div class="ch-wrap" style="height:240px"><canvas id="ch-infra-pipes"></canvas></div></div>
+        <div class="chart-card"><div class="chart-title">PVC Failures by Size</div><div class="chart-subtitle">PVC pipe failures by diameter class (YTD).</div><div class="ch-wrap" style="height:240px"><canvas id="ch-infra-pvc"></canvas></div></div>
+      </div>
+    </div>
+
     <!-- Overview — Executive Dashboard -->
     <div id="page-overview" class="db-page active summary-home">
       <div class="pg-hdr">
@@ -854,7 +1155,7 @@
           <div class="role-home-note" data-role-home-note="overview" hidden>Manager landing · Executive summary, exceptions, and board-ready focus first.</div>
         </div>
         <div class="pg-hdr-right exp-bar exp-bar-overview">
-          <button class="exp-btn exp-print" onclick="printReport('overview')" title="Print executive dashboard"><svg width="13" height="13" viewBox="0 0 16 16" fill="none"><rect x="3" y="5" width="10" height="7" rx="1" stroke="currentColor" stroke-width="1.4"/><path d="M5 5V3h6v2" stroke="currentColor" stroke-width="1.4"/><rect x="5" y="9" width="6" height="3" rx=".5" fill="currentColor" opacity=".2" stroke="currentColor" stroke-width="1.2"/></svg>Print Summary</button>
+          <button class="exp-btn exp-print" onclick="printSummaryFromRC('overview')" title="Print executive dashboard"><svg width="13" height="13" viewBox="0 0 16 16" fill="none"><rect x="3" y="5" width="10" height="7" rx="1" stroke="currentColor" stroke-width="1.4"/><path d="M5 5V3h6v2" stroke="currentColor" stroke-width="1.4"/><rect x="5" y="9" width="6" height="3" rx=".5" fill="currentColor" opacity=".2" stroke="currentColor" stroke-width="1.2"/></svg>Print Report</button>
           <button class="exp-btn exp-xl" onclick="exportExcel('overview')" title="Export executive summary to Excel"><svg width="13" height="13" viewBox="0 0 16 16" fill="none"><rect x="1" y="2" width="14" height="12" rx="2" stroke="currentColor" stroke-width="1.4"/><path d="M5 6l2.5 4L10 6" stroke="#16a34a" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M6 2v12M1 8h14" stroke="currentColor" stroke-width="1.2" opacity=".25"/></svg>Excel Summary</button>
         </div>
       </div>
@@ -864,10 +1165,6 @@
           <div class="ov-eyebrow">Summary-first landing</div>
           <div class="ov-lead">Start with the utility picture, then open commentary, standards, and detail only when needed.</div>
         </div>
-        <div class="ov-view-switch" role="tablist" aria-label="Executive focus selector">
-          <button type="button" id="ov-focus-operations" class="ov-view-btn active" onclick="setOverviewFocus('operations')">Operations focus</button>
-          <button type="button" id="ov-focus-commercial" class="ov-view-btn" onclick="setOverviewFocus('commercial')">Commercial focus</button>
-        </div>
       </div>
 
       <div id="ov-essentials" class="kpi-row kpi-g6"></div>
@@ -875,23 +1172,24 @@
 
       <div class="ov-main-grid">
         <div class="chart-card ov-focus-card">
-          <div class="chart-title" id="ov-focus-title">Operational focus — Production vs NRW</div>
-          <div class="chart-subtitle" id="ov-focus-subtitle">Production volume and NRW rate over the selected period.</div>
-          <div class="ch-wrap ov-focus-wrap">
-            <canvas id="ch-ov-focus-ops"></canvas>
-            <canvas id="ch-ov-focus-com" style="display:none"></canvas>
-          </div>
-          <div class="ov-focus-note" id="ov-focus-note">Use the focus switch to move between operations and commercial performance.</div>
+          <div class="chart-title">Production vs NRW</div>
+          <div class="chart-subtitle">Production volume and NRW rate over the selected period.</div>
+          <div class="ch-wrap ov-focus-wrap"><canvas id="ch-ov-focus-ops"></canvas></div>
         </div>
 
+        <div class="chart-card ov-focus-card">
+          <div class="chart-title">Billing vs Collections</div>
+          <div class="chart-subtitle">Revenue billed and cash collected over the selected period.</div>
+          <div class="ch-wrap ov-focus-wrap"><canvas id="ch-ov-focus-com"></canvas></div>
+        </div>
+      </div>
+
+      <div class="ov-summary-grid">
         <div class="chart-card ov-rank-card">
           <div class="chart-title">Zone priorities</div>
           <div class="chart-subtitle">Highest-pressure zones across NRW, collections, debtors, and cost efficiency.</div>
           <div id="ov-zone-rank" class="ov-rank-list"></div>
         </div>
-      </div>
-
-      <div class="ov-summary-grid">
         <div class="chart-card ov-mini-panel">
           <div class="chart-title">Data coverage</div>
           <div class="chart-subtitle">A compact readiness check for the current filter scope.</div>
@@ -1003,6 +1301,73 @@
             </div>
           </article>
         </div>
+
+        <div class="ia-grid ia-grid-3" style="margin-top:16px">
+          <article class="ia-card">
+            <div class="ia-card-kicker">Water losses</div>
+            <h4 class="ia-card-title">NRW &amp; Water Balance</h4>
+            <p class="ia-card-copy">Dedicated NRW trend and zone exposure view with scheme-level detail table and export.</p>
+            <ul class="ia-list">
+              <li>Use for loss-reduction monitoring and reporting</li>
+              <li>Strategic Plan #1 driver — target ≤25%</li>
+            </ul>
+            <div class="ia-card-actions">
+              <button class="ia-btn primary" onclick="navigate('nrw')">Open report</button>
+            </div>
+          </article>
+
+          <article class="ia-card">
+            <div class="ia-card-kicker">Service continuity</div>
+            <h4 class="ia-card-title">Supply Continuity</h4>
+            <p class="ia-card-copy">Hours of supply per day, power-failure outage trend, and zone comparison against the 21-hour target.</p>
+            <ul class="ia-list">
+              <li>Use when reviewing service delivery reliability</li>
+              <li>IWA Op21 — hours of supply per day</li>
+            </ul>
+            <div class="ia-card-actions">
+              <button class="ia-btn primary" onclick="navigate('supply-continuity')">Open report</button>
+            </div>
+          </article>
+
+          <article class="ia-card">
+            <div class="ia-card-kicker">Water quality</div>
+            <h4 class="ia-card-title">Water Quality &amp; Compliance</h4>
+            <p class="ia-card-copy">Treatment dosing proxies, chemical intensity trends, and statutory lab-sample compliance tracking.</p>
+            <ul class="ia-list">
+              <li>Use for treatment performance and regulatory review</li>
+              <li>Lab compliance expands as data capture improves</li>
+            </ul>
+            <div class="ia-card-actions">
+              <button class="ia-btn primary" onclick="navigate('water-quality')">Open report</button>
+            </div>
+          </article>
+
+          <article class="ia-card">
+            <div class="ia-card-kicker">People &amp; fleet</div>
+            <h4 class="ia-card-title">Workforce &amp; Fleet</h4>
+            <p class="ia-card-copy">Staff establishment, fuel use, distance covered, fleet efficiency, and operating cost ratios.</p>
+            <ul class="ia-list">
+              <li>Use for workforce productivity and fleet cost review</li>
+              <li>Includes staff per 1,000 m³ (IWA Op36 proxy)</li>
+            </ul>
+            <div class="ia-card-actions">
+              <button class="ia-btn primary" onclick="navigate('workforce')">Open report</button>
+            </div>
+          </article>
+
+          <article class="ia-card">
+            <div class="ia-card-kicker">Network &amp; assets</div>
+            <h4 class="ia-card-title">Pipe Failure by Material</h4>
+            <p class="ia-card-copy">Engineering-level breakdown of pipe failures by material family (GI, DI, PVC, HDPE, AC) and size class.</p>
+            <ul class="ia-list">
+              <li>Use for asset condition and replacement planning</li>
+              <li>Identifies highest-risk material and diameter combinations</li>
+            </ul>
+            <div class="ia-card-actions">
+              <button class="ia-btn primary" onclick="navigate('pipe-materials')">Open report</button>
+            </div>
+          </article>
+        </div>
       </div>
     </div>
 
@@ -1055,6 +1420,18 @@
             <div class="ia-card-actions"><button class="ia-btn primary" onclick="navigate('stuck')">Open</button></div>
           </article>
           <article class="ia-card">
+            <div class="ia-card-kicker">Customers &amp; connections</div>
+            <h4 class="ia-card-title">Connections by Class</h4>
+            <p class="ia-card-copy">Individual, institutional, commercial and CWP connections — completions, applications, and backlog by class.</p>
+            <div class="ia-card-actions"><button class="ia-btn primary" onclick="navigate('class-connections')">Open</button></div>
+          </article>
+          <article class="ia-card">
+            <div class="ia-card-kicker">Revenue risk</div>
+            <h4 class="ia-card-title">Disconnections</h4>
+            <p class="ia-card-copy">Inactive accounts by class and zone, disconnection rate trend, and monthly scheme detail.</p>
+            <div class="ia-card-actions"><button class="ia-btn primary" onclick="navigate('disconnections')">Open</button></div>
+          </article>
+          <article class="ia-card">
             <div class="ia-card-kicker">Revenue &amp; collections</div>
             <h4 class="ia-card-title">Revenue Billing</h4>
             <p class="ia-card-copy">Prepaid and postpaid billed amounts with current-period zone comparison.</p>
@@ -1089,7 +1466,7 @@
     </div>
 
     <!-- Production & NRW -->
-    <div id="page-production" class="db-page report-page-standard report-density-page">
+    <div id="page-production" class="db-page report-page-standard">
       <div class="pg-hdr"><div class="pg-hdr-left"><div class="pg-title">Production &amp; Non-Revenue Water</div><div class="pg-meta" id="pg-meta-production">FY — · All Zones · All Months</div><div class="pg-sub">Volume produced · revenue water · non-revenue water</div></div></div>
 
       <div class="ex-section">
@@ -1126,7 +1503,7 @@
       <div class="ex-section">
         <div class="ex-hdr"><span class="ex-dot" style="background:#0D9488"></span><span class="ex-title">Indicator Coverage</span><span class="ex-sub">— Which indicators are measured from the database vs. require manual entry</span></div>
         <div id="bm-kpis" class="kpi-row kpi-g4"></div>
-        <div id="bm-coverage-note" class="rpt-note" style="margin-top:10px;font-size:12px;line-height:1.5;color:var(--muted,#64748b)">
+        <div id="bm-coverage-note" class="rpt-note" style="margin-top:10px;font-size:12px;line-height:1.5;color:var(--muted,#64748b);max-width:none;text-align:left">
           Indicators marked <strong>“manual”</strong> (water quality, sewerage/sanitation, balance-sheet, tariff/FX and HR-gender breakdowns) have no source column in the current database and render blank — they need a separate data source before they can be reported. All other indicators are derived from the same validated monthly returns that drive the rest of the dashboard. Quarter and annual columns are auto-calculated; ratio-type indicators are not summed.
         </div>
       </div>
@@ -1138,7 +1515,7 @@
     </div>
 
     <!-- WT & EI -->
-    <div id="page-wt-ei" class="db-page report-page-standard report-density-page">
+    <div id="page-wt-ei" class="db-page report-page-standard">
       <div class="pg-hdr"><div class="pg-hdr-left"><div class="pg-title">Water Treatment &amp; Energy</div><div class="pg-meta" id="pg-meta-wt-ei">FY — · All Zones · All Months</div><div class="pg-sub">Chemical usage · power consumption · supply hours</div></div></div>
 
       <div class="ex-section">
@@ -1163,14 +1540,20 @@
       </div>
 
       <div class="ex-section">
+        <div class="ex-hdr"><span class="ex-dot" style="background:#7C3AED"></span><span class="ex-title">Energy Intensity by Zone</span><span class="ex-sub">— kWh per m³ produced by zone vs IWA benchmark</span></div>
+        <div class="chart-row">
+          <div class="chart-card chart-full"><div class="chart-title">Energy Intensity — By Zone (kWh / m³)</div><div class="chart-subtitle">Zone comparison of electricity consumed per cubic metre produced. IWA benchmark is 0.5 kWh/m³ for conventional surface water treatment.</div><div class="ch-wrap" style="height:185px"><canvas id="ch-wt-ei-zone"></canvas></div></div>
+        </div>
+      </div>
+      <div class="ex-section">
         <div class="ex-hdr"><span class="ex-dot" style="background:#64748B"></span><span class="ex-title">Monthly Scheme Detail</span><span class="ex-sub">— Detailed table</span></div>
         <div class="tbl-section"><div id="tbl-wt-ei"></div></div>
       </div>
     </div>
 
-    
+
     <!-- Customers -->
-    <div id="page-customers" class="db-page report-page-standard report-density-page">
+    <div id="page-customers" class="db-page report-page-standard">
       <div class="pg-hdr"><div class="pg-hdr-left"><div class="pg-title">Customer Accounts</div><div class="pg-meta" id="pg-meta-customers">FY — · All Zones · All Months</div><div class="pg-sub">Active accounts · postpaid and prepaid by zone</div></div></div>
 
       <div class="ex-section">
@@ -1187,14 +1570,44 @@
       </div>
 
       <div class="ex-section">
+        <div class="ex-hdr"><span class="ex-dot" style="background:#7C3AED"></span><span class="ex-title">Metering &amp; Prepaid Migration</span><span class="ex-sub">— Metering coverage, prepaid share and migration progress</span></div>
+        <div id="metering-kpis" class="kpi-row kpi-g3"></div>
+      </div>
+
+      <div class="ex-section">
+        <div class="ex-hdr"><span class="ex-dot" style="background:#0EA5E9"></span><span class="ex-title">Migration Trend &amp; Zone Mix</span><span class="ex-sub">— Prepaid meters installed over time and prepaid/postpaid split by zone</span></div>
+        <div class="chart-row">
+          <div class="chart-card"><div class="chart-title">Prepaid Meters Installed — Monthly</div><div class="chart-subtitle">Migration momentum from postpaid to prepaid metering.</div><div class="ch-wrap" style="height:185px"><canvas id="ch-metering-main"></canvas></div></div>
+          <div class="chart-card"><div class="chart-title">Active Customers — Prepaid vs Postpaid by Zone</div><div class="chart-subtitle">Where prepaid adoption is leading or lagging.</div><div class="ch-wrap" style="height:185px"><canvas id="ch-metering-zone"></canvas></div></div>
+        </div>
+      </div>
+
+      <div class="ex-section">
+        <div class="ex-hdr"><span class="ex-dot" style="background:#16A34A"></span><span class="ex-title">Prepaid Penetration Trend</span><span class="ex-sub">— Prepaid share of active customers over time — strategic migration KPI</span></div>
+        <div class="chart-row">
+          <div class="chart-card chart-full"><div class="chart-title">Prepaid Share (%) — Monthly Trend</div><div class="chart-subtitle">Percentage of active customers on prepaid metering each month. A rising line confirms the prepaid migration strategy is on track.</div><div class="ch-wrap" style="height:185px"><canvas id="ch-cu-prepaid-pct"></canvas></div></div>
+        </div>
+      </div>
+
+      <div class="ex-section">
+        <div class="ex-hdr"><span class="ex-dot" style="background:#7C3AED"></span><span class="ex-title">Customer Class Mix</span><span class="ex-sub">— Prepaid and postpaid breakdown by customer type</span></div>
+        <div id="metering-class-kpis-pre" class="kpi-row kpi-g4"></div>
+        <div id="metering-class-kpis-post" class="kpi-row kpi-g4" style="margin-top:8px"></div>
+        <div class="chart-row">
+          <div class="chart-card"><div class="chart-title">Prepaid vs Postpaid — By Customer Class</div><div class="chart-subtitle">Adoption balance across each customer type.</div><div class="ch-wrap" style="height:185px"><canvas id="ch-metering-class"></canvas></div></div>
+          <div class="chart-card"><div class="chart-title">Prepaid &amp; Postpaid Trend — Monthly</div><div class="chart-subtitle">Account movement for both meter types over the fiscal year.</div><div class="ch-wrap" style="height:185px"><canvas id="ch-metering-mix-trend"></canvas></div></div>
+        </div>
+      </div>
+
+      <div class="ex-section">
         <div class="ex-hdr"><span class="ex-dot" style="background:#64748B"></span><span class="ex-title">Scheme Customer Detail</span><span class="ex-sub">— Detailed table</span></div>
         <div class="tbl-section"><div id="tbl-customers"></div></div>
       </div>
     </div>
 
-    
+
     <!-- NWCs -->
-    <div id="page-connections" class="db-page report-page-standard report-density-page">
+    <div id="page-connections" class="db-page report-page-standard">
       <div class="pg-hdr"><div class="pg-hdr-left"><div class="pg-title">New Water Connections</div><div class="pg-meta" id="pg-meta-connections">FY — · All Zones · All Months</div><div class="pg-sub">Applications · completions · carried-forward backlog by zone</div></div></div>
 
       <div class="ex-section">
@@ -1211,23 +1624,30 @@
       </div>
 
       <div class="ex-section">
+        <div class="ex-hdr"><span class="ex-dot" style="background:#DC2626"></span><span class="ex-title">Backlog Trend</span><span class="ex-sub">— Applications carried forward each month — growing or shrinking?</span></div>
+        <div class="chart-row">
+          <div class="chart-card chart-full"><div class="chart-title">Connection Backlog — Monthly (C/Fwd)</div><div class="chart-subtitle">Total applications carried forward each month. A rising line means new applications are arriving faster than the team can complete connections.</div><div class="ch-wrap" style="height:185px"><canvas id="ch-cn-backlog"></canvas></div></div>
+        </div>
+      </div>
+
+      <div class="ex-section">
         <div class="ex-hdr"><span class="ex-dot" style="background:#64748B"></span><span class="ex-title">Monthly Connection Detail</span><span class="ex-sub">— Detailed table</span></div>
         <div class="tbl-section"><div id="tbl-connections"></div></div>
       </div>
     </div>
 
     
-    <!-- Stuck Meters -->
-    <div id="page-stuck" class="db-page report-page-standard report-density-page">
-      <div class="pg-hdr"><div class="pg-hdr-left"><div class="pg-title">Stuck Meters</div><div class="pg-meta" id="pg-meta-stuck">FY — · All Zones · All Months</div><div class="pg-sub">Carried forward · new · repaired · replaced each month</div></div></div>
+    <!-- Meter Exceptions (Stuck Meters + By Class — merged) -->
+    <div id="page-stuck" class="db-page report-page-standard">
+      <div class="pg-hdr"><div class="pg-hdr-left"><div class="pg-title">Meter Exceptions</div><div class="pg-meta" id="pg-meta-stuck">FY — · All Zones · All Months</div><div class="pg-sub">Backlog movement, resolution rate and customer class breakdown</div></div></div>
 
       <div class="ex-section">
-        <div class="ex-hdr"><span class="ex-dot" style="background:#D97706"></span><span class="ex-title">Meter Status Summary</span><span class="ex-sub">— Backlog, resolution rate and zone exposure</span></div>
+        <div class="ex-hdr"><span class="ex-dot" style="background:#D97706"></span><span class="ex-title">Overall Meter Status</span><span class="ex-sub">— Total backlog, resolution rate and zone exposure</span></div>
         <div id="st-kpis" class="kpi-row kpi-g3"></div>
       </div>
 
       <div class="ex-section">
-        <div class="ex-hdr"><span class="ex-dot" style="background:#DC2626"></span><span class="ex-title">Meter Movement & Backlog</span><span class="ex-sub">— Monthly flow analysis and zone comparison</span></div>
+        <div class="ex-hdr"><span class="ex-dot" style="background:#DC2626"></span><span class="ex-title">Meter Movement &amp; Backlog</span><span class="ex-sub">— Monthly flow analysis and zone comparison</span></div>
         <div class="chart-row">
           <div class="chart-card"><div class="chart-title">Stuck Meters — Monthly Movement</div><div class="chart-subtitle">Monthly profile of carried-forward, new, repaired and replaced stuck meters.</div><div class="ch-wrap" style="height:185px"><canvas id="ch-st-main"></canvas></div></div>
           <div class="chart-card"><div class="chart-title">Stuck Meters Carried Forward — By Zone</div><div class="chart-subtitle">Zone comparison of unresolved stuck meters and operational backlog.</div><div class="ch-wrap" style="height:185px"><canvas id="ch-st-zone"></canvas></div></div>
@@ -1238,11 +1658,147 @@
         <div class="ex-hdr"><span class="ex-dot" style="background:#64748B"></span><span class="ex-title">Monthly Scheme Detail</span><span class="ex-sub">— Detailed table</span></div>
         <div class="tbl-section"><div id="tbl-stuck"></div></div>
       </div>
+
+      <div class="ex-section">
+        <div class="ex-hdr"><span class="ex-dot" style="background:#7C3AED"></span><span class="ex-title">Backlog by Customer Class</span><span class="ex-sub">— Which customer classes are carrying the most unresolved stuck meters</span></div>
+        <div id="sc-kpis" class="kpi-row kpi-g4"></div>
+      </div>
+
+      <div class="ex-section">
+        <div class="ex-hdr"><span class="ex-dot" style="background:#0D9488"></span><span class="ex-title">Class Backlog Trend &amp; Zone</span><span class="ex-sub">— Monthly class backlog and zone distribution</span></div>
+        <div class="chart-row">
+          <div class="chart-card"><div class="chart-title">Class Backlog — Monthly</div><div class="chart-subtitle">Track which customer classes are not being cleared fast enough.</div><div class="ch-wrap" style="height:185px"><canvas id="ch-sc-main"></canvas></div></div>
+          <div class="chart-card"><div class="chart-title">Current Backlog by Zone</div><div class="chart-subtitle">Stacked zone view of current class-level stuck-meter backlog.</div><div class="ch-wrap" style="height:185px"><canvas id="ch-sc-zone"></canvas></div></div>
+        </div>
+      </div>
+
+      <div class="ex-section">
+        <div class="ex-hdr"><span class="ex-dot" style="background:#64748B"></span><span class="ex-title">Monthly Class Detail</span><span class="ex-sub">— Detailed breakdown by customer class</span></div>
+        <div class="tbl-section"><div id="tbl-stuck-classes"></div></div>
+      </div>
     </div>
 
-    
+    <!-- Non-Revenue Water & Water Balance -->
+    <div id="page-nrw" class="db-page report-page-standard">
+      <div class="pg-hdr"><div class="pg-hdr-left"><div class="pg-title">Non-Revenue Water &amp; Water Balance</div><div class="pg-meta" id="pg-meta-nrw">FY — · All Zones · All Months</div><div class="pg-sub">Produced vs sold volume · water losses · zone exposure — the plan's #1 strategic driver (target ≤25%)</div></div></div>
+      <div class="ex-section"><div class="ex-hdr"><span class="ex-dot" style="background:#0EA5E9"></span><span class="ex-title">Water Balance Summary</span><span class="ex-sub">— Production, water sold and non-revenue losses</span></div><div id="nrw-kpis" class="kpi-row kpi-g4"></div></div>
+      <div class="ex-section">
+        <div class="ex-hdr"><span class="ex-dot" style="background:#0077B6"></span><span class="ex-title">IWA Water Balance</span><span class="ex-sub">— Standard four-box decomposition of system input volume</span></div>
+        <div id="nrw-water-balance"></div>
+      </div>
+      <div class="ex-section"><div class="ex-hdr"><span class="ex-dot" style="background:#DC2626"></span><span class="ex-title">NRW Trend &amp; Zone Exposure</span><span class="ex-sub">— Monthly NRW rate and zone concentration of losses</span></div>
+        <div class="chart-row">
+          <div class="chart-card"><div class="chart-title">NRW Rate — Monthly (%)</div><div class="chart-subtitle">Monthly non-revenue water against the 25% strategic target.</div><div class="ch-wrap" style="height:185px"><canvas id="ch-nrw-main"></canvas></div></div>
+          <div class="chart-card"><div class="chart-title">NRW Rate — By Zone (%)</div><div class="chart-subtitle">Which zones carry the highest water losses.</div><div class="ch-wrap" style="height:185px"><canvas id="ch-nrw-zone"></canvas></div></div>
+        </div></div>
+      <div class="ex-section">
+        <div class="ex-hdr"><span class="ex-dot" style="background:#64748B"></span><span class="ex-title">Monthly Scheme Detail</span><span class="ex-sub">— Detailed table by zone and scheme</span></div>
+        <div class="tbl-section"><div id="tbl-nrw"></div></div>
+      </div>
+    </div>
+
+    <!-- Supply Continuity -->
+    <div id="page-supply-continuity" class="db-page report-page-standard">
+      <div class="pg-hdr"><div class="pg-hdr-left"><div class="pg-title">Supply Continuity</div><div class="pg-meta" id="pg-meta-supply-continuity">FY — · All Zones · All Months</div><div class="pg-sub">Hours of supply per day · power-failure downtime · zone comparison (target 21 hrs/day)</div></div></div>
+      <div class="ex-section"><div class="ex-hdr"><span class="ex-dot" style="background:#0D9488"></span><span class="ex-title">Continuity Summary</span><span class="ex-sub">— Daily supply hours and outage exposure</span></div><div id="supply-continuity-kpis" class="kpi-row kpi-g4"></div></div>
+      <div class="ex-section"><div class="ex-hdr"><span class="ex-dot" style="background:#0EA5E9"></span><span class="ex-title">Supply Hours Trend &amp; Zone</span><span class="ex-sub">— Monthly continuity and zone comparison — IWA Op21</span></div>
+        <div class="chart-row">
+          <div class="chart-card"><div class="chart-title">Supply Hours — Monthly (hrs/day)</div><div class="chart-subtitle">Average daily supply hours against the 21-hour target.</div><div class="ch-wrap" style="height:185px"><canvas id="ch-supply-continuity-main"></canvas></div></div>
+          <div class="chart-card"><div class="chart-title">Supply Hours — By Zone (hrs/day)</div><div class="chart-subtitle">Zone comparison of continuity of supply.</div><div class="ch-wrap" style="height:185px"><canvas id="ch-supply-continuity-zone"></canvas></div></div>
+        </div>
+      </div>
+      <div class="ex-section">
+        <div class="ex-hdr"><span class="ex-dot" style="background:#DC2626"></span><span class="ex-title">Power Failure Trend</span><span class="ex-sub">— Monthly outage hours from electricity disruption</span></div>
+        <div class="chart-row">
+          <div class="chart-card chart-full"><div class="chart-title">Power Failure Hours — Monthly</div><div class="chart-subtitle">Hours lost to power outages each month. High months indicate infrastructure vulnerability or grid instability.</div><div class="ch-wrap" style="height:185px"><canvas id="ch-supply-continuity-fail"></canvas></div></div>
+        </div>
+      </div>
+      <div class="ex-section">
+        <div class="ex-hdr"><span class="ex-dot" style="background:#64748B"></span><span class="ex-title">Monthly Scheme Detail</span><span class="ex-sub">— Detailed table by zone and scheme</span></div>
+        <div class="tbl-section"><div id="tbl-supply-continuity"></div></div>
+      </div>
+    </div>
+
+
+    <!-- Disconnections & Reconnections -->
+    <div id="page-disconnections" class="db-page report-page-standard">
+      <div class="pg-hdr"><div class="pg-hdr-left"><div class="pg-title">Disconnections &amp; Reconnections</div><div class="pg-meta" id="pg-meta-disconnections">FY — · All Zones · All Months</div><div class="pg-sub">Disconnected accounts by class · disconnection rate · zone exposure — revenue protection</div></div></div>
+      <div class="ex-section"><div class="ex-hdr"><span class="ex-dot" style="background:#D97706"></span><span class="ex-title">Disconnection Summary</span><span class="ex-sub">— Inactive accounts and revenue-recovery opportunity</span></div><div id="disconnections-kpis" class="kpi-row kpi-g4"></div></div>
+      <div class="ex-section">
+        <div class="ex-hdr"><span class="ex-dot" style="background:#0EA5E9"></span><span class="ex-title">Disconnection Trend</span><span class="ex-sub">— Monthly movement in disconnected accounts</span></div>
+        <div class="chart-row">
+          <div class="chart-card chart-full"><div class="chart-title">Disconnected Accounts — Monthly Trend</div><div class="chart-subtitle">Total and individual disconnected accounts over time. A rising trend signals growing revenue risk and collection pressure.</div><div class="ch-wrap" style="height:185px"><canvas id="ch-disconnections-trend"></canvas></div></div>
+        </div>
+      </div>
+      <div class="ex-section"><div class="ex-hdr"><span class="ex-dot" style="background:#DC2626"></span><span class="ex-title">Disconnections by Class &amp; Zone</span><span class="ex-sub">— Customer-class breakdown and zone concentration</span></div>
+        <div class="chart-row">
+          <div class="chart-card"><div class="chart-title">Disconnected Accounts — By Customer Class</div><div class="chart-subtitle">Which customer classes carry the most inactive accounts.</div><div class="ch-wrap" style="height:185px"><canvas id="ch-disconnections-main"></canvas></div></div>
+          <div class="chart-card"><div class="chart-title">Disconnected Accounts — By Zone</div><div class="chart-subtitle">Zone concentration of disconnected accounts.</div><div class="ch-wrap" style="height:185px"><canvas id="ch-disconnections-zone"></canvas></div></div>
+        </div>
+      </div>
+      <div class="ex-section">
+        <div class="ex-hdr"><span class="ex-dot" style="background:#64748B"></span><span class="ex-title">Monthly Scheme Detail</span><span class="ex-sub">— Detailed table by zone and scheme</span></div>
+        <div class="tbl-section"><div id="tbl-disconnections"></div></div>
+      </div>
+    </div>
+
+    <!-- Profitability / Income Statement -->
+    <div id="page-profitability" class="db-page report-page-standard">
+      <div class="pg-hdr"><div class="pg-hdr-left"><div class="pg-title">Profitability</div><div class="pg-meta" id="pg-meta-profitability">FY — · All Zones · All Months</div><div class="pg-sub">Revenue vs operating cost · operating surplus · cost ratio — the plan's turnaround goal</div></div></div>
+      <div id="prof-notice" style="margin:.5rem 0;padding:.6rem 1rem;border-radius:8px;font-size:.8rem;background:rgba(59,130,246,.07);border:1px solid rgba(59,130,246,.2);color:#1e40af">Operating surplus is computed from zone monthly returns (revenue less captured operating costs). It excludes depreciation, finance costs and head-office overheads, so it is an operating measure — not statutory net profit.</div>
+      <div class="ex-section"><div class="ex-hdr"><span class="ex-dot" style="background:#16A34A"></span><span class="ex-title">Operating Result Summary</span><span class="ex-sub">— Revenue, operating cost and surplus</span></div><div id="profitability-kpis" class="kpi-row kpi-g4"></div></div>
+      <div class="ex-section"><div class="ex-hdr"><span class="ex-dot" style="background:#0EA5E9"></span><span class="ex-title">Revenue vs Cost Trend &amp; Zone</span><span class="ex-sub">— Monthly operating result and zone profitability</span></div>
+        <div class="chart-row">
+          <div class="chart-card"><div class="chart-title">Revenue vs Operating Cost — Monthly (MWK M)</div><div class="chart-subtitle">Monthly sales against captured operating costs.</div><div class="ch-wrap" style="height:185px"><canvas id="ch-profitability-main"></canvas></div></div>
+          <div class="chart-card"><div class="chart-title">Operating Surplus — By Zone (MWK M)</div><div class="chart-subtitle">Which zones contribute most to the operating surplus.</div><div class="ch-wrap" style="height:185px"><canvas id="ch-profitability-zone"></canvas></div></div>
+        </div></div>
+    </div>
+
+    <!-- Staff Productivity -->
+    <div id="page-staff-productivity" class="db-page report-page-standard">
+      <div class="pg-hdr"><div class="pg-hdr-left"><div class="pg-title">Staff Productivity</div><div class="pg-meta" id="pg-meta-staff-productivity">FY — · All Zones · All Months</div><div class="pg-sub">Staff per 1,000 connections and per 1,000 m³ — Strategic Plan productivity KPIs (targets 13 &amp; 8)</div></div></div>
+      <div class="ex-section"><div class="ex-hdr"><span class="ex-dot" style="background:#6366F1"></span><span class="ex-title">Productivity Summary</span><span class="ex-sub">— Establishment and efficiency ratios</span></div><div id="staff-productivity-kpis" class="kpi-row kpi-g4"></div></div>
+      <div class="ex-section"><div class="ex-hdr"><span class="ex-dot" style="background:#0EA5E9"></span><span class="ex-title">Staffing Trend &amp; Zone Efficiency</span><span class="ex-sub">— Establishment over time and productivity by zone</span></div>
+        <div class="chart-row">
+          <div class="chart-card"><div class="chart-title">Establishment — Permanent vs Temporary (Monthly)</div><div class="chart-subtitle">Headcount mix across the reporting period.</div><div class="ch-wrap" style="height:185px"><canvas id="ch-staff-productivity-main"></canvas></div></div>
+          <div class="chart-card"><div class="chart-title">Staff per 1,000 m³ — By Zone</div><div class="chart-subtitle">Zone comparison of labour productivity.</div><div class="ch-wrap" style="height:185px"><canvas id="ch-staff-productivity-zone"></canvas></div></div>
+        </div></div>
+    </div>
+
+    <!-- Water Quality & Compliance -->
+    <div id="page-water-quality" class="db-page report-page-standard">
+      <div class="pg-hdr"><div class="pg-hdr-left"><div class="pg-title">Water Quality &amp; Compliance</div><div class="pg-meta" id="pg-meta-water-quality">FY — · All Zones · All Months</div><div class="pg-sub">Treatment dosing proxies today · statutory lab-sample compliance once returns capture it</div></div></div>
+
+      <div id="wq-notice" style="margin:.5rem 0;padding:.7rem 1rem;border-radius:8px;font-size:.85rem;display:none"></div>
+
+      <div class="ex-section">
+        <div class="ex-hdr"><span class="ex-dot" style="background:#0EA5E9"></span><span class="ex-title">Treatment &amp; Dosing Summary</span><span class="ex-sub">— Operational water-treatment proxies available from monthly returns</span></div>
+        <div id="wq-kpis" class="kpi-row kpi-g4"></div>
+      </div>
+
+      <div class="ex-section">
+        <div class="ex-hdr"><span class="ex-dot" style="background:#16A34A"></span><span class="ex-title">Statutory Lab Compliance</span><span class="ex-sub">— Residual chlorine · turbidity · bacteriological · pH sample compliance</span></div>
+        <div id="wq-compliance" class="kpi-row kpi-g4"></div>
+      </div>
+
+      <div class="ex-section">
+        <div class="ex-hdr"><span class="ex-dot" style="background:#0EA5E9"></span><span class="ex-title">Chemical Dosing Trend &amp; Coverage</span><span class="ex-sub">— Chlorine / alum dosing intensity and data-capture coverage</span></div>
+        <div class="chart-row">
+          <div class="chart-card"><div class="chart-title">Chemical Dosing Intensity (kg / 1,000 m³)</div><div class="chart-subtitle">Chlorine and alum dosing per thousand cubic metres produced, latest reported months.</div><div class="ch-wrap" style="height:185px"><canvas id="ch-wq-dosing"></canvas></div></div>
+          <div class="chart-card"><div class="chart-title">Data-Capture Coverage</div><div class="chart-subtitle">Share of monthly returns carrying chlorine dosing and chemical-cost data.</div><div class="ch-wrap" style="height:185px"><canvas id="ch-wq-coverage"></canvas></div></div>
+        </div>
+      </div>
+
+      <div class="ex-section">
+        <div class="ex-hdr"><span class="ex-dot" style="background:#64748B"></span><span class="ex-title">Indicator Availability</span><span class="ex-sub">— What is live now vs awaiting lab-result data capture</span></div>
+        <div id="wq-availability-panel"></div>
+        <div id="wq-gov-note" style="margin-top:.6rem;font-size:.78rem;color:var(--muted,#64748b);font-style:italic"></div>
+      </div>
+    </div>
+
+
     <!-- Connectivity -->
-    <div id="page-connectivity" class="db-page report-page-standard report-density-page">
+    <div id="page-connectivity" class="db-page report-page-standard">
       <div class="pg-hdr"><div class="pg-hdr-left"><div class="pg-title">Service Connectivity</div><div class="pg-meta" id="pg-meta-connectivity">FY — · All Zones · All Months</div><div class="pg-sub">Connection performance · quotation times · query resolution</div></div></div>
 
       <div class="ex-section">
@@ -1266,7 +1822,7 @@
 
     
     <!-- Breakdowns -->
-    <div id="page-breakdowns" class="db-page report-page-standard report-density-page">
+    <div id="page-breakdowns" class="db-page report-page-standard">
       <div class="pg-hdr"><div class="pg-hdr-left"><div class="pg-title">Infrastructure Breakdowns</div><div class="pg-meta" id="pg-meta-breakdowns">FY — · All Zones · All Months</div><div class="pg-sub">Pipe and pump failures · by month and zone</div></div></div>
       <div class="ex-section">
         <div class="ex-hdr"><span class="ex-dot" style="background:#DC2626"></span><span class="ex-title">Infrastructure Failure Metrics</span><span class="ex-sub">— pipe and pump incidents · reliability indicators</span></div>
@@ -1297,7 +1853,7 @@
     </div>
 
     <!-- Pipelines -->
-    <div id="page-pipelines" class="db-page report-page-standard report-density-page">
+    <div id="page-pipelines" class="db-page report-page-standard">
       <div class="pg-hdr"><div class="pg-hdr-left"><div class="pg-title">Pipeline Extensions</div><div class="pg-meta" id="pg-meta-pipelines">FY — · All Zones · All Months</div><div class="pg-sub">Development lines installed · by size class and zone</div></div></div>
 
       <div class="ex-section">
@@ -1321,7 +1877,7 @@
 
     
     <!-- Billed Amount -->
-    <div id="page-billed" class="db-page report-page-standard report-density-page">
+    <div id="page-billed" class="db-page report-page-standard">
       <div class="pg-hdr"><div class="pg-hdr-left"><div class="pg-title">Billed Amounts</div><div class="pg-meta" id="pg-meta-billed">FY — · All Zones · All Months</div><div class="pg-sub">Postpaid and prepaid billing · by month and zone</div></div></div>
 
       <div class="ex-section">
@@ -1352,7 +1908,7 @@
 
     
     <!-- Bills & Collections -->
-    <div id="page-collections" class="db-page report-page-standard report-density-page">
+    <div id="page-collections" class="db-page report-page-standard">
       <div class="pg-hdr"><div class="pg-hdr-left"><div class="pg-title">Billing &amp; Collections</div><div class="pg-meta" id="pg-meta-collections">FY — · All Zones · All Months</div><div class="pg-sub">Billing vs cash collection · monthly trend</div></div></div>
 
       <div class="ex-section">
@@ -1383,7 +1939,7 @@
 
     
     <!-- Charges -->
-    <div id="page-charges" class="db-page report-page-standard report-density-page">
+    <div id="page-charges" class="db-page report-page-standard">
       <div class="pg-hdr"><div class="pg-hdr-left"><div class="pg-title">Service Charges &amp; Meter Rental</div><div class="pg-meta" id="pg-meta-charges">FY — · All Zones · All Months</div><div class="pg-sub">Service charges and meter rental · by month and zone</div></div></div>
 
       <div class="ex-section">
@@ -1414,7 +1970,7 @@
 
     
     <!-- Expenses -->
-    <div id="page-expenses" class="db-page report-page-standard report-density-page">
+    <div id="page-expenses" class="db-page report-page-standard">
       <div class="pg-hdr"><div class="pg-hdr-left"><div class="pg-title">Operating Expenses</div><div class="pg-meta" id="pg-meta-expenses">FY — · All Zones · All Months</div><div class="pg-sub">Cost breakdown by category and zone</div></div></div>
 
       <div class="ex-section">
@@ -1438,7 +1994,7 @@
 
     
     <!-- Debtors -->
-    <div id="page-debtors" class="db-page report-page-standard report-density-page">
+    <div id="page-debtors" class="db-page report-page-standard">
       <div class="pg-hdr"><div class="pg-hdr-left"><div class="pg-title">Outstanding Debtors</div><div class="pg-meta" id="pg-meta-debtors">FY — · All Zones · All Months</div><div class="pg-sub">Public and private debtor balances</div></div></div>
 
       <div class="ex-section">
@@ -1469,40 +2025,62 @@
 
     
 
-    <div id="page-workforce" class="db-page report-page-standard report-density-page">
-      <div class="pg-hdr"><div class="pg-hdr-left"><div class="pg-title">Workforce &amp; Fleet Efficiency</div><div class="pg-meta" id="pg-meta-workforce">FY - ? All Zones ? All Months</div><div class="pg-sub">Staffing, fuel use, distance covered, and operating efficiency</div></div></div>
-      <div class="ex-section"><div class="ex-hdr"><span class="ex-dot" style="background:#0D9488"></span><span class="ex-title">Workforce and Fleet Summary</span><span class="ex-sub">- Staff numbers, fleet movement, fuel use, and efficiency ratios</span></div><div id="wf-kpis" class="kpi-row kpi-g4"></div></div>
-      <div class="ex-section"><div class="ex-hdr"><span class="ex-dot" style="background:#1A8FD1"></span><span class="ex-title">Fuel and Movement Trend</span><span class="ex-sub">- Fuel consumed, fuel spend, and transport activity over time</span></div><div class="chart-row"><div class="chart-card"><div class="chart-title">Fuel Use vs Fuel Cost</div><div class="chart-subtitle">Read this chart to see whether fuel spend is rising in line with actual litres consumed.</div><div class="ch-wrap" style="height:200px"><canvas id="ch-wf-main"></canvas></div></div><div class="chart-card"><div class="chart-title">Fleet Activity by Zone</div><div class="chart-subtitle">Distance covered and fuel used by zone.</div><div class="ch-wrap" style="height:200px"><canvas id="ch-wf-zone"></canvas></div></div></div></div>
-      <div class="ex-section"><div class="ex-hdr"><span class="ex-dot" style="background:#64748B"></span><span class="ex-title">Monthly Scheme Detail</span><span class="ex-sub">- Detailed table</span></div><div class="tbl-section"><div id="tbl-workforce"></div></div></div>
+    <div id="page-workforce" class="db-page report-page-standard">
+      <div class="pg-hdr"><div class="pg-hdr-left"><div class="pg-title">Workforce &amp; Fleet Efficiency</div><div class="pg-meta" id="pg-meta-workforce">FY — · All Zones · All Months</div><div class="pg-sub">Staffing, fuel use, distance covered, operating efficiency and staff productivity ratios</div></div></div>
+
+      <div class="ex-section">
+        <div class="ex-hdr"><span class="ex-dot" style="background:#0D9488"></span><span class="ex-title">Workforce and Fleet Summary</span><span class="ex-sub">— Staff numbers, fleet movement, fuel use, and efficiency ratios</span></div>
+        <div id="wf-kpis" class="kpi-row kpi-g4"></div>
+      </div>
+
+      <div class="ex-section">
+        <div class="ex-hdr"><span class="ex-dot" style="background:#6366F1"></span><span class="ex-title">Staff Productivity</span><span class="ex-sub">— Establishment ratios and productivity benchmarks — Strategic Plan targets 13/1,000 connections · 8/1,000 m³</span></div>
+        <div id="wf-productivity-kpis" class="kpi-row kpi-g4"></div>
+      </div>
+
+      <div class="ex-section">
+        <div class="ex-hdr"><span class="ex-dot" style="background:#1A8FD1"></span><span class="ex-title">Fuel and Movement Trend</span><span class="ex-sub">— Fuel consumed, fuel spend, and transport activity over time</span></div>
+        <div class="chart-row">
+          <div class="chart-card"><div class="chart-title">Fuel Use vs Fuel Cost</div><div class="chart-subtitle">Whether fuel spend is rising in line with actual litres consumed.</div><div class="ch-wrap" style="height:185px"><canvas id="ch-wf-main"></canvas></div></div>
+          <div class="chart-card"><div class="chart-title">Fleet Activity by Zone</div><div class="chart-subtitle">Distance covered and fuel used by zone.</div><div class="ch-wrap" style="height:185px"><canvas id="ch-wf-zone"></canvas></div></div>
+        </div>
+      </div>
+
+      <div class="ex-section">
+        <div class="ex-hdr"><span class="ex-dot" style="background:#6366F1"></span><span class="ex-title">Establishment Trend &amp; Zone Productivity</span><span class="ex-sub">— Monthly headcount mix and staff per 1,000 m³ by zone</span></div>
+        <div class="chart-row">
+          <div class="chart-card"><div class="chart-title">Establishment — Permanent vs Temporary (Monthly)</div><div class="chart-subtitle">Headcount mix across the reporting period.</div><div class="ch-wrap" style="height:185px"><canvas id="ch-wf-staff-trend"></canvas></div></div>
+          <div class="chart-card"><div class="chart-title">Staff per 1,000 m³ — By Zone</div><div class="chart-subtitle">Zone comparison of labour productivity against the target of 8.</div><div class="ch-wrap" style="height:185px"><canvas id="ch-wf-staff-zone"></canvas></div></div>
+        </div>
+      </div>
+
+      <div class="ex-section">
+        <div class="ex-hdr"><span class="ex-dot" style="background:#64748B"></span><span class="ex-title">Monthly Scheme Detail</span><span class="ex-sub">— Detailed table</span></div>
+        <div class="tbl-section"><div id="tbl-workforce"></div></div>
+      </div>
     </div>
 
-    <div id="page-pipe-materials" class="db-page report-page-standard report-density-page">
-      <div class="pg-hdr"><div class="pg-hdr-left"><div class="pg-title">Pipe Failure by Material and Size</div><div class="pg-meta" id="pg-meta-pipe-materials">FY - ? All Zones ? All Months</div><div class="pg-sub">Engineering-level pipe failures by material family and size class</div></div></div>
+    <div id="page-pipe-materials" class="db-page report-page-standard">
+      <div class="pg-hdr"><div class="pg-hdr-left"><div class="pg-title">Pipe Failure by Material and Size</div><div class="pg-meta" id="pg-meta-pipe-materials">FY — · All Zones · All Months</div><div class="pg-sub">Engineering-level pipe failures by material family and size class</div></div></div>
       <div class="ex-section"><div class="ex-hdr"><span class="ex-dot" style="background:#DC2626"></span><span class="ex-title">Material Failure Summary</span><span class="ex-sub">- Pipe failures by material class and engineering detail</span></div><div id="pm-kpis" class="kpi-row kpi-g3"></div></div>
       <div class="ex-section"><div class="ex-hdr"><span class="ex-dot" style="background:#1A8FD1"></span><span class="ex-title">Failure Trend and Size Exposure</span><span class="ex-sub">- Material trend over time and the largest size-level problem points</span></div><div class="chart-row"><div class="chart-card"><div class="chart-title">Pipe Failures by Material - Monthly</div><div class="chart-subtitle">Use this to see which material families are driving most failures over time.</div><div class="ch-wrap" style="height:200px"><canvas id="ch-pm-main"></canvas></div></div><div class="chart-card"><div class="chart-title">Top Sizes by Failure Count</div><div class="chart-subtitle">The highest-count size classes show where detailed engineering review is most needed.</div><div class="ch-wrap" style="height:200px"><canvas id="ch-pm-size"></canvas></div></div></div></div>
       <div class="ex-section"><div class="ex-hdr"><span class="ex-dot" style="background:#64748B"></span><span class="ex-title">Monthly Size Detail</span><span class="ex-sub">- Detailed table</span></div><div class="tbl-section"><div id="tbl-pipe-materials"></div></div></div>
     </div>
 
-    <div id="page-segment-revenue" class="db-page report-page-standard report-density-page">
-      <div class="pg-hdr"><div class="pg-hdr-left"><div class="pg-title">Customer Segment Revenue</div><div class="pg-meta" id="pg-meta-segment-revenue">FY - ? All Zones ? All Months</div><div class="pg-sub">Revenue, cash, service charge, and meter rental by customer segment</div></div></div>
+    <div id="page-segment-revenue" class="db-page report-page-standard">
+      <div class="pg-hdr"><div class="pg-hdr-left"><div class="pg-title">Customer Segment Revenue</div><div class="pg-meta" id="pg-meta-segment-revenue">FY — · All Zones · All Months</div><div class="pg-sub">Revenue, cash, service charge, and meter rental by customer segment</div></div></div>
       <div class="ex-section"><div class="ex-hdr"><span class="ex-dot" style="background:#16A34A"></span><span class="ex-title">Segment Revenue Summary</span><span class="ex-sub">- What was billed, what was collected, and where secondary revenue comes from</span></div><div id="sr-kpis" class="kpi-row kpi-g3"></div></div>
       <div class="ex-section"><div class="ex-hdr"><span class="ex-dot" style="background:#1A8FD1"></span><span class="ex-title">Segment Billing and Collections</span><span class="ex-sub">- Monthly segment mix, cash conversion, and zone concentration</span></div><div class="chart-row"><div class="chart-card"><div class="chart-title">Billed Revenue by Segment</div><div class="chart-subtitle">This shows which customer segments are driving billed revenue each month.</div><div class="ch-wrap" style="height:200px"><canvas id="ch-sr-main"></canvas></div></div><div class="chart-card"><div class="chart-title">Cash Collected by Segment</div><div class="chart-subtitle">Use this to compare whether cash is keeping pace with billed demand by segment.</div><div class="ch-wrap" style="height:200px"><canvas id="ch-sr-cash"></canvas></div></div></div><div class="chart-row" style="margin-top:14px"><div class="chart-card chart-full"><div class="chart-title">Billed vs Collected by Zone</div><div class="chart-subtitle">Zone-level comparison of billed demand against cash realized.</div><div class="ch-wrap" style="height:200px"><canvas id="ch-sr-zone"></canvas></div></div></div></div>
       <div class="ex-section"><div class="ex-hdr"><span class="ex-dot" style="background:#64748B"></span><span class="ex-title">Monthly Scheme Detail</span><span class="ex-sub">- Detailed table</span></div><div class="tbl-section"><div id="tbl-segment-revenue"></div></div></div>
     </div>
 
-    <div id="page-class-connections" class="db-page report-page-standard report-density-page">
-      <div class="pg-hdr"><div class="pg-hdr-left"><div class="pg-title">Connection Pipeline by Customer Class</div><div class="pg-meta" id="pg-meta-class-connections">FY - ? All Zones ? All Months</div><div class="pg-sub">Backlog, applications, completions, and carried-forward pipeline by customer class</div></div></div>
+    <div id="page-class-connections" class="db-page report-page-standard">
+      <div class="pg-hdr"><div class="pg-hdr-left"><div class="pg-title">Connection Pipeline by Customer Class</div><div class="pg-meta" id="pg-meta-class-connections">FY — · All Zones · All Months</div><div class="pg-sub">Backlog, applications, completions, and carried-forward pipeline by customer class</div></div></div>
       <div class="ex-section"><div class="ex-hdr"><span class="ex-dot" style="background:#0D9488"></span><span class="ex-title">Connection Pipeline Summary</span><span class="ex-sub">- Which customer classes are moving, and which are carrying backlog</span></div><div id="cc-kpis" class="kpi-row kpi-g3"></div></div>
       <div class="ex-section"><div class="ex-hdr"><span class="ex-dot" style="background:#1A8FD1"></span><span class="ex-title">Class Completion Trend</span><span class="ex-sub">- Monthly completions by class and zone-level concentration</span></div><div class="chart-row"><div class="chart-card"><div class="chart-title">Completed Connections by Class - Monthly</div><div class="chart-subtitle">This shows which classes are being delivered consistently over time.</div><div class="ch-wrap" style="height:200px"><canvas id="ch-cc-main"></canvas></div></div><div class="chart-card"><div class="chart-title">Completed Connections by Zone</div><div class="chart-subtitle">Use this to see where class-level connection work is concentrated.</div><div class="ch-wrap" style="height:200px"><canvas id="ch-cc-zone"></canvas></div></div></div></div>
       <div class="ex-section"><div class="ex-hdr"><span class="ex-dot" style="background:#64748B"></span><span class="ex-title">Monthly Class Detail</span><span class="ex-sub">- Detailed table</span></div><div class="tbl-section"><div id="tbl-class-connections"></div></div></div>
     </div>
 
-    <div id="page-stuck-classes" class="db-page report-page-standard report-density-page">
-      <div class="pg-hdr"><div class="pg-hdr-left"><div class="pg-title">Meter Exceptions by Customer Class</div><div class="pg-meta" id="pg-meta-stuck-classes">FY - ? All Zones ? All Months</div><div class="pg-sub">Stuck-meter backlog and resolutions by customer class</div></div></div>
-      <div class="ex-section"><div class="ex-hdr"><span class="ex-dot" style="background:#D97706"></span><span class="ex-title">Class-based Meter Exception Summary</span><span class="ex-sub">- Which customer classes are carrying most of the unresolved stuck meters</span></div><div id="sc-kpis" class="kpi-row kpi-g3"></div></div>
-      <div class="ex-section"><div class="ex-hdr"><span class="ex-dot" style="background:#DC2626"></span><span class="ex-title">Backlog Trend and Zone Exposure</span><span class="ex-sub">- Class backlog over time and how it is distributed by zone</span></div><div class="chart-row"><div class="chart-card"><div class="chart-title">Class Backlog - Monthly</div><div class="chart-subtitle">Use this to track which customer classes are not being cleared fast enough.</div><div class="ch-wrap" style="height:200px"><canvas id="ch-sc-main"></canvas></div></div><div class="chart-card"><div class="chart-title">Current Backlog by Zone</div><div class="chart-subtitle">Stacked zone view of current class-level stuck-meter backlog.</div><div class="ch-wrap" style="height:200px"><canvas id="ch-sc-zone"></canvas></div></div></div></div>
-      <div class="ex-section"><div class="ex-hdr"><span class="ex-dot" style="background:#64748B"></span><span class="ex-title">Monthly Class Detail</span><span class="ex-sub">- Detailed table</span></div><div class="tbl-section"><div id="tbl-stuck-classes"></div></div></div>
-    </div>
 
     <!-- Budget vs Actuals ─────────────────────────────────────────── -->
     <div id="page-budget" class="db-page report-page-standard budget-page">
@@ -1845,10 +2423,11 @@
         <div class="rc-tabs" id="rc-tabs">
           <button class="rc-tab active" data-cat="executive"      onclick="switchReportCategory('executive')">Executive</button>
           <button class="rc-tab"        data-cat="operations"     onclick="switchReportCategory('operations')">Operations</button>
+          <button class="rc-tab"        data-cat="commercial"     onclick="switchReportCategory('commercial')">Commercial</button>
           <button class="rc-tab"        data-cat="financial"      onclick="switchReportCategory('financial')">Financial</button>
           <button class="rc-tab"        data-cat="hra"            onclick="switchReportCategory('hra')">HRA</button>
           <button class="rc-tab"        data-cat="infrastructure" onclick="switchReportCategory('infrastructure')">Infrastructure</button>
-          <button class="rc-tab"        data-cat="custom"         onclick="switchReportCategory('custom')">Custom</button>
+          <button class="rc-tab"        data-cat="analytics"      onclick="switchReportCategory('analytics')">Analytics</button>
         </div>
         <div class="rc-toolbar-right">
           <button type="button" class="rc-pack-btn" onclick="openBoardPackBuilder()" title="Combine several reports into one document">
@@ -1870,23 +2449,44 @@
         <div class="rc-card">
           <div class="rc-card-icon">📊</div>
           <div class="rc-card-title">Board Pack</div>
-          <div class="rc-card-desc">Full executive summary with KPIs, financial snapshot, zone ranking and AI narrative</div>
-          <div class="rc-tags"><span class="rc-tag">KPIs</span><span class="rc-tag">Charts</span><span class="rc-tag">AI Narrative</span><span class="rc-tag">Landscape</span></div>
+          <div class="rc-card-desc">Full executive summary with KPIs, financial snapshot, zone risk ranking and AI narrative</div>
+          <div class="rc-tags"><span class="rc-tag">KPIs</span><span class="rc-tag">Financial</span><span class="rc-tag rc-tag-ai">✦ AI Narrative</span><span class="rc-tag">Portrait</span></div>
           <button class="rc-generate-btn" onclick="generateReport('board-pack')">Generate Report</button>
         </div>
         <div class="rc-card">
           <div class="rc-card-icon">📋</div>
           <div class="rc-card-title">Management Dashboard</div>
-          <div class="rc-card-desc">Monthly performance summary for management review with trend analysis</div>
-          <div class="rc-tags"><span class="rc-tag">KPIs</span><span class="rc-tag">Trends</span><span class="rc-tag">AI Narrative</span><span class="rc-tag">Landscape</span></div>
+          <div class="rc-card-desc">Monthly performance summary for management review with NRW trend and zone breakdown</div>
+          <div class="rc-tags"><span class="rc-tag">KPIs</span><span class="rc-tag">Trends</span><span class="rc-tag rc-tag-ai">✦ AI Narrative</span><span class="rc-tag">Portrait</span></div>
           <button class="rc-generate-btn" onclick="generateReport('management-dashboard')">Generate Report</button>
         </div>
         <div class="rc-card">
           <div class="rc-card-icon">📅</div>
           <div class="rc-card-title">Annual Performance</div>
-          <div class="rc-card-desc">Year-end consolidated report with year-on-year comparison</div>
-          <div class="rc-tags"><span class="rc-tag">Full Year</span><span class="rc-tag">Comparison</span><span class="rc-tag">Landscape</span></div>
+          <div class="rc-card-desc">Year-end consolidated report with cross-zone comparison and year-on-year benchmarks</div>
+          <div class="rc-tags"><span class="rc-tag">Full Year</span><span class="rc-tag">Comparison</span><span class="rc-tag rc-tag-ai">✦ AI Narrative</span><span class="rc-tag">Portrait</span></div>
           <button class="rc-generate-btn" onclick="generateReport('annual-performance')">Generate Report</button>
+        </div>
+        <div class="rc-card">
+          <div class="rc-card-icon">🗺</div>
+          <div class="rc-card-title">Strategic Plan Progress</div>
+          <div class="rc-card-desc">SRWB 2023-2028 Strategic Plan KPI tracker — actual vs target across all four focus areas with on-track / watch / behind status</div>
+          <div class="rc-tags"><span class="rc-tag">Strategy</span><span class="rc-tag">5-Year Plan</span><span class="rc-tag rc-tag-ai">✦ AI Narrative</span><span class="rc-tag">Portrait</span></div>
+          <button class="rc-generate-btn" onclick="generateReport('strategic-plan')">Generate Report</button>
+        </div>
+        <div class="rc-card rc-card-ai">
+          <div class="rc-card-icon">🏅</div>
+          <div class="rc-card-title">AI Performance Scorecard</div>
+          <div class="rc-card-desc">Letter grades (A–F) across five domains: Financial Health, Operations, Infrastructure, Customer Service and Workforce — with benchmark details and anomaly flags</div>
+          <div class="rc-tags"><span class="rc-tag rc-tag-ai">✦ AI Analysis</span><span class="rc-tag">Graded</span><span class="rc-tag">All Domains</span><span class="rc-tag">Portrait</span></div>
+          <button class="rc-generate-btn" onclick="generateReport('ai-scorecard')">Generate Scorecard</button>
+        </div>
+        <div class="rc-card rc-card-ai">
+          <div class="rc-card-icon">🎯</div>
+          <div class="rc-card-title">AI Recommendations Brief</div>
+          <div class="rc-card-desc">Prioritised action plan with Critical, Warning and Monitoring tiers — each with specific, measurable SRWB-context recommendations and suggested interventions</div>
+          <div class="rc-tags"><span class="rc-tag rc-tag-ai">✦ AI Analysis</span><span class="rc-tag">Actions</span><span class="rc-tag">Anomaly Detection</span><span class="rc-tag">Portrait</span></div>
+          <button class="rc-generate-btn" onclick="generateReport('ai-recommendations')">Generate Brief</button>
         </div>
       </div>
 
@@ -1895,14 +2495,14 @@
           <div class="rc-card-icon">💧</div>
           <div class="rc-card-title">Water Production &amp; NRW</div>
           <div class="rc-card-desc">Production volumes, NRW analysis and treatment efficiency across zones</div>
-          <div class="rc-tags"><span class="rc-tag">Production</span><span class="rc-tag">NRW</span><span class="rc-tag">Charts</span><span class="rc-tag">Landscape</span></div>
+          <div class="rc-tags"><span class="rc-tag">Production</span><span class="rc-tag">NRW</span><span class="rc-tag">Charts</span><span class="rc-tag">Portrait</span></div>
           <button class="rc-generate-btn" onclick="generateReport('water-production')">Generate Report</button>
         </div>
         <div class="rc-card">
           <div class="rc-card-icon">🔧</div>
           <div class="rc-card-title">Infrastructure Status</div>
           <div class="rc-card-desc">Breakdown incidents, pipeline extensions and network reliability</div>
-          <div class="rc-tags"><span class="rc-tag">Breakdowns</span><span class="rc-tag">Extensions</span><span class="rc-tag">Landscape</span></div>
+          <div class="rc-tags"><span class="rc-tag">Breakdowns</span><span class="rc-tag">Extensions</span><span class="rc-tag">Portrait</span></div>
           <button class="rc-generate-btn" onclick="generateReport('infrastructure-status')">Generate Report</button>
         </div>
         <div class="rc-card">
@@ -1912,6 +2512,58 @@
           <div class="rc-tags"><span class="rc-tag">Service</span><span class="rc-tag">Customers</span><span class="rc-tag">Portrait</span></div>
           <button class="rc-generate-btn" onclick="generateReport('service-delivery')">Generate Report</button>
         </div>
+        <div class="rc-card">
+          <div class="rc-card-icon">⚡</div>
+          <div class="rc-card-title">Treatment &amp; Energy</div>
+          <div class="rc-card-desc">Treatment efficiency, energy intensity per m³, chemical dosing and power consumption trends across zones</div>
+          <div class="rc-tags"><span class="rc-tag">Energy</span><span class="rc-tag">Treatment</span><span class="rc-tag rc-tag-ai">✦ AI Narrative</span><span class="rc-tag">Portrait</span></div>
+          <button class="rc-generate-btn" onclick="generateReport('treatment-energy')">Generate Report</button>
+        </div>
+        <div class="rc-card">
+          <div class="rc-card-icon">🧪</div>
+          <div class="rc-card-title">Water Quality &amp; Compliance</div>
+          <div class="rc-card-desc">Turbidity, pH, chlorine residual and bacteriological compliance rates — zone by zone with regulatory thresholds</div>
+          <div class="rc-tags"><span class="rc-tag">Quality</span><span class="rc-tag">Compliance</span><span class="rc-tag rc-tag-ai">✦ AI Narrative</span><span class="rc-tag">Portrait</span></div>
+          <button class="rc-generate-btn" onclick="generateReport('water-quality')">Generate Report</button>
+        </div>
+        <div class="rc-card">
+          <div class="rc-card-icon">🕐</div>
+          <div class="rc-card-title">Supply Continuity</div>
+          <div class="rc-card-desc">Supply hours per day, unplanned interruptions and pressure reliability by zone against IWA service continuity benchmarks</div>
+          <div class="rc-tags"><span class="rc-tag">Continuity</span><span class="rc-tag">Hours</span><span class="rc-tag rc-tag-ai">✦ AI Narrative</span><span class="rc-tag">Portrait</span></div>
+          <button class="rc-generate-btn" onclick="generateReport('supply-continuity')">Generate Report</button>
+        </div>
+      </div>
+
+      <div class="rc-cards rc-cards-hidden" id="rc-cards-commercial">
+        <div class="rc-card">
+          <div class="rc-card-icon">📟</div>
+          <div class="rc-card-title">Meter Management</div>
+          <div class="rc-card-desc">Stuck meters, zero-consumption exceptions, prepaid migration progress and meter reading rates by zone and customer class</div>
+          <div class="rc-tags"><span class="rc-tag">Meters</span><span class="rc-tag">Revenue Protection</span><span class="rc-tag rc-tag-ai">✦ AI Narrative</span><span class="rc-tag">Portrait</span></div>
+          <button class="rc-generate-btn" onclick="generateReport('meter-management')">Generate Report</button>
+        </div>
+        <div class="rc-card">
+          <div class="rc-card-icon">🔌</div>
+          <div class="rc-card-title">Disconnections &amp; Reconnections</div>
+          <div class="rc-card-desc">Monthly disconnection and reconnection trends, outstanding balances triggering disconnection and zone-level recovery rates</div>
+          <div class="rc-tags"><span class="rc-tag">Disconnections</span><span class="rc-tag">Recovery</span><span class="rc-tag rc-tag-ai">✦ AI Narrative</span><span class="rc-tag">Portrait</span></div>
+          <button class="rc-generate-btn" onclick="generateReport('disconnections')">Generate Report</button>
+        </div>
+        <div class="rc-card">
+          <div class="rc-card-icon">🥧</div>
+          <div class="rc-card-title">Customer Segment Revenue</div>
+          <div class="rc-card-desc">Revenue contribution, collection rates and DSO broken down by customer class — residential, commercial, institutional and government</div>
+          <div class="rc-tags"><span class="rc-tag">Segments</span><span class="rc-tag">Revenue</span><span class="rc-tag rc-tag-ai">✦ AI Narrative</span><span class="rc-tag">Portrait</span></div>
+          <button class="rc-generate-btn" onclick="generateReport('segment-revenue')">Generate Report</button>
+        </div>
+        <div class="rc-card">
+          <div class="rc-card-icon">👥</div>
+          <div class="rc-card-title">Customer &amp; Connections</div>
+          <div class="rc-card-desc">Monthly active customers, postpaid vs prepaid split, new connections trend and population served — full 12-month tracker</div>
+          <div class="rc-tags"><span class="rc-tag">Customers</span><span class="rc-tag">Connections</span><span class="rc-tag rc-tag-ai">✦ AI Narrative</span><span class="rc-tag">Portrait</span></div>
+          <button class="rc-generate-btn" onclick="generateReport('customer-connections')">Generate Report</button>
+        </div>
       </div>
 
       <div class="rc-cards rc-cards-hidden" id="rc-cards-financial">
@@ -1919,22 +2571,43 @@
           <div class="rc-card-icon">💰</div>
           <div class="rc-card-title">Revenue &amp; Collections</div>
           <div class="rc-card-desc">Billing performance, cash collection rates and debtor analysis</div>
-          <div class="rc-tags"><span class="rc-tag">Revenue</span><span class="rc-tag">Collections</span><span class="rc-tag">Debtors</span><span class="rc-tag">Landscape</span></div>
+          <div class="rc-tags"><span class="rc-tag">Revenue</span><span class="rc-tag">Collections</span><span class="rc-tag">Debtors</span><span class="rc-tag">Portrait</span></div>
           <button class="rc-generate-btn" onclick="generateReport('revenue-collections')">Generate Report</button>
         </div>
         <div class="rc-card">
           <div class="rc-card-icon">📊</div>
           <div class="rc-card-title">Budget Performance</div>
-          <div class="rc-card-desc">Budget vs actual execution with variance analysis by zone</div>
-          <div class="rc-tags"><span class="rc-tag">Budget</span><span class="rc-tag">Variance</span><span class="rc-tag">Landscape</span></div>
+          <div class="rc-card-desc">IWA/IBNET budget vs actuals — revenue decomposition, operational metrics, cost variance and zone-level BPI with EVM-adapted performance indices</div>
+          <div class="rc-tags"><span class="rc-tag">Budget</span><span class="rc-tag">Variance</span><span class="rc-tag rc-tag-ai">✦ AI Narrative</span><span class="rc-tag">Portrait</span></div>
           <button class="rc-generate-btn" onclick="generateReport('budget-performance')">Generate Report</button>
+        </div>
+        <div class="rc-card">
+          <div class="rc-card-icon">📉</div>
+          <div class="rc-card-title">Budget vs Actuals</div>
+          <div class="rc-card-desc">Full budget variance engine — revenue, cost and operational variance with IPSAS 18 zone allocation, SPC limits and scheme performance league table</div>
+          <div class="rc-tags"><span class="rc-tag">IWA/IBNET</span><span class="rc-tag">IPSAS 18</span><span class="rc-tag rc-tag-ai">✦ AI Narrative</span><span class="rc-tag">Portrait</span></div>
+          <button class="rc-generate-btn" onclick="generateReport('budget-variance')">Generate Report</button>
         </div>
         <div class="rc-card">
           <div class="rc-card-icon">🧾</div>
           <div class="rc-card-title">Operating Cost Analysis</div>
-          <div class="rc-card-desc">Cost breakdown by category with efficiency benchmarks</div>
-          <div class="rc-tags"><span class="rc-tag">Costs</span><span class="rc-tag">Efficiency</span><span class="rc-tag">Portrait</span></div>
+          <div class="rc-card-desc">Cost breakdown by category with percentage share and efficiency benchmarks — distinct from revenue focus</div>
+          <div class="rc-tags"><span class="rc-tag">Costs</span><span class="rc-tag">Efficiency</span><span class="rc-tag rc-tag-ai">✦ AI Narrative</span><span class="rc-tag">Portrait</span></div>
           <button class="rc-generate-btn" onclick="generateReport('cost-analysis')">Generate Report</button>
+        </div>
+        <div class="rc-card">
+          <div class="rc-card-icon">🏷️</div>
+          <div class="rc-card-title">Service Charges &amp; Ancillary Revenue</div>
+          <div class="rc-card-desc">Meter rental income, reconnection fees, application charges and other ancillary revenue streams by zone — tariff compliance view</div>
+          <div class="rc-tags"><span class="rc-tag">Charges</span><span class="rc-tag">Tariff</span><span class="rc-tag rc-tag-ai">✦ AI Narrative</span><span class="rc-tag">Portrait</span></div>
+          <button class="rc-generate-btn" onclick="generateReport('ancillary-charges')">Generate Report</button>
+        </div>
+        <div class="rc-card">
+          <div class="rc-card-icon">📈</div>
+          <div class="rc-card-title">Profitability Analysis</div>
+          <div class="rc-card-desc">Revenue vs. operational costs, gross and net margins by zone — identifies which zones are cost-efficient and which are loss-making</div>
+          <div class="rc-tags"><span class="rc-tag">Margins</span><span class="rc-tag">Profitability</span><span class="rc-tag rc-tag-ai">✦ AI Narrative</span><span class="rc-tag">Portrait</span></div>
+          <button class="rc-generate-btn" onclick="generateReport('profitability')">Generate Report</button>
         </div>
       </div>
 
@@ -1960,38 +2633,38 @@
           <div class="rc-card-icon">🏗️</div>
           <div class="rc-card-title">Network Infrastructure</div>
           <div class="rc-card-desc">Comprehensive breakdown, extension and materials analysis</div>
-          <div class="rc-tags"><span class="rc-tag">Network</span><span class="rc-tag">Materials</span><span class="rc-tag">Landscape</span></div>
+          <div class="rc-tags"><span class="rc-tag">Network</span><span class="rc-tag">Materials</span><span class="rc-tag">Portrait</span></div>
           <button class="rc-generate-btn" onclick="generateReport('network-infrastructure')">Generate Report</button>
         </div>
         <div class="rc-card">
           <div class="rc-card-icon">📉</div>
           <div class="rc-card-title">NRW Deep Dive</div>
           <div class="rc-card-desc">Zone-level NRW components, trends and intervention recommendations</div>
-          <div class="rc-tags"><span class="rc-tag">NRW</span><span class="rc-tag">Analysis</span><span class="rc-tag">Landscape</span></div>
+          <div class="rc-tags"><span class="rc-tag">NRW</span><span class="rc-tag">Analysis</span><span class="rc-tag">Portrait</span></div>
           <button class="rc-generate-btn" onclick="generateReport('nrw-deep-dive')">Generate Report</button>
         </div>
       </div>
 
-      <div class="rc-cards rc-cards-hidden" id="rc-cards-custom">
+      <div class="rc-cards rc-cards-hidden" id="rc-cards-analytics">
         <div class="rc-card">
           <div class="rc-card-icon">🗺️</div>
           <div class="rc-card-title">Zone Comparison</div>
           <div class="rc-card-desc">Side-by-side KPI comparison across all active zones</div>
-          <div class="rc-tags"><span class="rc-tag">Zones</span><span class="rc-tag">Comparison</span><span class="rc-tag">Landscape</span></div>
+          <div class="rc-tags"><span class="rc-tag">Zones</span><span class="rc-tag">Comparison</span><span class="rc-tag">Portrait</span></div>
           <button class="rc-generate-btn" onclick="generateReport('zone-comparison')">Generate Report</button>
         </div>
         <div class="rc-card">
           <div class="rc-card-icon">🔍</div>
           <div class="rc-card-title">Scheme Performance</div>
-          <div class="rc-card-desc">Scheme-level detail tables filtered to selected zone</div>
-          <div class="rc-tags"><span class="rc-tag">Schemes</span><span class="rc-tag">Detail</span><span class="rc-tag">Landscape</span></div>
+          <div class="rc-card-desc">Scheme-level detail tables filtered to selected zone with AI narrative</div>
+          <div class="rc-tags"><span class="rc-tag">Schemes</span><span class="rc-tag">Detail</span><span class="rc-tag rc-tag-ai">✦ AI Narrative</span><span class="rc-tag">Portrait</span></div>
           <button class="rc-generate-btn" onclick="generateReport('scheme-performance')">Generate Report</button>
         </div>
         <div class="rc-card">
           <div class="rc-card-icon">📰</div>
           <div class="rc-card-title">Monthly Digest</div>
-          <div class="rc-card-desc">Condensed monthly snapshot suitable for circulation</div>
-          <div class="rc-tags"><span class="rc-tag">Summary</span><span class="rc-tag">All Zones</span><span class="rc-tag">Portrait</span></div>
+          <div class="rc-card-desc">Lean one-page KPI snapshot — revenue, NRW, DSO, zone summary and AI narrative, suitable for circulation</div>
+          <div class="rc-tags"><span class="rc-tag">Summary</span><span class="rc-tag">All Zones</span><span class="rc-tag rc-tag-ai">✦ AI Narrative</span><span class="rc-tag">Portrait</span></div>
           <button class="rc-generate-btn" onclick="generateReport('monthly-digest')">Generate Report</button>
         </div>
       </div>
@@ -2067,29 +2740,32 @@
             <div class="adm-sidebar-title">Control Centre</div>
             <div class="adm-sidebar-copy">User access, governed data actions, activity oversight, and system status.</div>
           </div>
+          <div class="adm-tab-grp">Access</div>
           <div class="adm-tab active" data-tab="users" onclick="admTab('users')">
-            <span class="adm-tab-icon">👥</span> User Management
+            <span class="adm-tab-icon"><svg viewBox="0 0 24 24" fill="none"><circle cx="9" cy="8" r="3.2" stroke="currentColor" stroke-width="1.8"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><circle cx="17" cy="8" r="2.5" stroke="currentColor" stroke-width="1.6"/><path d="M21 19.5c0-2.5-1.8-4.5-4-4.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></span> User Management
           </div>
           <div class="adm-tab" data-tab="profile" onclick="admTab('profile')">
-            <span class="adm-tab-icon">👤</span> My Profile
+            <span class="adm-tab-icon"><svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.8"/><circle cx="12" cy="9.5" r="3" stroke="currentColor" stroke-width="1.7"/><path d="M5.5 19.5C6.5 16.5 9 14.5 12 14.5s5.5 2 6.5 5" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg></span> My Profile
           </div>
           <div class="adm-tab" data-tab="roles" onclick="admTab('roles')">
-            <span class="adm-tab-icon">🔐</span> Roles & Permissions
+            <span class="adm-tab-icon"><svg viewBox="0 0 24 24" fill="none"><rect x="5" y="11" width="14" height="10" rx="2.5" stroke="currentColor" stroke-width="1.8"/><path d="M8 11V7.5a4 4 0 018 0V11" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><circle cx="12" cy="16" r="1.5" fill="currentColor"/></svg></span> Roles &amp; Permissions
           </div>
-          <div class="adm-tab" data-tab="data" onclick="admTab('data')">
-            <span class="adm-tab-icon">🗂️</span> Data Management
+          <div class="adm-tab" data-tab="org-profile" onclick="admTab('org-profile')">
+            <span class="adm-tab-icon"><svg viewBox="0 0 24 24" fill="none"><rect x="3" y="4" width="18" height="16" rx="2.5" stroke="currentColor" stroke-width="1.8"/><path d="M7 9h10M7 13h6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg></span> Organisation Profile
           </div>
+          <div class="adm-tab-grp">Data</div>
           <div class="adm-tab" data-tab="uploads" onclick="admTab('uploads')">
-            <span class="adm-tab-icon">📤</span> Upload History
+            <span class="adm-tab-icon"><svg viewBox="0 0 24 24" fill="none"><path d="M12 15V5m-4 4l4-4 4 4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 17v1a2 2 0 002 2h12a2 2 0 002-2v-1" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></span> Upload History
           </div>
+          <div class="adm-tab-grp">System</div>
           <div class="adm-tab" data-tab="activity" onclick="admTab('activity')">
-            <span class="adm-tab-icon">📋</span> Activity Log
+            <span class="adm-tab-icon"><svg viewBox="0 0 24 24" fill="none"><path d="M9 6h9M9 12h9M9 18h6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><circle cx="5.5" cy="6" r="1.2" fill="currentColor"/><circle cx="5.5" cy="12" r="1.2" fill="currentColor"/><circle cx="5.5" cy="18" r="1.2" fill="currentColor"/></svg></span> Activity Log
           </div>
           <div class="adm-tab" data-tab="fy-budget" onclick="admTab('fy-budget');admLoadFyBudget()">
-            <span class="adm-tab-icon">📅</span> FY Budget Setup
+            <span class="adm-tab-icon"><svg viewBox="0 0 24 24" fill="none"><rect x="3" y="5" width="18" height="16" rx="2" stroke="currentColor" stroke-width="1.8"/><path d="M3 10h18M8 3v4M16 3v4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><path d="M12 13.5v5M10 15h3a1 1 0 010 2H11a1 1 0 000 2h3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg></span> FY Budget Setup
           </div>
           <div class="adm-tab" data-tab="system" onclick="admTab('system')">
-            <span class="adm-tab-icon">⚙️</span> System Info
+            <span class="adm-tab-icon"><svg viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="1.8"/><path d="M19 12a7 7 0 00-.1-1.2l1.7-1.3-1.6-2.8-2 .6a7.2 7.2 0 00-2.1-1.2L14.6 4h-3.2l-.3 2.1a7.2 7.2 0 00-2.1 1.2l-2-.6-1.6 2.8 1.7 1.3A7 7 0 005 12c0 .4 0 .8.1 1.2l-1.7 1.3 1.6 2.8 2-.6c.6.5 1.3.9 2.1 1.2l.3 2.1h3.2l.3-2.1c.8-.3 1.5-.7 2.1-1.2l2 .6 1.6-2.8-1.7-1.3c.1-.4.1-.8.1-1.2z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/></svg></span> System Info
           </div>
         </div>
 
@@ -2274,42 +2950,72 @@
             </div>
           </div>
 
-          <!-- ── TAB: Data Management ─────────────────────────────── -->
-          <div id="adm-tab-data" style="display:none">
+          <!-- ── TAB: Organisation Profile ─────────────────────────── -->
+          <div id="adm-tab-org-profile" style="display:none">
             <div class="adm-section-hdr">
               <div>
-                <div class="adm-section-title">Data Management</div>
-                <div class="adm-section-sub">Keep upload, validation oversight, and controlled data actions inside the admin workspace</div>
+                <div class="adm-section-title">Organisation Profile</div>
+                <div class="adm-section-sub">Utility identity — name, registration, regulator, service coverage, and contact details</div>
               </div>
-              <button class="adm-btn-primary" onclick="openUploadModal()">
-                <svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M8 1v9M5 4l3-3 3 3" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><path d="M2 11v2a1 1 0 001 1h10a1 1 0 001-1v-2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
-                Upload Monthly Data
-              </button>
+              <button class="adm-btn-primary" onclick="admSaveOrgProfile()">Save Profile</button>
             </div>
-            <div class="adm-data-grid">
-              <div class="adm-sys-card">
-                <div class="adm-sys-card-title">Upload &amp; validation</div>
-                <p class="adm-data-copy">Open the governed RawData upload flow when new monthly information is ready. Keep the upload step separate from live reporting so operational users do not carry unnecessary admin controls.</p>
-                <div class="adm-action-list">
-                  <button class="ia-btn primary" onclick="openUploadModal()">Upload Monthly Data</button>
-                  <button class="ia-btn" onclick="admTab('uploads')">View upload history</button>
+            <div style="max-width:680px">
+              <div class="adm-table-wrap" style="padding:24px;display:flex;flex-direction:column;gap:16px">
+                <div style="font-size:12px;font-weight:700;color:var(--ds-text-muted);text-transform:uppercase;letter-spacing:.07em;padding-bottom:4px;border-bottom:1px solid var(--ds-border)">Identity</div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+                  <div>
+                    <label style="font-size:11px;font-weight:600;color:var(--ds-text-muted);text-transform:uppercase;letter-spacing:.07em">Full Legal Name</label>
+                    <input type="text" id="org-name" class="adm-input" style="margin-top:4px;width:100%" placeholder="e.g. Southern Region Water Board">
+                  </div>
+                  <div>
+                    <label style="font-size:11px;font-weight:600;color:var(--ds-text-muted);text-transform:uppercase;letter-spacing:.07em">Acronym / Short Name</label>
+                    <input type="text" id="org-short-name" class="adm-input" style="margin-top:4px;width:100%" placeholder="e.g. SRWB">
+                  </div>
+                  <div>
+                    <label style="font-size:11px;font-weight:600;color:var(--ds-text-muted);text-transform:uppercase;letter-spacing:.07em">Registration Number</label>
+                    <input type="text" id="org-reg-no" class="adm-input" style="margin-top:4px;width:100%" placeholder="Corporate registration">
+                  </div>
+                  <div>
+                    <label style="font-size:11px;font-weight:600;color:var(--ds-text-muted);text-transform:uppercase;letter-spacing:.07em">Regulatory Body</label>
+                    <input type="text" id="org-regulator" class="adm-input" style="margin-top:4px;width:100%" placeholder="e.g. NWRA, MERA">
+                  </div>
+                  <div>
+                    <label style="font-size:11px;font-weight:600;color:var(--ds-text-muted);text-transform:uppercase;letter-spacing:.07em">Country</label>
+                    <input type="text" id="org-country" class="adm-input" style="margin-top:4px;width:100%" placeholder="e.g. Malawi">
+                  </div>
+                  <div>
+                    <label style="font-size:11px;font-weight:600;color:var(--ds-text-muted);text-transform:uppercase;letter-spacing:.07em">Reporting Currency</label>
+                    <input type="text" id="org-currency" class="adm-input" style="margin-top:4px;width:100%" placeholder="e.g. MWK">
+                  </div>
                 </div>
-              </div>
-              <div class="adm-sys-card">
-                <div class="adm-sys-card-title">Audit &amp; oversight</div>
-                <p class="adm-data-copy">Review role changes, password resets, and admin actions from one place without mixing those controls into the operational dashboards.</p>
-                <div class="adm-action-list">
-                  <button class="ia-btn" onclick="admTab('activity')">Open activity log</button>
-                  <button class="ia-btn" onclick="admTab('system')">System information</button>
+                <div style="font-size:12px;font-weight:700;color:var(--ds-text-muted);text-transform:uppercase;letter-spacing:.07em;padding-top:8px;padding-bottom:4px;border-bottom:1px solid var(--ds-border)">Service Coverage</div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+                  <div>
+                    <label style="font-size:11px;font-weight:600;color:var(--ds-text-muted);text-transform:uppercase;letter-spacing:.07em">Service Area (km²)</label>
+                    <input type="number" id="org-area" class="adm-input" style="margin-top:4px;width:100%" placeholder="Total area served">
+                  </div>
+                  <div>
+                    <label style="font-size:11px;font-weight:600;color:var(--ds-text-muted);text-transform:uppercase;letter-spacing:.07em">Population Served</label>
+                    <input type="number" id="org-population" class="adm-input" style="margin-top:4px;width:100%" placeholder="Estimated population">
+                  </div>
                 </div>
-              </div>
-              <div class="adm-sys-card">
-                <div class="adm-sys-card-title">Reporting separation</div>
-                <p class="adm-data-copy">Use the Report Centre to generate and distribute formatted reports, then come back here only when you need controlled data-management actions.</p>
-                <div class="adm-action-list">
-                  <button class="ia-btn" onclick="navigate('report-centre')">Open report centre</button>
-                  <button class="ia-btn" onclick="navigate('overview')">Executive dashboard</button>
+                <div style="font-size:12px;font-weight:700;color:var(--ds-text-muted);text-transform:uppercase;letter-spacing:.07em;padding-top:8px;padding-bottom:4px;border-bottom:1px solid var(--ds-border)">Contact</div>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+                  <div>
+                    <label style="font-size:11px;font-weight:600;color:var(--ds-text-muted);text-transform:uppercase;letter-spacing:.07em">Email</label>
+                    <input type="email" id="org-email" class="adm-input" style="margin-top:4px;width:100%" placeholder="admin@srwb.mw">
+                  </div>
+                  <div>
+                    <label style="font-size:11px;font-weight:600;color:var(--ds-text-muted);text-transform:uppercase;letter-spacing:.07em">Phone</label>
+                    <input type="text" id="org-phone" class="adm-input" style="margin-top:4px;width:100%" placeholder="+265 ...">
+                  </div>
+                  <div style="grid-column:1/-1">
+                    <label style="font-size:11px;font-weight:600;color:var(--ds-text-muted);text-transform:uppercase;letter-spacing:.07em">Website</label>
+                    <input type="url" id="org-website" class="adm-input" style="margin-top:4px;width:100%" placeholder="https://srwb.mw">
+                  </div>
                 </div>
+                <div id="org-profile-msg" style="display:none;font-size:12px;padding:8px 12px;border-radius:8px"></div>
+                <div style="font-size:11px;color:var(--ds-text-muted)">Last saved: <span id="org-updated-at">—</span></div>
               </div>
             </div>
           </div>
@@ -2349,7 +3055,10 @@
                 <div class="adm-section-title">Activity Log</div>
                 <div class="adm-section-sub">User login events and administrative actions</div>
               </div>
-              <button class="adm-btn-secondary" onclick="admLoadActivity()">↻ Refresh</button>
+              <div style="display:flex;gap:8px">
+                <button class="adm-btn-secondary" onclick="admLoadActivity()">↻ Refresh</button>
+                <button class="adm-btn-secondary" onclick="admExportActivityCSV()">↓ Export CSV</button>
+              </div>
             </div>
             <div class="adm-table-wrap">
               <table class="adm-table">
@@ -2416,6 +3125,34 @@
               <button class="adm-btn-primary" onclick="admDoCopyBudget()" style="align-self:flex-end">Copy Budget</button>
             </div>
             <div id="adm-copy-result" style="margin-top:.75rem;font-size:.85rem"></div>
+
+            <!-- Register new FY -->
+            <div class="adm-section-hdr" style="margin-top:2rem">
+              <div>
+                <div class="adm-section-title" style="font-size:1rem">Register a New Fiscal Year</div>
+                <div class="adm-section-sub">Create the DB entry for a future FY. The zone data folder <code style="font-size:11px;background:var(--ds-border);padding:1px 4px;border-radius:3px">dataupdater/FY<em>XXYY</em>/</code> must be created separately with the five zone workbooks before running the build step.</div>
+              </div>
+            </div>
+            <div style="display:flex;gap:1rem;flex-wrap:wrap;align-items:flex-end;padding:.75rem 0;border-top:1px solid var(--border)">
+              <div>
+                <label style="font-size:.8rem;color:var(--text-muted);display:block;margin-bottom:.3rem">End Year</label>
+                <input id="adm-reg-fy-year" type="number" class="adm-input" style="width:110px" placeholder="e.g. 2028" min="2025" max="2040">
+              </div>
+              <div>
+                <label style="font-size:.8rem;color:var(--text-muted);display:block;margin-bottom:.3rem">Status</label>
+                <select id="adm-reg-fy-status" class="adm-input" style="min-width:130px">
+                  <option value="future">Future</option>
+                  <option value="current">Current</option>
+                  <option value="historical">Historical</option>
+                </select>
+              </div>
+              <div>
+                <label style="font-size:.8rem;color:var(--text-muted);display:block;margin-bottom:.3rem">Tariff (MWK/m³)</label>
+                <input id="adm-reg-fy-tariff" type="number" step="0.01" class="adm-input" style="width:110px" placeholder="optional">
+              </div>
+              <button class="adm-btn-primary" onclick="admRegisterFY()" style="align-self:flex-end">Register FY</button>
+            </div>
+            <div id="adm-reg-fy-result" style="margin-top:.5rem;font-size:.85rem"></div>
           </div>
 
           <!-- ── TAB: System Info ──────────────────────────────────── -->
@@ -2434,6 +3171,7 @@
                 <div class="adm-sys-row"><span class="adm-sys-key">Records</span><span class="adm-sys-val" id="sys-records">—</span></div>
                 <div class="adm-sys-row"><span class="adm-sys-key">Zones</span><span class="adm-sys-val" id="sys-zones">—</span></div>
                 <div class="adm-sys-row"><span class="adm-sys-key">Schemes</span><span class="adm-sys-val" id="sys-schemes">—</span></div>
+                <div class="adm-sys-row"><span class="adm-sys-key">Last backup</span><span class="adm-sys-val" id="sys-backup" style="color:var(--ds-amber)">Not configured</span></div>
               </div>
               <div class="adm-sys-card">
                 <div class="adm-sys-card-title">Application</div>
@@ -2451,9 +3189,10 @@
               </div>
               <div class="adm-sys-card">
                 <div class="adm-sys-card-title">Data Coverage</div>
-                <div class="adm-sys-row"><span class="adm-sys-key">Organisation</span><span class="adm-sys-val">SRWB</span></div>
-                <div class="adm-sys-row"><span class="adm-sys-key">Region</span><span class="adm-sys-val">Southern Malawi</span></div>
-                <div class="adm-sys-row"><span class="adm-sys-key">Contact</span><span class="adm-sys-val">cmhango@gmail.com</span></div>
+                <div class="adm-sys-row"><span class="adm-sys-key">Organisation</span><span class="adm-sys-val" id="sys-org-name">SRWB</span></div>
+                <div class="adm-sys-row"><span class="adm-sys-key">Country</span><span class="adm-sys-val" id="sys-org-country">Malawi</span></div>
+                <div class="adm-sys-row"><span class="adm-sys-key">Currency</span><span class="adm-sys-val" id="sys-org-currency">MWK</span></div>
+                <div class="adm-sys-row"><span class="adm-sys-key">Regulator</span><span class="adm-sys-val" id="sys-org-regulator">—</span></div>
               </div>
             </div>
           </div>
@@ -2491,7 +3230,8 @@
 </div><!-- /srwb-app -->
 </div><!-- /app-view -->
 
-<script src="/static/assets/js/app-core.js?v=20260529-10"></script>
+<script src="/static/assets/js/app-core.js?v=20260614-1"></script>
+<script src="/static/assets/js/department-tabs.js?v=20260613-1"></script>
 
 <!-- ══ ATTRIBUTION FOOTER ════════════════════════════════════════════════ -->
 <div id="attr-footer">

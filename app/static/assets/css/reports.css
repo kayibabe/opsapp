@@ -585,9 +585,15 @@
 .adm-tab-icon{
   width:30px;height:30px;flex-shrink:0;border-radius:10px;
   display:inline-flex;align-items:center;justify-content:center;
-  font-size:10px;font-weight:800;letter-spacing:.08em;
   color:var(--ds-blue);background:var(--ds-blue-bg);border:1px solid var(--ds-blue-border)
 }
+.adm-tab-icon svg{width:16px;height:16px;flex-shrink:0}
+.adm-tab-grp{
+  padding:10px 4px 3px;
+  font-size:9.5px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;
+  color:var(--ds-text-muted);
+}
+.adm-tab-grp:first-child{padding-top:4px}
 .adm-content{
   display:grid;gap:18px;align-content:start;
   padding:0;overflow:visible;background:transparent;
@@ -1748,6 +1754,23 @@
   background: var(--ds-surface);
 }
 
+/* Strategic Plan Scorecard table */
+.sp-tbl{width:100%;border-collapse:collapse;font-size:.86rem}
+.sp-tbl thead tr{border-bottom:2px solid var(--ds-border);text-align:left}
+.sp-tbl th{padding:.45rem .6rem;color:var(--ds-text-muted);font-size:.74rem;text-transform:uppercase;letter-spacing:.03em;font-weight:600;white-space:nowrap}
+.sp-tbl th.sp-th-num{text-align:right}
+.sp-tbl th.sp-th-center{text-align:center}
+.sp-tbl td{padding:.5rem .6rem;color:var(--ds-text-primary);vertical-align:middle}
+.sp-tbl tbody tr{border-bottom:1px solid var(--ds-border)}
+.sp-tbl tbody tr:last-child{border-bottom:none}
+.sp-tbl tbody tr:hover{background:var(--ds-bg)}
+.sp-tbl td.sp-td-unit{color:var(--ds-text-muted);white-space:nowrap}
+.sp-tbl td.sp-td-num{text-align:right;color:var(--ds-text-muted)}
+.sp-tbl td.sp-td-target{text-align:right;font-weight:600}
+.sp-tbl td.sp-td-actual{text-align:right}
+.sp-tbl td.sp-td-status{text-align:center}
+.sp-pill{display:inline-block;padding:2px 9px;border-radius:999px;font-size:.72rem;font-weight:600}
+
 
 
 .chart-row.chart-row-budget-split{grid-template-columns:1fr 1fr;gap:16px;align-items:stretch}
@@ -2501,12 +2524,14 @@ body.bp-open{overflow:hidden}
 .ro-error-title{font-size:14px;font-weight:700;color:var(--ds-text-primary)}
 .ro-error-msg{font-size:12px;color:var(--ds-text-secondary);max-width:360px;line-height:1.5}
 
-/* ── Print: hide chrome, show only ro-content ────────────────────────── */
+/* ── Print: hide chrome, show only ro-content (overlay print only) ─────
+   Scoped to body.printing-report-overlay so a stale/last-generated report
+   can never leak into a regular dashboard-page print (printReport()). */
 @media print{
-  #report-output-overlay .ro-toolbar{display:none!important}
-  #report-output-overlay .ro-scroll{padding:0!important;overflow:visible!important}
-  #report-output-overlay{position:static!important;display:block!important;background:#fff!important}
-  .ro-content{border:none!important;box-shadow:none!important;padding:0!important;border-radius:0!important;max-width:100%!important}
+  body.printing-report-overlay #report-output-overlay .ro-toolbar{display:none!important}
+  body.printing-report-overlay #report-output-overlay .ro-scroll{padding:0!important;overflow:visible!important}
+  body.printing-report-overlay #report-output-overlay{position:static!important;display:block!important;background:#fff!important}
+  body.printing-report-overlay .ro-content{border:none!important;box-shadow:none!important;padding:0!important;border-radius:0!important;max-width:100%!important}
 }
 @media(max-width:720px){.tbl-disclosure-bar{flex-direction:column;align-items:flex-start}.tbl-disclosure-btn{width:100%}}
 
@@ -2516,10 +2541,6 @@ body.bp-open{overflow:hidden}
 .ov-hero{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin:0 0 14px}
 .ov-eyebrow{font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--ds-blue);margin-bottom:6px}
 .ov-lead{font-size:13px;line-height:1.55;color:var(--ds-text-secondary);max-width:66ch}
-.ov-view-switch{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-.ov-view-btn{appearance:none;border:1px solid var(--ds-border);background:var(--ds-surface);color:var(--ds-text-secondary);font:inherit;font-size:12px;font-weight:600;padding:9px 14px;border-radius:999px;cursor:pointer;transition:all .15s ease}
-.ov-view-btn:hover{border-color:var(--ds-blue-border);color:var(--ds-blue);background:var(--ds-blue-bg)}
-.ov-view-btn.active{background:var(--ds-blue);color:#fff;border-color:var(--ds-blue);box-shadow:0 8px 18px rgba(37,99,235,.16)}
 .summary-home #ov-essentials{margin-bottom:14px}
 .summary-home #ov-essentials.kpi-row{grid-template-columns:repeat(6,minmax(0,1fr))}
 .summary-home #ov-essentials .kc{min-height:132px}
@@ -2531,10 +2552,9 @@ body.bp-open{overflow:hidden}
 .ov-ex-kicker{font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--ds-text-muted);margin-bottom:6px}
 .ov-ex-main{font-size:15px;font-weight:700;color:var(--ds-text-primary);line-height:1.25;margin-bottom:4px}
 .ov-ex-sub{font-size:11px;line-height:1.45;color:var(--ds-text-secondary)}
-.ov-main-grid{display:grid;grid-template-columns:minmax(0,1.55fr) minmax(280px,.95fr);gap:14px;margin-bottom:16px}
+.ov-main-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin-bottom:16px}
 .ov-focus-card,.ov-rank-card,.ov-mini-panel{display:flex;flex-direction:column}
 .ov-focus-wrap{height:260px !important;min-height:260px}
-.ov-focus-note{margin-top:12px;font-size:11px;line-height:1.45;color:var(--ds-text-muted)}
 .ov-rank-list{display:flex;flex-direction:column;gap:10px;margin-top:4px}
 .ov-rank-row{display:grid;grid-template-columns:34px minmax(0,1fr) auto;gap:10px;align-items:center;padding:12px;border:1px solid #E7EEF5;border-radius:12px;background:#FAFCFE}
 .ov-rank-row[data-tone="high"]{background:#FFF7F7;border-color:#F5C4C2}
@@ -2544,7 +2564,7 @@ body.bp-open{overflow:hidden}
 .ov-rank-zone{font-size:13px;font-weight:700;color:var(--ds-text-primary);margin-bottom:2px}
 .ov-rank-metrics{font-size:11px;line-height:1.45;color:var(--ds-text-secondary)}
 .ov-rank-badge{font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;padding:6px 10px;border-radius:999px;background:#EEF2F7;color:#475569}
-.ov-summary-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin-bottom:16px}
+.ov-summary-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;margin-bottom:16px}
 .ov-data-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin-top:4px}
 .ov-data-item{border:1px solid #E7EEF5;border-radius:12px;padding:12px;background:#FAFCFE}
 .ov-data-val{font-size:20px;font-weight:700;color:var(--ds-text-primary);line-height:1.1}
@@ -2734,6 +2754,9 @@ table.rc-tbl thead th{
   letter-spacing:.07em;color:var(--ds-text-secondary);
   border-bottom:1px solid var(--ds-border);white-space:nowrap;
 }
+table.rc-tbl thead th:not(:first-child){
+  text-align:right;
+}
 table.rc-tbl tbody tr{border-bottom:.5px solid var(--ds-border)}
 table.rc-tbl tbody tr:last-child{border-bottom:none}
 table.rc-tbl tbody tr:hover{background:#F8FBFF}
@@ -2767,6 +2790,108 @@ table.rc-tbl td:not(.rc-row-label){
   margin:0 0 8px;
 }
 .rc-narrative-body p:last-child{margin-bottom:0}
+.rc-narrative-icon{
+  font-size:22px;flex-shrink:0;align-self:flex-start;margin-top:2px;
+  opacity:.8;
+}
+.rc-narrative-content{flex:1;min-width:0}
+.rc-narrative{display:flex;align-items:flex-start;gap:14px}
+.rc-narrative-footer{
+  font-size:9.5px;color:#6B7280;margin-top:10px;
+  border-top:1px solid #DBEAFE;padding-top:8px;letter-spacing:.03em;
+}
+
+/* ── AI Tag & AI Card variants ───────────────────────────────────────── */
+.rc-tag-ai{
+  background:linear-gradient(120deg,#EDE9FE,#EFF6FF);
+  color:#6D28D9;border-color:#C4B5FD;
+}
+.rc-card-ai{
+  border-color:#C4B5FD;
+  background:linear-gradient(160deg,#FAF5FF 0%,#EFF6FF 100%);
+}
+.rc-card-ai .rc-generate-btn{background:linear-gradient(135deg,#7C3AED,#1A8FD1)}
+.rc-card-ai .rc-generate-btn:hover{background:linear-gradient(135deg,#6D28D9,#1478b8);box-shadow:0 2px 10px rgba(109,40,217,.25)}
+
+/* ── Alerts Panel ─────────────────────────────────────────────────────── */
+.rc-alerts-panel{
+  margin-top:20px;border-radius:10px;overflow:hidden;
+  border:1px solid #FDE68A;background:#FFFBEB;
+}
+.rc-alerts-panel-title{
+  font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.1em;
+  color:#92400E;padding:10px 16px;background:#FEF3C7;
+  display:flex;align-items:center;gap:8px;
+}
+.rc-alerts-counts{display:flex;gap:6px;margin-left:auto}
+.rc-ac-crit{
+  background:#FEE2E2;color:#991B1B;padding:2px 8px;border-radius:999px;
+  font-size:9px;font-weight:700;letter-spacing:.05em;
+}
+.rc-ac-warn{
+  background:#FEF3C7;color:#92400E;padding:2px 8px;border-radius:999px;
+  font-size:9px;font-weight:700;letter-spacing:.05em;
+  border:1px solid #FDE68A;
+}
+.rc-alert-item{
+  display:flex;align-items:flex-start;gap:10px;
+  padding:10px 16px;border-top:1px solid #FDE68A;
+}
+.rc-alert-item.rc-alert-critical .rc-alert-bullet{color:#DC2626}
+.rc-alert-item.rc-alert-warning  .rc-alert-bullet{color:#D97706}
+.rc-alert-item.rc-alert-info     .rc-alert-bullet{color:#2563EB}
+.rc-alert-bullet{font-size:12px;flex-shrink:0;margin-top:1px;line-height:1.4}
+.rc-alert-text strong{font-size:11.5px;font-weight:700;color:#1F2937;display:block;margin-bottom:2px}
+.rc-alert-detail{font-size:11px;color:#4B5563;line-height:1.5}
+
+/* ── AI Scorecard ─────────────────────────────────────────────────────── */
+.rc-scorecard-grid{
+  display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));
+  gap:12px;margin-top:14px;
+}
+.rc-score-domain{
+  background:var(--ds-surface);border:1px solid var(--ds-border);
+  border-radius:10px;padding:14px 16px;
+}
+.rc-score-domain-hdr{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+.rc-score-domain-title{font-size:11.5px;font-weight:700;color:var(--ds-text-primary)}
+.rc-score-grade{font-size:28px;font-weight:800;line-height:1}
+.rc-score-bar-track{height:6px;background:var(--ds-border);border-radius:999px;overflow:hidden;margin-bottom:4px}
+.rc-score-bar-fill{height:100%;border-radius:999px;transition:width .3s}
+.rc-score-pts{font-size:10px;color:var(--ds-text-muted);margin-bottom:10px}
+.rc-score-metrics{display:flex;flex-direction:column;gap:5px;padding-top:8px;border-top:1px solid var(--ds-border)}
+.rc-score-metric{display:flex;align-items:baseline;gap:4px;font-size:11px;flex-wrap:wrap}
+.rc-score-metric-name{color:var(--ds-text-secondary);flex:1;min-width:90px}
+.rc-score-metric-val{font-weight:700;color:var(--ds-text-primary);white-space:nowrap}
+.rc-score-metric-bm{font-size:9.5px;color:var(--ds-text-muted);white-space:nowrap}
+.rc-flag-good{color:#16A34A}
+.rc-flag-warn{color:#D97706}
+.rc-flag-bad {color:#DC2626}
+
+/* ── Recommendations Brief ────────────────────────────────────────────── */
+.rc-rec-item{
+  margin:10px 0;border-radius:10px;padding:14px 16px;
+  border-left:4px solid;
+}
+.rc-rec-item.rc-rec-critical{background:#FEF2F2;border-color:#DC2626}
+.rc-rec-item.rc-rec-warning {background:#FFFBEB;border-color:#D97706}
+.rc-rec-item.rc-rec-monitoring{background:#EFF6FF;border-color:#2563EB}
+.rc-rec-title{
+  font-size:12.5px;font-weight:700;color:#1F2937;
+  margin-bottom:4px;
+}
+.rc-rec-detail{
+  font-size:11.5px;color:#4B5563;line-height:1.5;margin-bottom:8px;
+}
+.rc-rec-actions{
+  margin:0;padding-left:18px;
+  font-size:11px;color:#374151;line-height:1.6;
+}
+.rc-rec-actions li{margin-bottom:2px}
+.rc-rec-none{
+  text-align:center;padding:48px 24px;
+  font-size:14px;color:var(--ds-text-secondary);
+}
 
 /* Error state */
 .ro-error{
@@ -2777,19 +2902,47 @@ table.rc-tbl td:not(.rc-row-label){
 
 /* ── Print: overlay content becomes full page ─────────────────────── */
 @media print{
+  /* Static A4 fallback — JS printGeneratedReport() injects its own @page at print
+     time (overriding this via later source order) to handle landscape; this rule
+     ensures A4 portrait is the default even for plain Ctrl+P without the button. */
+  @page{size:A4 portrait;margin:12mm 10mm}
+  /* Break out of the 100vh/overflow:hidden shell so content flows to all pages */
+  body.printing-report-overlay,
+  body.printing-report-overlay html{height:auto!important;overflow:visible!important}
+  body.printing-report-overlay #app-view,
+  body.printing-report-overlay #srwb-app,
+  body.printing-report-overlay #db-right-col,
+  body.printing-report-overlay #db-main{
+    height:auto!important;min-height:0!important;overflow:visible!important;
+    display:block!important;
+  }
   body.printing-report-overlay #report-output-overlay{
     position:static!important;background:#fff!important;
     display:block!important;overflow:visible!important;
+    height:auto!important;min-height:0!important;
   }
   body.printing-report-overlay .ro-toolbar{display:none!important}
   body.printing-report-overlay .ro-scroll{
+    flex:none!important;height:auto!important;min-height:0!important;
     padding:0!important;background:#fff!important;overflow:visible!important;
   }
   body.printing-report-overlay .ro-content{
-    max-width:none!important;border:none!important;
-    box-shadow:none!important;border-radius:0!important;
-    padding:0!important;
+    max-width:none!important;width:100%!important;box-sizing:border-box!important;
+    border:none!important;box-shadow:none!important;border-radius:0!important;
+    padding:12px 16px!important;
   }
+  /* Keep every element within the printable width so Chrome prints at 100%
+     scale on a full A4 sheet instead of shrinking the page to fit overflow. */
+  body.printing-report-overlay .ro-content *{max-width:100%!important}
+  /* rc-tbl-wrap uses overflow-x:auto for on-screen scrolling; in print that
+     clips table columns. Override to visible so the fixed-layout table fills
+     the full page width instead of being clipped at the wrapper boundary. */
+  body.printing-report-overlay .rc-tbl-wrap{
+    overflow:visible!important;border:none!important;border-radius:0!important;
+  }
+  body.printing-report-overlay .rc-chart-wrap,
+  body.printing-report-overlay .rc-kpi-row,
+  body.printing-report-overlay table.rc-tbl{width:100%!important}
   body.printing-report-overlay table.rc-tbl{
     table-layout:fixed!important;width:100%!important;
     font-size:7.5px!important;
@@ -2805,13 +2958,120 @@ table.rc-tbl td:not(.rc-row-label){
     min-width:0!important;
   }
   body.printing-report-overlay .rc-kpi-row{
-    grid-template-columns:repeat(auto-fill,minmax(80px,1fr))!important;
+    display:grid!important;
+    grid-template-columns:repeat(4,1fr)!important;
     gap:5px!important;
+    width:100%!important;
+    box-sizing:border-box!important;
   }
   body.printing-report-overlay .rc-kpi-card{padding:6px 8px!important}
   body.printing-report-overlay .rc-kpi-val{font-size:12px!important}
   body.printing-report-overlay .rc-kpi-lbl{font-size:7px!important}
   body.printing-report-overlay .rc-narrative{page-break-inside:avoid}
-  /* Hide all other app content when printing overlay */
-  body.printing-report-overlay #app-view > *:not(#report-output-overlay){display:none!important}
+  body.printing-report-overlay .rc-chart-wrap{
+    page-break-inside:avoid;overflow:visible!important;
+  }
+  body.printing-report-overlay canvas{display:block!important;max-width:100%!important}
+  /* Hide every branch that is NOT on the overlay's ancestor chain, walking down
+     #app-view › #srwb-app › #db-right-col › #db-main › #report-output-overlay.
+     The overlay is nested 4 levels deep, so a single `#app-view > *` selector
+     would (wrongly) hide #srwb-app and blank the whole page. Hiding off-chain
+     siblings at each level keeps the overlay in normal flow so multi-page
+     reports (e.g. board packs) paginate correctly.
+     Also hide all body-level siblings of #app-view (#attr-footer, #alert-float,
+     #alert-drawer, #login-view etc.) which are position:fixed or in-flow elements
+     that bleed onto the print page as coloured strips if not explicitly hidden. */
+  body.printing-report-overlay > *:not(#app-view){display:none!important}
+  body.printing-report-overlay #app-view > *:not(#srwb-app){display:none!important}
+  body.printing-report-overlay #srwb-app > *:not(#db-right-col){display:none!important}
+  body.printing-report-overlay #db-right-col > *:not(#db-main){display:none!important}
+  body.printing-report-overlay #db-main > *:not(#report-output-overlay){display:none!important}
+}
+
+/* ── Robust fallback: clean print whenever the report overlay is OPEN ──────
+   The Print button calls printGeneratedReport() which adds .printing-report-overlay
+   and sets @page orientation. But a plain Ctrl+P (or browser menu → Print)
+   skips all of that, so the overlay would otherwise print with its raw on-screen
+   fixed-position layout — rotated and clipped. Keying the same isolation off
+   `#report-output-overlay.open` via :has() makes ANY print of an open report
+   come out clean, no JS required. (When the overlay is closed this matches
+   nothing, so normal dashboard-page printing is unaffected.) */
+@media print{
+  html:has(#report-output-overlay.open),
+  body:has(#report-output-overlay.open){height:auto!important;overflow:visible!important;background:#fff!important}
+  body:has(#report-output-overlay.open) #app-view,
+  body:has(#report-output-overlay.open) #srwb-app,
+  body:has(#report-output-overlay.open) #db-right-col,
+  body:has(#report-output-overlay.open) #db-main{
+    height:auto!important;min-height:0!important;overflow:visible!important;
+    display:block!important;position:static!important;
+  }
+  body:has(#report-output-overlay.open) > *:not(#app-view){display:none!important}
+  body:has(#report-output-overlay.open) #app-view > *:not(#srwb-app){display:none!important}
+  body:has(#report-output-overlay.open) #srwb-app > *:not(#db-right-col){display:none!important}
+  body:has(#report-output-overlay.open) #db-right-col > *:not(#db-main){display:none!important}
+  body:has(#report-output-overlay.open) #db-main > *:not(#report-output-overlay){display:none!important}
+  body:has(#report-output-overlay.open) #report-output-overlay{
+    position:static!important;display:block!important;background:#fff!important;
+    height:auto!important;min-height:0!important;overflow:visible!important;
+  }
+  body:has(#report-output-overlay.open) .ro-toolbar{display:none!important}
+  body:has(#report-output-overlay.open) .ro-scroll{
+    flex:none!important;height:auto!important;min-height:0!important;
+    padding:0!important;overflow:visible!important;display:block!important;background:#fff!important;
+  }
+  body:has(#report-output-overlay.open) .ro-content{
+    max-width:none!important;width:100%!important;box-sizing:border-box!important;
+    border:none!important;box-shadow:none!important;
+    border-radius:0!important;padding:12px 16px!important;
+  }
+  body:has(#report-output-overlay.open) .ro-content *{max-width:100%!important}
+  body:has(#report-output-overlay.open) .rc-tbl-wrap{
+    overflow:visible!important;border:none!important;border-radius:0!important;
+  }
+  body:has(#report-output-overlay.open) .rc-kpi-row{
+    display:grid!important;
+    grid-template-columns:repeat(4,1fr)!important;
+    gap:5px!important;
+    width:100%!important;
+    box-sizing:border-box!important;
+  }
+  body:has(#report-output-overlay.open) .rc-kpi-card{padding:6px 8px!important}
+  body:has(#report-output-overlay.open) .rc-kpi-val{font-size:12px!important}
+  body:has(#report-output-overlay.open) .rc-kpi-lbl{font-size:7px!important}
+  body:has(#report-output-overlay.open) table.rc-tbl{
+    table-layout:fixed!important;width:100%!important;font-size:7.5px!important;
+  }
+  body:has(#report-output-overlay.open) table.rc-tbl th,
+  body:has(#report-output-overlay.open) table.rc-tbl td{
+    padding:2px 4px!important;font-size:7.5px!important;
+    white-space:normal!important;word-break:break-word!important;min-width:0!important;
+  }
+  body:has(#report-output-overlay.open) table.rc-tbl td.rc-row-label{
+    width:22%!important;max-width:22%!important;min-width:0!important;
+  }
+}
+
+/* ═══════════════ REPORT CHARTS & SECTION INSIGHTS ════════════════════════ */
+.rc-chart-wrap{position:relative;width:100%;margin:6px 0 14px;border-radius:6px;overflow:hidden}
+.rc-chart-section{margin:16px 0 4px}
+.rc-chart-title{font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--ds-text-muted);margin-bottom:6px}
+
+/* Section insight callout */
+.rc-insight{display:flex;gap:10px;padding:10px 14px;margin:6px 0 10px;background:var(--ds-surface-raised,#f8fafc);border-left:3px solid #3b82f6;border-radius:0 6px 6px 0;font-size:12.5px;line-height:1.6;color:var(--ds-text-secondary,#374151)}
+.rc-insight-icon{color:#3b82f6;font-size:13px;margin-top:2px;flex-shrink:0;font-weight:700}
+.rc-insight-body{flex:1}
+
+/* Strategic plan progress bars */
+.rc-sp-bar-row{display:flex;align-items:center;gap:10px;padding:5px 0}
+.rc-sp-bar-label{font-size:11.5px;color:var(--ds-text-secondary);width:180px;flex-shrink:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.rc-sp-bar-track{flex:1;height:8px;background:var(--ds-border,#e2e8f0);border-radius:4px;overflow:hidden}
+.rc-sp-bar-fill{height:100%;border-radius:4px;transition:width .4s ease}
+.rc-sp-bar-pct{font-size:11px;color:var(--ds-text-muted);width:44px;text-align:right;flex-shrink:0}
+.rc-sp-bar-status{font-size:10px;font-weight:600;width:64px;flex-shrink:0;text-align:right}
+
+@media print{
+  .rc-chart-wrap{page-break-inside:avoid}
+  .rc-insight{background:#f8fafc!important;border-left-color:#3b82f6!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  body.printing-report-overlay .rc-insight{margin:4px 0 8px}
 }

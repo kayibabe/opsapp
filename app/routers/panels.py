@@ -12,6 +12,7 @@ Changes from v3:
 """
 from __future__ import annotations
 from collections import defaultdict
+from types import SimpleNamespace
 from typing import Optional
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import Float, Integer, Numeric
@@ -41,20 +42,38 @@ def _filter(q, zones=None, schemes=None, months=None, year=None):
 
 
 def _latest(rows):
-    """Latest row per (zone, scheme) that has actual data.
-    Falls back to the most recent row if all are empty."""
-    lv = {}        # latest with data
-    lv_any = {}    # latest regardless
+    """Latest known snapshot per (zone, scheme), with stock balances carried
+    forward.
+
+    Stock/balance fields (active customers, metered, debtors, population,
+    staff, connection balances, etc.) are typically recorded in only one
+    month and left blank/zero afterwards. A naive "latest row" loses the
+    balance whenever a later month carries flow data (production, billing) but
+    no fresh stock snapshot — which made e.g. Active Customers collapse to 0
+    under multi-month scopes.
+
+    This returns, per (zone, scheme), a synthesized row that carries forward
+    each numeric field's most recent NON-ZERO value (falling back to the
+    latest row's value). For single-month scopes there is one row per key, so
+    carry-forward is a no-op and per-month values are preserved.
+    """
+    cols = [c.name for c in Record.__table__.columns]
+    groups = defaultdict(list)
     for r in rows:
-        k = (r.zone, r.scheme)
-        if k not in lv_any or _lk(r) > _lk(lv_any[k]):
-            lv_any[k] = r
-        has_data = (r.active_customers or 0) > 0 or (r.vol_produced or 0) > 0 or (r.amt_billed or 0) > 0
-        if has_data and (k not in lv or _lk(r) > _lk(lv[k])):
-            lv[k] = r
-    # Use data-bearing row when available, otherwise fall back
-    merged = {k: lv.get(k, lv_any[k]) for k in lv_any}
-    return list(merged.values())
+        groups[(r.zone, r.scheme)].append(r)
+    result = []
+    for grp in groups.values():
+        grp.sort(key=_lk)                 # ascending by (year, month_no)
+        latest = grp[-1]
+        snap = {c: getattr(latest, c, None) for c in cols}
+        for c in cols:
+            for r in reversed(grp):       # newest first
+                v = getattr(r, c, None)
+                if isinstance(v, (int, float)) and not isinstance(v, bool) and v != 0:
+                    snap[c] = v
+                    break
+        result.append(SimpleNamespace(**snap))
+    return result
 
 
 def _latest_nonzero(rows, field):
@@ -81,10 +100,31 @@ def _nz_avg(rows, field, cap=None):
         v = getattr(r, field, 0) or 0
         if v > 0 and (cap is None or v <= cap):
             vals.append(v)
-    return round(sum(vals)/len(vals), 1) if vals else 0
+    return sum(vals)/len(vals) if vals else 0
 
 def _nz_sum(rows, field):
     return sum(getattr(r, field, 0) or 0 for r in rows)
+
+
+def _supply_daily(rows):
+    """Average daily supply hours, normalising a mixed source unit.
+
+    Some zones record ``supply_hours`` as a daily figure (<=24 h/day) while
+    others (e.g. Liwonde) record a monthly total (up to ~744 h). Converting
+    every value with a blanket ÷30.44 understated continuity ~6x and badged
+    healthy utilities as CRITICAL. Here each row is normalised individually:
+    a monthly-scale value (>31) is divided to a daily rate, a daily value is
+    kept as-is, and the result is capped at 24 h/day before averaging the
+    non-zero rows.
+    """
+    daily = []
+    for r in rows:
+        v = getattr(r, "supply_hours", 0) or 0
+        if v <= 0:
+            continue
+        d = (v / 30.44) if v > 31 else v
+        daily.append(min(24.0, d))
+    return round(sum(daily) / len(daily), 1) if daily else 0
 
 
 CHEM_INTENSITY_FIELDS = [
@@ -168,18 +208,23 @@ def _by_zone(rows):
         pw  = _nz_sum(zrows, 'power_cost')
         bi  = _nz_sum(zrows, 'amt_billed')
         ca  = _nz_sum(zrows, 'cash_collected')
+        _d_ind  = round(sum(r.disconnected_individual for r in lv))
+        _d_inst = round(sum(r.disconnected_inst       for r in lv))
+        _d_comm = round(sum(r.disconnected_commercial for r in lv))
+        _d_cwp  = round(sum(r.disconnected_cwp        for r in lv))
+        _d_raw  = round(sum(r.total_disconnected      for r in lv))
         entry = {
             "zone": zone, "color": ZONE_COLORS.get(zone,"#64748b"),
             "vol_produced":      round(vol,1),
             "revenue_water":     round(_nz_sum(zrows,'revenue_water'),1),
             "nrw":               round(nrw,1),
             "nrw_pct":           round(nrw/vol*100,2) if vol else 0,
-            "total_metered":     round(sum(r.total_metered     for r in lv)),
-            "total_disconnected":round(sum(r.total_disconnected for r in lv)),
-            "disconnected_individual": round(sum(r.disconnected_individual for r in lv)),
-            "disconnected_inst":       round(sum(r.disconnected_inst       for r in lv)),
-            "disconnected_commercial": round(sum(r.disconnected_commercial for r in lv)),
-            "disconnected_cwp":        round(sum(r.disconnected_cwp        for r in lv)),
+            "total_metered":     round(sum(r.total_metered for r in lv)),
+            "total_disconnected":      _d_raw or (_d_ind + _d_inst + _d_comm + _d_cwp),
+            "disconnected_individual": _d_ind,
+            "disconnected_inst":       _d_inst,
+            "disconnected_commercial": _d_comm,
+            "disconnected_cwp":        _d_cwp,
             "active_customers":  round(sum(r.active_customers  for r in lv)),
             "active_postpaid":   round(sum(r.active_postpaid   for r in lv)),
             "active_prepaid":    round(sum(r.active_prepaid    for r in lv)),
@@ -207,8 +252,11 @@ def _by_zone(rows):
             "chlorine_kg":       round(_nz_sum(zrows,'chlorine_kg'),1),
             "alum_kg":           round(_nz_sum(zrows,'alum_kg'),1),
             "soda_ash_kg":       round(_nz_sum(zrows,'soda_ash_kg'),1),
-            "pipe_breakdowns":   round(_nz_sum(zrows,'pipe_breakdowns')),
-            "pump_breakdowns":   round(_nz_sum(zrows,'pump_breakdowns')),
+            "pipe_breakdowns":   round(_nz_sum(zrows,'pipe_breakdowns')) if any(getattr(r,'pipe_breakdowns',None) is not None for r in zrows) else None,
+            "pump_breakdowns":   round(_nz_sum(zrows,'pump_breakdowns')) if any(getattr(r,'pump_breakdowns',None) is not None for r in zrows) else None,
+            "pump_hours_lost":   round(_nz_sum(zrows,'pump_hours_lost')),
+            "power_fail_hours":  round(_nz_sum(zrows,'power_fail_hours')),
+            "supply_hours":      _supply_daily(zrows),
             "pipe_pvc":          round(_nz_sum(zrows,'pipe_pvc')),
             "pipe_gi":           round(_nz_sum(zrows,'pipe_gi')),
             "pipe_di":           round(_nz_sum(zrows,'pipe_di')),
@@ -244,7 +292,8 @@ def _by_zone(rows):
         entry.update(_avg_field_map(zrows, CHEM_INTENSITY_FIELDS + ['power_kwh_per_m3', 'staff_per_1000m3_12h'], digits=3))
         entry.update(_sum_field_map(zrows, CUSTOMER_VOLUME_FIELDS + CONNECTION_FLOW_FIELDS + SEGMENT_REVENUE_FIELDS + PIPE_MATERIAL_SIZE_FIELDS + ['paid_up_applicants'], digits=2))
         entry.update(_latest_field_map(lv, CONNECTION_STOCK_FIELDS + STUCK_STOCK_FIELDS, digits=2))
-        entry.update(_sum_field_map(zrows, STUCK_FLOW_FIELDS + WORKFORCE_EFFICIENCY_FIELDS + ['connection_days'], digits=2))
+        entry.update(_sum_field_map(zrows, STUCK_FLOW_FIELDS + WORKFORCE_EFFICIENCY_FIELDS, digits=2))
+        entry.update(_avg_field_map(zrows, ['connection_days'], digits=1))
         result.append(entry)
     return result
 
@@ -275,6 +324,11 @@ def _monthly(rows):
         sales  = _nz_sum(mr, 'total_sales')
         opex   = _nz_sum(mr, 'op_cost')
         staff  = _nz_sum(mr, 'staff_costs')
+        _md_ind  = round(sum(r.disconnected_individual for r in lv))
+        _md_inst = round(sum(r.disconnected_inst       for r in lv))
+        _md_comm = round(sum(r.disconnected_commercial for r in lv))
+        _md_cwp  = round(sum(r.disconnected_cwp        for r in lv))
+        _md_raw  = round(sum(r.total_disconnected      for r in lv))
 
         entry = {
             "month": month, "has_data": True,
@@ -302,16 +356,16 @@ def _monthly(rows):
             "power_cost":         round(power, 2),
             "power_cost_per_m3":  round(power/vol, 2) if vol else 0,
             # supply_hours: cap at 744 (31d×24h) then convert to daily average
-            "supply_hours":       round(_nz_avg(mr, 'supply_hours', cap=744) / 30.44, 1),
+            "supply_hours":       _supply_daily(mr),
             "power_fail_hours":   round(_nz_sum(mr,'power_fail_hours')),
 
             # ── Customers (stock — latest per scheme) ─────────────────
-            "total_metered":          round(sum(r.total_metered          for r in lv)),
-            "total_disconnected":     round(sum(r.total_disconnected      for r in lv)),
-            "disconnected_individual":round(sum(r.disconnected_individual for r in lv)),
-            "disconnected_inst":      round(sum(r.disconnected_inst       for r in lv)),
-            "disconnected_commercial":round(sum(r.disconnected_commercial for r in lv)),
-            "disconnected_cwp":       round(sum(r.disconnected_cwp        for r in lv)),
+            "total_metered":          round(sum(r.total_metered for r in lv)),
+            "total_disconnected":      _md_raw or (_md_ind + _md_inst + _md_comm + _md_cwp),
+            "disconnected_individual": _md_ind,
+            "disconnected_inst":       _md_inst,
+            "disconnected_commercial": _md_comm,
+            "disconnected_cwp":        _md_cwp,
             "active_customers":       round(sum(r.active_customers        for r in lv)),
             "active_postpaid":        round(sum(r.active_postpaid         for r in lv)),
             "active_prepaid":         round(sum(r.active_prepaid          for r in lv)),
@@ -486,15 +540,138 @@ def _numeric_columns():
     return _NUMERIC_COLS
 
 
+_NULLABLE_SENTINEL_COLS = frozenset({'pipe_breakdowns', 'pump_breakdowns'})
+
+
 def _coerce_numeric_nulls(rows):
     """Treat NULL numeric metrics as 0 so the many raw sum() aggregations below
     never hit `int + None`. Rows are expunged first so these in-memory fixes are
-    never written back to the database (panels are read-only)."""
+    never written back to the database (panels are read-only).
+
+    Columns in _NULLABLE_SENTINEL_COLS are intentionally left as None so that
+    downstream code can distinguish "not yet entered" from "entered as zero".
+    _nz_sum handles None values safely via `or 0`."""
     cols = _numeric_columns()
     for r in rows:
         for name in cols:
+            if name in _NULLABLE_SENTINEL_COLS:
+                continue
             if getattr(r, name, None) is None:
                 setattr(r, name, 0)
+
+
+# Stock/balance fields (point-in-time snapshots, aggregated via _latest()).
+# Unlike flows (production, billing, breakdowns) these are NOT summed across
+# months; they are often recorded in a single month and left blank otherwise.
+STOCK_BALANCE_FIELDS = [
+    'active_customers', 'active_postpaid', 'active_prepaid',
+    'active_post_cwp', 'active_prep_cwp',
+    'active_post_individual', 'active_prep_individual',
+    'active_post_inst', 'active_prep_inst',
+    'active_post_commercial', 'active_prep_commercial',
+    'total_metered',
+    'total_disconnected', 'disconnected_individual', 'disconnected_inst',
+    'disconnected_commercial', 'disconnected_cwp',
+    'pop_supply_area', 'pop_supplied',
+    'perm_staff', 'temp_staff',
+    'total_debtors', 'private_debtors', 'public_debtors',
+    'stuck_meters', 'all_conn_bfwd', 'all_conn_cfwd',
+] + CONNECTION_STOCK_FIELDS + STUCK_STOCK_FIELDS
+
+
+def _backfill_stock_balances(rows, zones, schemes, year, db):
+    """Carry stock/balance snapshots into a month-filtered window.
+
+    Stock fields (active customers, staff, metered, debtors, stuck/connection
+    balances, population) are often booked in just one month of the year. When
+    the month filter excludes that month, the in-window rows hold no value and
+    the headline KPI would wrongly read 0. For each (zone, scheme) whose
+    in-window rows have no value for a stock field, we look up the latest
+    NON-ZERO value across the full fiscal year (same zone/scheme filters, no
+    month filter) and write it onto that key's latest in-window row, so the
+    downstream _latest()/_by_zone() aggregations report the true balance.
+    Flow fields are never touched.
+    """
+    by_key = defaultdict(list)
+    for r in rows:
+        by_key[(r.zone, r.scheme)].append(r)
+    if not by_key:
+        return
+    fy = _filter(db.query(Record), csv_list(zones), csv_list(schemes), None, year).all()
+    fy = _dedupe_rows(fy)
+    for r in fy:
+        db.expunge(r)
+    _coerce_numeric_nulls(fy)
+    fy_by_key = defaultdict(list)
+    for r in fy:
+        fy_by_key[(r.zone, r.scheme)].append(r)
+    for key, krows in by_key.items():
+        krows.sort(key=_lk)
+        latest_in_window = krows[-1]
+        fyrows = sorted(fy_by_key.get(key, []), key=_lk)
+        if not fyrows:
+            continue
+        for field in STOCK_BALANCE_FIELDS:
+            if any((getattr(r, field, 0) or 0) for r in krows):
+                continue  # window already has a value — keep it
+            val = 0
+            for r in reversed(fyrows):
+                v = getattr(r, field, 0) or 0
+                if v:
+                    val = v
+                    break
+            if val:
+                setattr(latest_in_window, field, val)
+
+
+def _crossfy_stock_backfill(rows, zones, schemes, year, db):
+    """Carry stock/balance values from the previous FY into the current window.
+
+    At the start of a new fiscal year the opening balance columns (e.g.
+    all_conn_bfwd, all_conn_cfwd, stuck_meters) are often not yet entered in
+    the zone workbooks.  Without this pass, those fields collapse to 0 even
+    though the prior FY's closing values are the correct opening estimates.
+
+    For each (zone, scheme) whose current-FY rows have no non-zero value for a
+    stock field, the latest non-zero value from the previous FY is written onto
+    that key's most-recent in-window row — so downstream aggregations surface
+    the best available balance rather than a misleading zero.
+
+    Flow fields are never touched (only STOCK_BALANCE_FIELDS are considered).
+    """
+    if not rows or not year:
+        return
+    by_key = defaultdict(list)
+    for r in rows:
+        by_key[(r.zone, r.scheme)].append(r)
+    if not by_key:
+        return
+
+    prev = _filter(db.query(Record), csv_list(zones), csv_list(schemes), None, year - 1).all()
+    if not prev:
+        return
+    prev = _dedupe_rows(prev)
+    for r in prev:
+        db.expunge(r)
+    _coerce_numeric_nulls(prev)
+    prev_by_key = defaultdict(list)
+    for r in prev:
+        prev_by_key[(r.zone, r.scheme)].append(r)
+
+    for key, krows in by_key.items():
+        krows.sort(key=_lk)
+        latest_in_window = krows[-1]
+        prevrows = sorted(prev_by_key.get(key, []), key=_lk)
+        if not prevrows:
+            continue
+        for field in STOCK_BALANCE_FIELDS:
+            if any((getattr(r, field, 0) or 0) for r in krows):
+                continue  # current FY already has a value — keep it
+            for r in reversed(prevrows):
+                v = getattr(r, field, 0) or 0
+                if v:
+                    setattr(latest_in_window, field, v)
+                    break
 
 
 def _base(zones, schemes, months, year, db):
@@ -506,6 +683,14 @@ def _base(zones, schemes, months, year, db):
     for r in rows:
         db.expunge(r)
     _coerce_numeric_nulls(rows)
+    # When a month filter is active, carry forward stock balances recorded
+    # outside the window so snapshot KPIs don't collapse to 0.
+    if months:
+        _backfill_stock_balances(rows, zones, schemes, year, db)
+    # When the current FY's opening balance columns are not yet entered,
+    # carry the previous FY's closing values forward across the FY boundary.
+    if year:
+        _crossfy_stock_backfill(rows, zones, schemes, year, db)
     return rows, _by_zone(rows), _monthly(rows)
 
 
@@ -517,28 +702,25 @@ def panel_production(zones:Optional[str]=None,schemes:Optional[str]=None,
                      db:Session=Depends(get_db)):
     rows,bz,mo=_base(zones,schemes,months,year,db)
     vol=_nz_sum(rows,'vol_produced'); nrw=_nz_sum(rows,'nrw')
+    rev_water=_nz_sum(rows,'revenue_water')
+    lv=_latest(rows)
+    pop=sum(r.pop_supplied for r in lv if r.pop_supplied)
+    active=sum(r.active_customers for r in lv if r.active_customers)
+    # IWA Op18: specific consumption = avg daily production per capita (L/capita/day)
+    months_with_data=sum(1 for m in mo if m.get('has_data'))
+    days_in_period=months_with_data*30.44 if months_with_data else 1
+    specific_consumption=round(vol/pop/days_in_period*1000,1) if (pop and vol) else None
+    # Revenue water per connection (m³/connection/month)
+    rev_per_conn=round(rev_water/active/months_with_data,1) if (active and months_with_data and rev_water) else None
     return {
         "kpi":{"vol_produced":round(vol,1),
-               "revenue_water":round(_nz_sum(rows,'revenue_water'),1),
+               "revenue_water":round(rev_water,1),
                "nrw":round(nrw,1),
-               "nrw_pct":round(nrw/vol*100,2) if vol else 0},
+               "nrw_pct":round(nrw/vol*100,2) if vol else 0,
+               "specific_consumption":specific_consumption,
+               "rev_water_per_conn":rev_per_conn},
         "by_zone":[{"zone":z["zone"],"color":z["color"],
                     "vol_produced":z["vol_produced"],"nrw_pct":z["nrw_pct"]} for z in bz],
-        "monthly":mo,
-    }
-
-@router.get("/nrw")
-def panel_nrw(zones:Optional[str]=None,schemes:Optional[str]=None,
-              months:Optional[str]=None,year:Optional[int]=None,
-              db:Session=Depends(get_db)):
-    rows,bz,mo=_base(zones,schemes,months,year,db)
-    vol=_nz_sum(rows,'vol_produced'); nrw=_nz_sum(rows,'nrw')
-    return {
-        "kpi":{"vol_produced":round(vol,1),"revenue_water":round(vol-nrw,1),
-               "nrw":round(nrw,1),"nrw_pct":round(nrw/vol*100,2) if vol else 0},
-        "by_zone":[{"zone":z["zone"],"color":z["color"],
-                    "revenue_water":z["revenue_water"],
-                    "nrw":z["nrw"],"nrw_pct":z["nrw_pct"]} for z in bz],
         "monthly":mo,
     }
 
@@ -547,14 +729,13 @@ def panel_wt_ei(zones:Optional[str]=None,schemes:Optional[str]=None,
                 months:Optional[str]=None,year:Optional[int]=None,
                 db:Session=Depends(get_db)):
     rows,bz,mo=_base(zones,schemes,months,year,db)
-    vol=max(_nz_sum(rows,'vol_produced'), 1)
+    vol=_nz_sum(rows,'vol_produced')
     chem=_nz_sum(rows,'chem_cost'); power=_nz_sum(rows,'power_cost')
     kwh=_nz_sum(rows,'power_kwh')
-    sh_raw   = _nz_avg(rows, 'supply_hours', cap=744)   # monthly hours per scheme
-    sh_daily = round(sh_raw / 30.44, 1) if sh_raw else 0  # convert to hours/day
+    sh_daily = _supply_daily(rows)   # avg daily supply hours (unit-normalised)
     return {
         "kpi":{
-            "chem_cost":round(chem,2),"chem_per_m3":round(chem/vol,2),
+            "chem_cost":round(chem,2),"chem_per_m3":round(chem/vol,2) if vol else 0,
             "chlorine_kg":round(_nz_sum(rows,'chlorine_kg'),1),
             "alum_kg":round(_nz_sum(rows,'alum_kg'),1),
             "soda_ash_kg":round(_nz_sum(rows,'soda_ash_kg'),1),
@@ -562,8 +743,8 @@ def panel_wt_ei(zones:Optional[str]=None,schemes:Optional[str]=None,
             "sud_floc_litres":round(_nz_sum(rows,'sud_floc_litres'),1),
             "kmno4_kg":round(_nz_sum(rows,'kmno4_kg'),1),
             "power_kwh":round(kwh,1),"power_cost":round(power,2),
-            "power_per_m3":round(power/vol,2),
-            "power_kwh_per_m3":round(_nz_avg(rows,'power_kwh_per_m3'),3),
+            "power_per_m3":round(power/vol,2) if vol else 0,
+            "power_kwh_per_m3":round(kwh/vol, 3) if vol else 0,
             "chlorine_kg_per_m3":round(_nz_avg(rows,'chlorine_kg_per_m3'),3),
             "alum_kg_per_m3":round(_nz_avg(rows,'alum_kg_per_m3'),3),
             "soda_ash_kg_per_m3":round(_nz_avg(rows,'soda_ash_kg_per_m3'),3),
@@ -589,13 +770,18 @@ def panel_customers(zones:Optional[str]=None,schemes:Optional[str]=None,
                     db:Session=Depends(get_db)):
     rows,bz,mo=_base(zones,schemes,months,year,db)
     lv=_latest(rows)
+    _disc_ind  = round(sum(r.disconnected_individual  for r in lv))
+    _disc_inst = round(sum(r.disconnected_inst        for r in lv))
+    _disc_comm = round(sum(r.disconnected_commercial  for r in lv))
+    _disc_cwp  = round(sum(r.disconnected_cwp         for r in lv))
+    _disc_raw  = round(sum(r.total_disconnected       for r in lv))
     return {
         "kpi":{"total_metered":round(sum(r.total_metered for r in lv)),
-               "total_disconnected":round(sum(r.total_disconnected for r in lv)),
-               "disconnected_individual":round(sum(r.disconnected_individual for r in lv)),
-               "disconnected_inst":round(sum(r.disconnected_inst for r in lv)),
-               "disconnected_commercial":round(sum(r.disconnected_commercial for r in lv)),
-               "disconnected_cwp":round(sum(r.disconnected_cwp for r in lv)),
+               "total_disconnected":_disc_raw or (_disc_ind + _disc_inst + _disc_comm + _disc_cwp),
+               "disconnected_individual":_disc_ind,
+               "disconnected_inst":_disc_inst,
+               "disconnected_commercial":_disc_comm,
+               "disconnected_cwp":_disc_cwp,
                "active_customers":round(sum(r.active_customers for r in lv)),
                "active_postpaid":round(sum(r.active_postpaid   for r in lv)),
                "active_prepaid":round(sum(r.active_prepaid     for r in lv)),
@@ -663,6 +849,22 @@ def panel_stuck(zones:Optional[str]=None,schemes:Optional[str]=None,
     new=_nz_sum(rows,'stuck_new'); rep=_nz_sum(rows,'stuck_repaired')
     repl=_nz_sum(rows,'stuck_replaced')
     active=sum(r.active_customers for r in lv) or 1
+
+    # Previous FY's March C/F → opening B/F for April of the current FY
+    prev_fy_march_cf = None
+    if year:
+        prev_rows = _filter(
+            db.query(Record),
+            csv_list(zones), csv_list(schemes), ['March'], year - 1,
+        ).all()
+        if prev_rows:
+            prev_rows = _dedupe_rows(prev_rows)
+            _coerce_numeric_nulls(prev_rows)
+            prev_lv = _latest(prev_rows)
+            v = sum(max(0, r.stuck_meters) for r in prev_lv)
+            if v:
+                prev_fy_march_cf = round(v)
+
     return {
         "kpi":{"stuck_meters":round(cf),"stuck_new":round(new),
                "stuck_repaired":round(rep),"stuck_replaced":round(repl),
@@ -672,6 +874,7 @@ def panel_stuck(zones:Optional[str]=None,schemes:Optional[str]=None,
                     "stuck_meters":z["stuck_meters"],"stuck_new":z["stuck_new"],
                     "stuck_repaired":z["stuck_repaired"]} for z in bz],
         "monthly":mo,
+        "prev_fy_march_cf":prev_fy_march_cf,
     }
 
 @router.get("/connectivity")
@@ -698,7 +901,22 @@ def panel_breakdowns(zones:Optional[str]=None,schemes:Optional[str]=None,
                      months:Optional[str]=None,year:Optional[int]=None,
                      db:Session=Depends(get_db)):
     rows,bz,mo=_base(zones,schemes,months,year,db)
-    pipe=_nz_sum(rows,'pipe_breakdowns'); pump=_nz_sum(rows,'pump_breakdowns')
+    # Fallback: derive pipe_breakdowns from material sub-totals when total DB field is 0.
+    # Mirrors the logic in panel_pipe_materials; handles missing "TOTAL Pipe Breakdowns" cells.
+    pipe_db = _nz_sum(rows,'pipe_breakdowns')
+    pipe = pipe_db or (_nz_sum(rows,'pipe_pvc') + _nz_sum(rows,'pipe_gi') +
+                       _nz_sum(rows,'pipe_di') + _nz_sum(rows,'pipe_hdpe_ac'))
+    pump=_nz_sum(rows,'pump_breakdowns')
+    for z in bz:
+        if not z.get('pipe_breakdowns'):
+            comp = z.get('pipe_pvc',0)+z.get('pipe_gi',0)+z.get('pipe_di',0)+z.get('pipe_hdpe_ac',0)
+            if comp:
+                z['pipe_breakdowns'] = comp
+    for m in mo:
+        if not m.get('pipe_breakdowns'):
+            comp = m.get('pipe_pvc',0)+m.get('pipe_gi',0)+m.get('pipe_di',0)+m.get('pipe_hdpe_ac',0)
+            if comp:
+                m['pipe_breakdowns'] = comp
     lv=_latest(rows); active=sum(r.active_customers for r in lv) or 1
     pvc_sizes=['pvc_20mm','pvc_25mm','pvc_32mm','pvc_40mm','pvc_50mm','pvc_63mm',
                'pvc_75mm','pvc_90mm','pvc_110mm','pvc_160mm','pvc_200mm','pvc_250mm','pvc_315mm']
@@ -947,14 +1165,20 @@ def panel_class_connections(zones:Optional[str]=None,schemes:Optional[str]=None,
                             db:Session=Depends(get_db)):
     rows,bz,mo=_base(zones,schemes,months,year,db)
     latest=_latest(rows)
+    _indiv = round(_nz_sum(rows,'conn_indiv_total_done'))
+    _inst  = round(_nz_sum(rows,'conn_inst_total_done'))
+    _comm  = round(_nz_sum(rows,'conn_comm_total_done'))
+    _cwp   = round(_nz_sum(rows,'conn_cwp_total_done'))
     return {
         "kpi":{
             "all_conn_applied":round(_nz_sum(rows,'all_conn_applied')),
-            "new_connections":round(_nz_sum(rows,'new_connections')),
-            "conn_indiv_total_done":round(_nz_sum(rows,'conn_indiv_total_done')),
-            "conn_inst_total_done":round(_nz_sum(rows,'conn_inst_total_done')),
-            "conn_comm_total_done":round(_nz_sum(rows,'conn_comm_total_done')),
-            "conn_cwp_total_done":round(_nz_sum(rows,'conn_cwp_total_done')),
+            # Compute total from class breakdown so it always reconciles with the
+            # four cards shown above it (vs. the independently-entered ALL Conn TOTAL Done).
+            "new_connections": _indiv + _inst + _comm + _cwp,
+            "conn_indiv_total_done":_indiv,
+            "conn_inst_total_done":_inst,
+            "conn_comm_total_done":_comm,
+            "conn_cwp_total_done":_cwp,
             "conn_indiv_cfwd":round(sum(r.conn_indiv_cfwd for r in latest)),
             "conn_inst_cfwd":round(sum(r.conn_inst_cfwd for r in latest)),
             "conn_comm_cfwd":round(sum(r.conn_comm_cfwd for r in latest)),
@@ -1007,13 +1231,20 @@ def panel_pipe_materials(zones:Optional[str]=None,schemes:Optional[str]=None,
                          months:Optional[str]=None,year:Optional[int]=None,
                          db:Session=Depends(get_db)):
     rows,bz,mo=_base(zones,schemes,months,year,db)
+    pipe_pvc    = round(_nz_sum(rows,'pipe_pvc'))
+    pipe_gi     = round(_nz_sum(rows,'pipe_gi'))
+    pipe_di     = round(_nz_sum(rows,'pipe_di'))
+    pipe_hdpe_ac= round(_nz_sum(rows,'pipe_hdpe_ac'))
+    pipe_db     = round(_nz_sum(rows,'pipe_breakdowns'))
+    # If the DB total is absent, compute from material sub-totals
+    pipe_breakdowns = pipe_db or (pipe_pvc + pipe_gi + pipe_di + pipe_hdpe_ac)
     return {
         "kpi":{
-            "pipe_breakdowns":round(_nz_sum(rows,'pipe_breakdowns')),
-            "pipe_pvc":round(_nz_sum(rows,'pipe_pvc')),
-            "pipe_gi":round(_nz_sum(rows,'pipe_gi')),
-            "pipe_di":round(_nz_sum(rows,'pipe_di')),
-            "pipe_hdpe_ac":round(_nz_sum(rows,'pipe_hdpe_ac')),
+            "pipe_breakdowns": pipe_breakdowns,
+            "pipe_pvc":        pipe_pvc,
+            "pipe_gi":         pipe_gi,
+            "pipe_di":         pipe_di,
+            "pipe_hdpe_ac":    pipe_hdpe_ac,
             **_sum_field_map(rows, PIPE_MATERIAL_SIZE_FIELDS, digits=0),
         },
         "by_zone":[
@@ -1054,10 +1285,11 @@ def panel_executive(zones: Optional[str] = None, schemes: Optional[str] = None,
     stuck     = sum(max(0, r.stuck_meters) for r in lv)
     queries   = _nz_sum(rows, 'queries_received')
     power_kwh = _nz_sum(rows, 'power_kwh')
-    supply_raw = _nz_avg(rows, 'supply_hours', cap=744)
-    supply_daily = round(supply_raw / 30.44, 1) if supply_raw else 0
-    pipe_breakdowns = _nz_sum(rows, 'pipe_breakdowns')
-    pump_breakdowns = _nz_sum(rows, 'pump_breakdowns')
+    supply_daily = _supply_daily(rows)
+    _pipe_has_data  = any(getattr(r,'pipe_breakdowns',None) is not None for r in rows)
+    _pump_has_data  = any(getattr(r,'pump_breakdowns',None) is not None for r in rows)
+    pipe_breakdowns = _nz_sum(rows, 'pipe_breakdowns') if _pipe_has_data else None
+    pump_breakdowns = _nz_sum(rows, 'pump_breakdowns') if _pump_has_data else None
     vol_billed = (_nz_sum(rows, 'total_vol_billed_pp')
                   + _nz_sum(rows, 'total_vol_billed_prepaid'))
     avg_tariff = round(revenue / vol_billed, 2) if vol_billed else 0
@@ -1150,7 +1382,7 @@ def panel_executive(zones: Optional[str] = None, schemes: Optional[str] = None,
             "op_ratio": round(z_opex / z_rev, 2) if z_rev else 0,
             "rev_per_conn": round(z_rev / z_active, 0) if z_active else 0,
             "active_customers": round(z_active),
-            "breakdowns_total": round(z.get("pipe_breakdowns", 0) + z.get("pump_breakdowns", 0)),
+            "breakdowns_total": None if z.get("pipe_breakdowns") is None else round((z.get("pipe_breakdowns") or 0) + (z.get("pump_breakdowns") or 0)),
             "nrw_trend": nrw_trend,
         })
 
@@ -1172,7 +1404,7 @@ def panel_executive(zones: Optional[str] = None, schemes: Optional[str] = None,
         "portfolio": {
             "active_customers": round(active),
             "supply_hours_avg": supply_daily,
-            "total_breakdowns": round(pipe_breakdowns + pump_breakdowns),
+            "total_breakdowns": None if pipe_breakdowns is None else round((pipe_breakdowns or 0) + (pump_breakdowns or 0)),
             "queries_received": round(queries),
             "zones_covered": len(zone_snap),
             "schemes_covered": len({(r.zone, r.scheme) for r in lv}),
@@ -1183,157 +1415,173 @@ def panel_executive(zones: Optional[str] = None, schemes: Optional[str] = None,
         "record_count": len(rows),
     }
 
+# ══ SP-aligned quick-win departmental panels ═══════════════════════════════
+# Each reuses _base() (same FY/zone/scheme/month scoping and the full monthly
+# series) and exposes a tailored KPI block + by_zone slice for its page.
 
-
-# ═══════════════════════════════════════════════════════════════════════════
-# EXECUTIVE DASHBOARD — derived KPIs (IWA / IBNET aligned)
-# ═══════════════════════════════════════════════════════════════════════════
-
-@router.get("/executive")
-def panel_executive(zones: Optional[str] = None, schemes: Optional[str] = None,
-                    months: Optional[str] = None, year: Optional[int] = None,
-                    db: Session = Depends(get_db)):
+@router.get("/nrw")
+def panel_nrw(zones: Optional[str] = None, schemes: Optional[str] = None,
+              months: Optional[str] = None, year: Optional[int] = None,
+              db: Session = Depends(get_db)):
     rows, bz, mo = _base(zones, schemes, months, year, db)
-    if not rows:
-        return {"financial": {}, "nrw": {}, "service": {}, "zones": [], "trends": {}}
-
-    lv = _latest(rows)
-    data_months = [m for m in mo if m.get("has_data")]
-    n_months = len(data_months)
-
-    # Aggregates
-    revenue   = _nz_sum(rows, "amt_billed")
-    cash      = _nz_sum(rows, "cash_collected")
-    opex      = _nz_sum(rows, "op_cost")
-    vol_prod  = _nz_sum(rows, "vol_produced")
-    nrw_vol   = _nz_sum(rows, "nrw")
-    total_dbt = sum(max(0, r.total_debtors) for r in lv)
-    active    = sum(max(0, r.active_customers) for r in lv)
-    metered   = sum(max(0, r.total_metered) for r in lv)
-    stuck     = sum(max(0, r.stuck_meters) for r in lv)
-    queries   = _nz_sum(rows, "queries_received")
-    power_kwh = _nz_sum(rows, "power_kwh")
-    vol_billed = (_nz_sum(rows, "total_vol_billed_pp")
-                  + _nz_sum(rows, "total_vol_billed_prepaid"))
-    avg_tariff = round(revenue / vol_billed, 2) if vol_billed else 0
-
-    # 1. Financial Health Ratios
-    op_ratio    = round(opex / revenue, 2) if revenue else 0
-    monthly_rev = revenue / n_months if n_months else 0
-    dso         = round(total_dbt / monthly_rev * 30, 0) if monthly_rev else 0
-    rev_per_conn = round(revenue / active, 0) if active else 0
-    net_margin  = round((revenue - opex) / revenue * 100, 1) if revenue else 0
-
-    financial = {
-        "op_ratio": op_ratio,
-        "op_ratio_flag": "GOOD" if op_ratio < 0.8 else ("WATCH" if op_ratio < 1.0 else "HIGH"),
-        "dso": dso,
-        "dso_flag": "GOOD" if dso < 60 else ("WATCH" if dso < 90 else "HIGH"),
-        "rev_per_conn": rev_per_conn,
-        "net_margin": net_margin,
-        "net_margin_flag": "GOOD" if net_margin > 50 else ("WATCH" if net_margin > 20 else "LOW"),
-        "collection_rate": round(cash / revenue * 100, 1) if revenue else 0,
-        "collection_rate_flag": "GOOD" if (cash / revenue * 100 if revenue else 0) >= 90 else ("WATCH" if (cash / revenue * 100 if revenue else 0) >= 75 else "HIGH"),
-        "cash_collected": round(cash, 2),
-        "amt_billed": round(revenue, 2),
-    }
-
-    # 2. NRW Intelligence
-    nrw_pct      = round(nrw_vol / vol_prod * 100, 1) if vol_prod else 0
-    nrw_cost     = round(nrw_vol * avg_tariff, 0)
-    nrw_per_conn = round(nrw_cost / active * 12 / max(n_months, 1), 0) if active else 0
-
-    nrw_intel = {
-        "nrw_vol": round(nrw_vol, 0),
-        "vol_produced": round(vol_prod, 0),
-        "nrw_pct": nrw_pct,
-        "nrw_cost": nrw_cost,
-        "nrw_per_conn_yr": nrw_per_conn,
-        "avg_tariff": avg_tariff,
-        "bnm_pct": 20.0,
-    }
-
-    # 3. Service Quality & Asset Health
-    energy_int   = round(power_kwh / vol_prod, 2) if vol_prod else 0
-    meter_read   = round((metered - stuck) / metered * 100, 1) if metered else 0
-    comp_1000    = round(queries / active * 1000, 0) if active else 0
-
-    service = {
-        "energy_intensity": energy_int,
-        "meter_read_rate": meter_read,
-        "stuck_meters": int(stuck),
-        "stuck_pct": round(stuck / metered * 100, 1) if metered else 0,
-        "complaints_1000": int(comp_1000),
-        "complaints_flag": "LOW" if comp_1000 < 30 else ("MONITOR" if comp_1000 < 60 else "HIGH"),
-        "supply_hours_avg": supply_daily,
-    }
-
-    # 4. Zone Snapshot (enhanced)
-    zone_rows = defaultdict(list)
-    for r in rows:
-        zone_rows[r.zone].append(r)
-
-    zone_snap = []
-    for z in bz:
-        zn = z["zone"]
-        zr = zone_rows.get(zn, [])
-        z_rev = z.get("amt_billed", 0) or 0
-        z_opex = z.get("op_cost", 0) or 0
-        z_active = z.get("active_customers", 0) or 0
-        z_dbt = z.get("total_debtors", 0) or 0
-        z_nm = len(set(_lk(r) for r in zr))
-        z_mr = z_rev / z_nm if z_nm else 0
-        z_dso = round(z_dbt / z_mr * 30, 0) if z_mr else 0
-
-        # sparkline NRW trend
-        md = defaultdict(list)
-        for r in zr:
-            md[_lk(r)].append(r)
-        nrw_trend = []
-        for key in sorted(md.keys()):
-            mr = md[key]
-            v = _nz_sum(mr, "vol_produced")
-            n = _nz_sum(mr, "nrw")
-            nrw_trend.append(round(n / v * 100, 1) if v else 0)
-
-        zone_snap.append({
-            "zone": zn, "color": z.get("color", "#64748b"),
-            "schemes": len(set(r.scheme for r in zr)),
-            "nrw_pct": z.get("nrw_pct", 0),
-            "collection_rate": z.get("collection_rate", 0),
-            "dso": z_dso,
-            "op_ratio": round(z_opex / z_rev, 2) if z_rev else 0,
-            "rev_per_conn": round(z_rev / z_active, 0) if z_active else 0,
-            "active_customers": round(z_active),
-            "breakdowns_total": round(z.get("pipe_breakdowns", 0) + z.get("pump_breakdowns", 0)),
-            "nrw_trend": nrw_trend,
-        })
-
-    # 5. Trend series
-    trends = {
-        "labels":    [m["month"] for m in data_months],
-        "production": [m.get("vol_produced", 0) for m in data_months],
-        "billed":    [m.get("amt_billed", 0) for m in data_months],
-        "collected": [m.get("cash_collected", 0) for m in data_months],
-        "nrw_pct":   [m.get("pct_nrw", 0) for m in data_months],
-        "zone_nrw": [{"zone": z["zone"], "color": z.get("color", "#64748b"),
-                      "nrw_pct": z.get("nrw_pct", 0)} for z in bz],
-    }
-
+    prod = _nz_sum(rows, "vol_produced")
+    sold = _nz_sum(rows, "revenue_water")
+    nrw = _nz_sum(rows, "nrw")
+    pct = round(nrw / prod * 100, 2) if prod else 0
+    # Economic NRW: volume lost × avg revenue per m³ (total_sales / revenue_water)
+    total_sales = _nz_sum(rows, "total_sales")
+    avg_tariff = total_sales / sold if sold else 0
+    economic_nrw = round(nrw * avg_tariff, 2) if (nrw and avg_tariff) else None
     return {
-        "financial": financial,
-        "nrw": nrw_intel,
-        "service": service,
-        "portfolio": {
-            "active_customers": round(active),
-            "supply_hours_avg": supply_daily,
-            "total_breakdowns": round(pipe_breakdowns + pump_breakdowns),
-            "queries_received": round(queries),
-            "zones_covered": len(zone_snap),
-            "schemes_covered": len({(r.zone, r.scheme) for r in lv}),
-            "months_with_data": n_months,
+        "kpi": {
+            "vol_produced": round(prod), "water_sold": round(sold),
+            "nrw_volume": round(nrw), "pct_nrw": pct,
+            "target_nrw": 25.0, "gap_to_target": round(pct - 25.0, 1),
+            "economic_nrw": economic_nrw, "avg_tariff_per_m3": round(avg_tariff, 2),
         },
-        "zones": zone_snap,
-        "trends": trends,
-        "record_count": len(rows),
+        "by_zone": [{"zone": z["zone"], "color": z["color"],
+                     "nrw_pct": z["nrw_pct"], "vol_produced": z["vol_produced"],
+                     "nrw": z["nrw"]} for z in bz],
+        "monthly": mo,
+    }
+
+
+@router.get("/metering")
+def panel_metering(zones: Optional[str] = None, schemes: Optional[str] = None,
+                   months: Optional[str] = None, year: Optional[int] = None,
+                   db: Session = Depends(get_db)):
+    rows, bz, mo = _base(zones, schemes, months, year, db)
+    lv = _latest(rows)
+    post = sum(r.active_postpaid for r in lv)
+    pre  = sum(r.active_prepaid  for r in lv)
+    tot  = post + pre
+    metered = sum(r.total_metered for r in lv)
+    return {
+        "kpi": {
+            "active_postpaid":       round(post),
+            "active_prepaid":        round(pre),
+            "prepaid_share":         round(pre / tot * 100, 1) if tot else 0,
+            "prepaid_installed":     round(_nz_sum(rows, "prepaid_meters_installed")),
+            "total_metered":         round(metered),
+            "metering_ratio":        min(100.0, round(metered / tot * 100, 1)) if tot else 0,
+            "active_customers":      round(tot),
+            "active_post_individual":round(sum(r.active_post_individual for r in lv)),
+            "active_post_inst":      round(sum(r.active_post_inst       for r in lv)),
+            "active_post_commercial":round(sum(r.active_post_commercial for r in lv)),
+            "active_post_cwp":       round(sum(r.active_post_cwp        for r in lv)),
+            "active_prep_individual":round(sum(r.active_prep_individual for r in lv)),
+            "active_prep_inst":      round(sum(r.active_prep_inst       for r in lv)),
+            "active_prep_commercial":round(sum(r.active_prep_commercial for r in lv)),
+            "active_prep_cwp":       round(sum(r.active_prep_cwp        for r in lv)),
+        },
+        "by_zone": [{"zone": z["zone"], "color": z["color"],
+                     "active_postpaid": z["active_postpaid"],
+                     "active_prepaid":  z["active_prepaid"]} for z in bz],
+        "monthly": mo,
+    }
+
+
+@router.get("/profitability")
+def panel_profitability(zones: Optional[str] = None, schemes: Optional[str] = None,
+                        months: Optional[str] = None, year: Optional[int] = None,
+                        db: Session = Depends(get_db)):
+    rows, bz, mo = _base(zones, schemes, months, year, db)
+    rev = _nz_sum(rows, "total_sales")
+    opex = _nz_sum(rows, "op_cost")
+    billed = _nz_sum(rows, "amt_billed")
+    cash = _nz_sum(rows, "cash_collected")
+    profit = rev - opex
+    return {
+        "kpi": {
+            "total_sales": round(rev, 2), "op_cost": round(opex, 2),
+            "operating_profit": round(profit, 2),
+            "op_margin": round(profit / rev * 100, 1) if rev else 0,
+            "op_ratio": round(opex / rev * 100, 1) if rev else 0,
+            "amt_billed": round(billed, 2), "cash_collected": round(cash, 2),
+            "collection_rate": round(cash / billed * 100, 1) if billed else 0,
+        },
+        "by_zone": [{"zone": z["zone"], "color": z["color"],
+                     "total_sales": z["total_sales"], "op_cost": z["op_cost"],
+                     "operating_profit": round(z["total_sales"] - z["op_cost"], 2)} for z in bz],
+        "monthly": mo,
+    }
+
+
+@router.get("/disconnections")
+def panel_disconnections(zones: Optional[str] = None, schemes: Optional[str] = None,
+                         months: Optional[str] = None, year: Optional[int] = None,
+                         db: Session = Depends(get_db)):
+    rows, bz, mo = _base(zones, schemes, months, year, db)
+    lv = _latest(rows)
+    disc_ind  = round(sum(r.disconnected_individual  for r in lv))
+    disc_inst = round(sum(r.disconnected_inst        for r in lv))
+    disc_comm = round(sum(r.disconnected_commercial  for r in lv))
+    disc_cwp  = round(sum(r.disconnected_cwp         for r in lv))
+    disc_raw  = round(sum(r.total_disconnected       for r in lv))
+    # If the DB total is absent, derive it from the breakdown columns
+    disc = disc_raw or (disc_ind + disc_inst + disc_comm + disc_cwp)
+    active = sum(r.active_customers for r in lv)
+    return {
+        "kpi": {
+            "total_disconnected":     disc,
+            "disconnected_individual": disc_ind,
+            "disconnected_inst":       disc_inst,
+            "disconnected_commercial": disc_comm,
+            "disconnected_cwp":        disc_cwp,
+            "active_customers": round(active),
+            "disconnection_rate": round(disc / (active + disc) * 100, 1) if (active + disc) else 0,
+        },
+        "by_zone": [{"zone": z["zone"], "color": z["color"],
+                     "total_disconnected": z["total_disconnected"]} for z in bz],
+        "monthly": mo,
+    }
+
+
+@router.get("/staff-productivity")
+def panel_staff_productivity(zones: Optional[str] = None, schemes: Optional[str] = None,
+                             months: Optional[str] = None, year: Optional[int] = None,
+                             db: Session = Depends(get_db)):
+    rows, bz, mo = _base(zones, schemes, months, year, db)
+    lv = _latest(rows)
+    perm = sum(r.perm_staff for r in lv)
+    temp = sum(r.temp_staff for r in lv)
+    total = perm + temp
+    active = sum(r.active_customers for r in lv)
+    prod = _nz_sum(rows, "vol_produced")
+    return {
+        "kpi": {
+            "perm_staff": round(perm), "temp_staff": round(temp), "total_staff": round(total),
+            "staff_per_1000conn": round(total / active * 1000, 1) if active else 0,
+            # Use the captured, normalised SP indicator (staff per 1,000 m³ /12h)
+            # rather than a raw annual ratio so it is comparable to the SP target.
+            "staff_per_1000m3": round(_nz_avg(rows, "staff_per_1000m3_12h"), 2),
+            "staff_cost": round(_nz_sum(rows, "staff_costs") + _nz_sum(rows, "wages"), 2),
+            "target_per_1000conn": 13, "target_per_1000m3": 8,
+        },
+        "by_zone": [{"zone": z["zone"], "color": z["color"],
+                     "staff_per_1000m3_12h": z.get("staff_per_1000m3_12h", 0)} for z in bz],
+        "monthly": mo,
+    }
+
+
+@router.get("/supply-continuity")
+def panel_supply_continuity(zones: Optional[str] = None, schemes: Optional[str] = None,
+                            months: Optional[str] = None, year: Optional[int] = None,
+                            db: Session = Depends(get_db)):
+    rows, bz, mo = _base(zones, schemes, months, year, db)
+    daily = _supply_daily(rows)
+    zd = defaultdict(list)
+    for r in rows:
+        zd[r.zone].append(r)
+    zone_supply = [{"zone": z, "color": ZONE_COLORS.get(z, "#64748b"),
+                    "supply_hours": _supply_daily(zr)} for z, zr in sorted(zd.items())]
+    return {
+        "kpi": {
+            "supply_hours": daily, "target_hours": 21,
+            "gap_to_target": round(daily - 21, 1),
+            "power_fail_hours": round(_nz_sum(rows, "power_fail_hours")),
+            "continuity_pct": round(daily / 24 * 100, 1),
+        },
+        "by_zone": zone_supply,
+        "monthly": mo,
     }
