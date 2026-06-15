@@ -7859,23 +7859,93 @@ function _rcNRWAnalysis(d,narrative,alerts){
 /* ── Scheme Performance ──────────────────────────────────────────────────── */
 function _rcSchemePerf(d,narrative,alerts){
   const schemes=d.schemes||[], tot=d.totals||{};
-  let h=_rcSectionHdr(`Scheme Performance (${schemes.length} schemes)`);
+  const NRW_TARGET=d.nrw_target||27;
+
+  /* ── 1. Overview KPI tiles ── */
+  let h=_rcSectionHdr(`Scheme Performance Overview — ${tot.scheme_count||schemes.length} Schemes`);
+  h+=_rcKpiRow([
+    {val:_rcPct(tot.nrw_pct),          lbl:'System NRW',       sub:`Target <${NRW_TARGET}%`,  tone:_rcTone(tot.nrw_pct,NRW_TARGET,NRW_TARGET+8,true)},
+    {val:_rcPct(tot.collection_rate),  lbl:'Collection Rate',  sub:'IBNET >90%',              tone:_rcTone(tot.collection_rate,90,75)},
+    {val:_rcFmt(tot.active_customers), lbl:'Active Customers', sub:'All Schemes'},
+    {val:_rcMK(tot.total_debtors),     lbl:'Total Debtors',    sub:`DSO ${_rcFmt(tot.dso)} days`},
+    {val:_rcFmt(tot.total_breakdowns), lbl:'Breakdowns',       sub:'Pipe + Pump YTD'},
+    {val:_rcFmt((tot.vol_produced||0)/1000,1)+'K m³', lbl:'Vol Produced', sub:'YTD'},
+  ]);
+
   if(!schemes.length) return h+'<p style="padding:12px;color:var(--ds-text-muted)">No scheme data for selected filter.</p>';
-  const rows=schemes.map(s=>[s.scheme,s.zone,_rcFmt(s.vol_produced),_rcPct(s.nrw_pct),_rcFmt(s.active_customers),_rcMK(s.cash_collected),_rcMK(s.total_debtors),_rcFmt(s.total_breakdowns)]);
-  if(tot.vol_produced) rows.push([`<strong>TOTAL</strong>`,'—',`<strong>${_rcFmt(tot.vol_produced)}</strong>`,`<strong>${_rcPct(tot.nrw_pct)}</strong>`,`<strong>${_rcFmt(tot.active_customers)}</strong>`,`<strong>${_rcMK(tot.cash_collected)}</strong>`,`<strong>${_rcMK(tot.total_debtors)}</strong>`,`<strong>${_rcFmt(tot.total_breakdowns)}</strong>`]);
-  h+=_rcTable(['Scheme','Zone','Vol Produced (m³)','NRW %','Active Customers','Cash Collected','Debtors','Breakdowns'],rows,'Scheme Performance');
-  const withNrw=schemes.filter(s=>s.nrw_pct!=null);
-  if(withNrw.length){
-    const bestS=withNrw.reduce((a,b)=>b.nrw_pct<a.nrw_pct?b:a,withNrw[0]);
-    const worstS=withNrw.reduce((a,b)=>b.nrw_pct>a.nrw_pct?b:a,withNrw[0]);
-    const above=withNrw.filter(s=>s.nrw_pct>27).length;
-    h+=_rcInsight(`${bestS.scheme} (${bestS.zone}) has the lowest NRW at ${_rcPct(bestS.nrw_pct)}, while ${worstS.scheme} (${worstS.zone}) is the highest at ${_rcPct(worstS.nrw_pct)}. ${above} of ${withNrw.length} schemes exceed the 27% loss target. Scheme-level loss reduction should focus on the highest-NRW schemes first.`);
-    const top=withNrw.slice().sort((a,b)=>b.nrw_pct-a.nrw_pct).slice(0,10);
-    h+=_rcChart('bar',top.map(s=>s.scheme.length>14?s.scheme.slice(0,12)+'…':s.scheme),[
-      {label:'NRW %',data:top.map(s=>s.nrw_pct||0),backgroundColor:top.map(s=>s.nrw_pct>27?RC_C[3]:RC_C[1]),borderRadius:4},
-      {label:'27% Target',type:'line',data:top.map(()=>27),borderColor:'#94a3b8',borderDash:[5,5],pointRadius:0,fill:false},
-    ],{height:200,chartOptions:{scales:{y:{title:{display:true,text:'NRW %',font:{size:10}},suggestedMax:50}}}});
+
+  /* ── 2. Status snapshot ── */
+  const highNrw=schemes.filter(s=>(s.nrw_pct||0)>NRW_TARGET);
+  const lowColl=schemes.filter(s=>(s.collection_rate||0)<90);
+  h+=_rcInsight(`${schemes.length-highNrw.length} of ${schemes.length} schemes are within the ${NRW_TARGET}% NRW target; ${highNrw.length} exceed it and require loss-reduction intervention. ${lowColl.length} scheme${lowColl.length!==1?'s':''} fall below the IBNET 90% collection benchmark.`);
+
+  /* ── 3. Zone-grouped detail tables ── */
+  h+=_rcSectionHdr('Scheme Detail by Zone');
+  const byZone={};
+  for(const s of schemes){if(!byZone[s.zone])byZone[s.zone]=[];byZone[s.zone].push(s);}
+  for(const [zone,zs] of Object.entries(byZone)){
+    const zColor=zs[0].zone_color||'#64748b';
+    h+=`<div style="margin:14px 0 4px"><span style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;padding:2px 10px;border-radius:4px;color:${zColor};background:color-mix(in srgb,${zColor} 14%,transparent)">${zone}</span></div>`;
+    const tRows=zs.map(s=>[
+      s.scheme,
+      `<span style="display:inline-block;padding:1px 7px;border-radius:3px;font-size:10px;font-weight:700;background:${s.nrw_flag==='GOOD'?'rgba(16,185,129,.15)':'rgba(239,68,68,.15)'};color:${s.nrw_flag==='GOOD'?'#10b981':'#ef4444'}">${_rcPct(s.nrw_pct)} ${s.nrw_flag||''}</span>`,
+      _rcFmt(s.vol_produced),
+      _rcFmt(s.active_customers),
+      _rcMK(s.amt_billed),
+      _rcMK(s.cash_collected),
+      `<span style="color:${(s.collection_rate||0)>=90?'#10b981':(s.collection_rate||0)>=75?'#f59e0b':'#ef4444'}">${_rcPct(s.collection_rate)}</span>`,
+      _rcMK(s.total_debtors),
+      `${_rcFmt(s.dso)} d`,
+      _rcFmt(s.total_breakdowns),
+      s.op_cost_per_m3?`MWK ${_rcFmt(s.op_cost_per_m3,2)}`:'—',
+    ]);
+    h+=_rcTable(['Scheme','NRW','Vol (m³)','Customers','Billed','Collected','Coll.%','Debtors','DSO','Breakdowns','Op/m³'],tRows,`${zone} Schemes`);
   }
+
+  /* ── 4. NRW by scheme chart (all, worst first) ── */
+  const byNrw=schemes.slice().sort((a,b)=>(b.nrw_pct||0)-(a.nrw_pct||0));
+  h+=_rcSectionHdr('NRW by Scheme');
+  h+=_rcInsight(`${highNrw.length>0?highNrw.map(s=>s.scheme).join(', ')+` record${highNrw.length>1?'':'s'} losses above ${NRW_TARGET}% — prioritise physical loss audits and meter replacements in these schemes.`:'All schemes are within the NRW target.'}`);
+  h+=_rcChart('bar',byNrw.map(s=>s.scheme.length>14?s.scheme.slice(0,12)+'…':s.scheme),[
+    {label:'NRW %',data:byNrw.map(s=>s.nrw_pct||0),backgroundColor:byNrw.map(s=>(s.nrw_pct||0)>NRW_TARGET?RC_C[3]:RC_C[1]),borderRadius:4},
+    {label:`${NRW_TARGET}% Target`,type:'line',data:byNrw.map(()=>NRW_TARGET),borderColor:'#94a3b8',borderDash:[5,5],pointRadius:0,fill:false},
+  ],{height:220,chartOptions:{scales:{y:{title:{display:true,text:'NRW %',font:{size:10}},suggestedMax:50}}}});
+
+  /* ── 5. Collection rate chart ── */
+  const byColl=schemes.slice().sort((a,b)=>(a.collection_rate||0)-(b.collection_rate||0));
+  h+=_rcSectionHdr('Collection Rate by Scheme');
+  h+=_rcChart('bar',byColl.map(s=>s.scheme.length>14?s.scheme.slice(0,12)+'…':s.scheme),[
+    {label:'Collection Rate %',data:byColl.map(s=>s.collection_rate||0),backgroundColor:byColl.map(s=>(s.collection_rate||0)>=90?RC_C[1]:(s.collection_rate||0)>=75?RC_C[2]:RC_C[3]),borderRadius:4},
+    {label:'90% Target',type:'line',data:byColl.map(()=>90),borderColor:'#94a3b8',borderDash:[5,5],pointRadius:0,fill:false},
+  ],{height:220,chartOptions:{scales:{y:{title:{display:true,text:'Collection %',font:{size:10}},max:110}}}});
+
+  /* ── 6. Composite league table ── */
+  h+=_rcSectionHdr('Scheme League Table — Composite Score');
+  h+=`<p style="font-size:11px;color:var(--ds-text-muted);margin:0 0 8px 0">NRW performance 35% · Collection rate 35% · Operational efficiency 20% · Customer base 10%</p>`;
+  const maxCust=Math.max(...schemes.map(s=>s.active_customers||0),1);
+  const scored=schemes.map(s=>{
+    const nrwS=Math.max(0,Math.min(100,(NRW_TARGET/Math.max(s.nrw_pct||NRW_TARGET,0.01))*100));
+    const collS=Math.min(100,((s.collection_rate||0)/90)*100);
+    const effS=s.op_cost_per_m3?Math.max(0,Math.min(100,100-s.op_cost_per_m3*5)):50;
+    const custS=Math.min(100,((s.active_customers||0)/maxCust)*100);
+    return{...s,composite:Math.round(nrwS*.35+collS*.35+effS*.2+custS*.1)};
+  }).sort((a,b)=>b.composite-a.composite);
+  const medalOf=i=>i===0?'🥇':i===1?'🥈':i===2?'🥉':'';
+  h+=_rcTable(['#','Scheme','Zone','Score','NRW %','Coll. Rate','Debtors','DSO','Breakdowns'],
+    scored.map((s,i)=>[
+      `${medalOf(i)} ${i+1}`,
+      s.scheme,
+      s.zone,
+      `<strong style="color:${s.composite>=70?'#10b981':s.composite>=50?'#f59e0b':'#ef4444'}">${s.composite}/100</strong>`,
+      _rcPct(s.nrw_pct),
+      _rcPct(s.collection_rate),
+      _rcMK(s.total_debtors),
+      `${_rcFmt(s.dso)} d`,
+      _rcFmt(s.total_breakdowns),
+    ]),'Scheme League Table');
+  const best=scored[0], worst=scored[scored.length-1];
+  if(best&&worst) h+=_rcInsight(`${best.scheme} (${best.zone}) leads the league with a composite score of ${best.composite}/100, driven by ${_rcPct(best.nrw_pct)} NRW and ${_rcPct(best.collection_rate)} collection. ${worst.scheme} (${worst.zone}) ranks last at ${worst.composite}/100 — a targeted recovery plan is recommended.`);
+
   h+=_rcAlertsPanel(alerts||[]);
   h+=_rcNarrative(narrative);
   return h;
