@@ -400,6 +400,10 @@ def customer_pivot(
             continue
         postpaid = sum((r.active_postpaid  or 0) for r in lv)
         prepaid  = sum((r.active_prepaid   or 0) for r in lv)
+        amt_billed     = sum((r.amt_billed     or 0) for r in mrows)
+        cash_collected = sum((r.cash_collected or 0) for r in mrows)
+        service_charge = sum((r.service_charge or 0) for r in mrows)
+        meter_rental   = sum((r.meter_rental   or 0) for r in mrows)
 
         result.append({
             "month":            month,
@@ -411,6 +415,11 @@ def customer_pivot(
             "prepaid_pct":      round(prepaid  / active * 100, 1) if active else 0,
             "new_connections":  round(sum((r.new_connections or 0) for r in mrows)),
             "pop_supplied":     round(sum((r.pop_supplied    or 0) for r in lv)),
+            "amt_billed":       round(amt_billed, 2),
+            "cash_collected":   round(cash_collected, 2),
+            "service_charge":   round(service_charge, 2),
+            "meter_rental":     round(meter_rental, 2),
+            "collection_rate":  round(cash_collected / amt_billed * 100, 1) if amt_billed else 0,
         })
 
     return result
