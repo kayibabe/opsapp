@@ -6791,6 +6791,7 @@ const REPORT_TEMPLATES = {
   'strategic-plan':        { title:'Strategic Plan Progress',           endpoint:'/api/strategic/scorecard',       landscape:false, ai:true  },
   'ai-scorecard':          { title:'AI Performance Scorecard',          endpoint:'/api/reports/scorecard',         landscape:false, ai:true  },
   'ai-recommendations':    { title:'AI Recommendations Brief',          endpoint:'/api/reports/recommendations',   landscape:false, ai:true  },
+  'benchmarking-tool':     { title:'WUP Benchmarking Report (WUP001–WUP107)', endpoint:'/api/benchmarking/monthly', landscape:true,  ai:false },
 };
 
 let _rcCurrentTemplate = null;
@@ -7410,6 +7411,8 @@ function _rcRender(templateId, data, narrative, {scope,generated,alerts=[]}={}){
       return hdr+nar+_rcAIScorecard(data,null,alerts);
     case 'ai-recommendations':
       return hdr+nar+_rcRecommendations(data,null);
+    case 'benchmarking-tool':
+      return hdr+nar+_rcBenchmarking(data,null,alerts);
     default:
       return hdr+nar+`<p style="padding:12px;color:var(--ds-text-muted)">Report data loaded successfully.</p>`;
   }
@@ -8279,6 +8282,108 @@ function _rcSchemePerf(d,narrative,alerts){
   if(best&&worst) h+=_rcInsight(`${best.scheme} (${best.zone}) leads the league with a composite score of ${best.composite}/100, driven by ${_rcPct(best.nrw_pct)} NRW and ${_rcPct(best.collection_rate)} collection. ${worst.scheme} (${worst.zone}) ranks last at ${worst.composite}/100 — a targeted recovery plan is recommended.`);
 
   h+=_rcAlertsPanel(alerts||[]);
+  h+=_rcNarrative(narrative);
+  return h;
+}
+
+/* ── WUP Benchmarking Report ─────────────────────────────────────────────── */
+function _rcBenchmarking(d,narrative,alerts){
+  const cov=d.coverage||{};
+  const inds=d.indicators||[];
+  const monthly=(d.monthly||[]).filter(m=>m.has_data);
+
+  let h=_rcSectionHdr('WUP001–WUP107 Benchmarking Indicators');
+  h+=_rcKpiRow([
+    {val:_rcFmt(cov.total),         lbl:'Total WUP Indicators',    sub:'Full benchmark set'},
+    {val:_rcFmt(cov.derivable),     lbl:'Derived from Data',       sub:'Computed from monthly returns'},
+    {val:_rcFmt(cov.manual),        lbl:'Require Manual Data',     sub:'Not yet in database'},
+    {val:_rcPct(cov.total?cov.derivable/cov.total*100:0), lbl:'Data Coverage', sub:'of WUP indicators populated'},
+    {val:_rcFmt(monthly.length),    lbl:'Months with Data',        sub:'in selected period'},
+    {val:d.fiscal_year||'—',        lbl:'Fiscal Year',             sub:'Apr → Mar'},
+  ]);
+
+  if(cov.manual>0)
+    h+=_rcInsight(`${cov.derivable} of ${cov.total} WUP indicators (${_rcPct(cov.total?cov.derivable/cov.total*100:0)}) are automatically derived from the monthly returns database. The remaining ${cov.manual} indicators (water quality tests, sewerage, balance sheet, gender staffing breakdown, and average tariff data) require supplementary data entry — typically sourced from laboratory registers, finance statements, and HR records.`);
+
+  if(!monthly.length){
+    h+=`<p style="padding:20px;text-align:center;color:var(--ds-text-muted)">No data for the selected period. Upload monthly returns or adjust the fiscal year filter.</p>`;
+    return h;
+  }
+
+  const months=monthly.map(m=>m.month);
+
+  function _wupFmt(v,fmt){
+    if(v===null||v===undefined) return '<span style="color:var(--ds-text-muted)">—</span>';
+    if(fmt==='mwk') return _rcMK(v);
+    if(fmt==='dec1') return _rcFmt(v,1);
+    return _rcFmt(v,0);
+  }
+
+  function _ytd(code,annType,fmt,monthObjs){
+    const vals=monthObjs.map(m=>m[code]).filter(v=>v!==undefined&&v!==null);
+    if(!vals.length) return null;
+    if(annType==='sum') return vals.reduce((a,b)=>a+b,0);
+    if(annType==='last') return vals[vals.length-1];
+    if(annType==='avg') return vals.reduce((a,b)=>a+b,0)/vals.length;
+    return null;
+  }
+
+  // Render section-by-section
+  let curSection=null;
+  let sectionRows=[];
+  let secInds=[];
+
+  function flushSection(){
+    if(!curSection||!secInds.length) return;
+    h+=`<h4 style="margin:20px 0 8px;font-size:13px;font-weight:600;color:var(--ds-text-secondary);border-bottom:1px solid var(--ds-border);padding-bottom:4px">${curSection}</h4>`;
+    // Build table headers
+    const shortMonths=months.map(m=>m.replace(/^(Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec|Jan|Feb|Mar).*/,'$1'));
+    const hdrs=['Code','Indicator',...shortMonths,'YTD/Avg'];
+    const rows=secInds.map(ind=>{
+      const derivable=ind.derivable;
+      const code=ind.field;
+      const annType=ind.ann_type;
+      const fmt=ind.fmt||'num';
+      const cells=[
+        `<span style="font-size:10px;font-family:monospace;color:var(--ds-text-muted)">${ind.code}</span>`,
+        `<span style="${!derivable?'color:var(--ds-text-muted);font-style:italic':''}">${ind.label.replace(/^WUP\d+ · /,'')}</span>`,
+        ...monthly.map(m=>_wupFmt(derivable?m[code]:null,fmt)),
+      ];
+      const ytdVal=derivable?_ytd(code,annType,fmt,monthly):null;
+      cells.push(ytdVal!==null?`<strong>${_wupFmt(ytdVal,fmt)}</strong>`:_wupFmt(null,fmt));
+      return cells;
+    });
+    // Use a custom table to keep code column narrow
+    h+=`<div style="overflow-x:auto;margin-bottom:12px"><table class="rpt-table" style="font-size:11px"><thead><tr>`;
+    hdrs.forEach((hd,i)=>{
+      const align=i>=2?'text-align:right':'';
+      h+=`<th style="${align}">${hd}</th>`;
+    });
+    h+=`</tr></thead><tbody>`;
+    rows.forEach(row=>{
+      h+=`<tr>`;
+      row.forEach((cell,i)=>{
+        const align=i>=2?'text-align:right':'';
+        h+=`<td style="${align}">${cell}</td>`;
+      });
+      h+=`</tr>`;
+    });
+    h+=`</tbody></table></div>`;
+    secInds=[];
+  }
+
+  for(const item of inds){
+    if(item.type==='section'){
+      flushSection();
+      curSection=item.label;
+      secInds=[];
+    } else {
+      secInds.push(item);
+    }
+  }
+  flushSection();
+
+  h+=_rcAlertsPanel(alerts);
   h+=_rcNarrative(narrative);
   return h;
 }
